@@ -152,6 +152,11 @@ export default function (pi: ExtensionAPI) {
     void runFeedback.onAgentEnd();
   });
 
+  pi.on("message_start", (event) => {
+    // F7：assistant 消息开始 = 新回合 → 封口上一气泡，本回合内容进新气泡
+    if (event.message.role === "assistant") void runFeedback.onTurnStart();
+  });
+
   pi.on("tool_execution_start", (event) => {
     void runFeedback.onToolStart(event.toolName);
   });

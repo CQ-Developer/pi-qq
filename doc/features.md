@@ -146,7 +146,7 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **目标**：工具阶段长达数十分钟时保持"活着"的感知，且不烧穿消息额度。
 
-**行为**：流式气泡 = **回合活动时间线**，按 `streamFlushMs`（默认 3000ms，最小 300）固定频率发送窗口汇总帧（`streamRelay` 默认开，实测可用）：
+**行为**：**每回合一个独立流式气泡**（回合 = 一条 assistant 消息及其后续工具执行；`streamRelay` 默认开，实测可用），气泡内按 `streamFlushMs`（默认 3000ms，最小 300）固定频率发送窗口汇总帧：
 
 ```
 💭 思考中...
@@ -161,7 +161,8 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 - **汇总帧内容**（窗口增量，间隔 `streamFlushMs` 默认 3000ms；`agent_end` 补发剩余并收 DONE）。**行组帧首行带时间戳 `[HH:MM:SS]`**（纯文本增量帧不加，避免插断流式回答）。**帧内顺序（用户确认）：任何消息原文先推送、发完之后才推工具汇总**：思考状态行（惰性）→ 消息文本增量（原始 Markdown，流式帧按 markdown 渲染）→ 工具计数行 `name * n`（本窗口调用数，无参数，决策 #3）。时序保证：工具总在 message_end 后执行，故文本必然先于其工具汇总完整发出。
 - **排版规则**：文本块前空一行（紧随行组时）；文本续写直接拼接；工具计数行紧随文本（仅换行不空行）；行组相邻不空行。
-- **事件映射**：`tool_execution_start` → 窗口计数；`message_update`（thinking/text）→ 窗口状态/快照；`message_end` → 文本定稿；`agent_end` → 补帧 + DONE。AppendStream 内部仍有 500ms 节流与限流退避作安全网。
+- **事件映射**：`message_start`（assistant）→ 封口上一气泡（补帧 + DONE）并开新气泡；`tool_execution_start` → 窗口计数 + 🔧 行；`message_update`（thinking/text）→ 窗口状态/快照；`message_end` → 文本定稿；`agent_end` → 补帧 + DONE。AppendStream 内部仍有 500ms 节流与限流退避作安全网。
+- **额度提示**：每回合一个气泡 = 每回合一条新 msg_seq 消息，长回合任务的消息数多于单气泡模式；若平台拒绝（帧失败），该回合自动降级消息路径，文本仍完整送达。
 - **降级**：任何一帧失败即标 dead，已追加部分作废，未发出的结果文本自动转消息路径补发；`streamRelay: false` 时整条时间线关闭，assistant 消息走普通消息路径（M2 行为）。
 - **开始确认**（QQ 触发的 run，t=0）：立即回一条"✅ 已收到，开始处理…"（1 条被动额度，窗口内必达）。
 - **typing 保鲜**：run 期间每 50s 续期一次"正在输入"（0 额度），`agent_end` 清理。

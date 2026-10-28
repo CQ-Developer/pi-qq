@@ -7,17 +7,13 @@ import type { ReplyBudget } from "./reply-budget";
  * F7 长任务反馈：run 级状态机（固定频率汇总帧版）。
  *
  * 场景：user_input → thinking+tools（10~60 分钟）→ assistant message，n 轮循环。
- * 流式气泡 = 汇总时间线：每 STREAM_FLUSH_MS 把窗口内的增量合成一帧追加
- * （思考状态 → 工具计数 → 消息文本增量），帧间按内容类型补换行/空行：
+ * 流式气泡 = 回合活动时间线，**每回合一个独立气泡**：
+ * 回合（message_start）开始时封口上一气泡（补帧 + DONE），新气泡累计本回合的
+ * 思考标记 / 工具计数 / 消息文本增量，按 STREAM_FLUSH_MS 固定频率合帧追加：
  *
- *   思考中...
- *   bash * 3
- *   read * 2
- *
- *   中间消息原文
- *   edit * 1
- *
- *   最终回复原文
+ *   气泡1：💭 思考中... / 🔧 bash * 3 / 🔧 read * 2 / 消息1原文
+ *   气泡2：🔧 write * 1 / 💭 思考中... / 🔧 bash * 2 / 消息2原文
+ *   气泡3：最终回复原文
  *
  * 任何一帧失败即标 dead：未发出的结果文本自动转消息路径补发；
  * streamRelay 关闭时整条时间线不可用，assistant 消息走普通消息路径（M2 行为）。
@@ -26,6 +22,15 @@ import type { ReplyBudget } from "./reply-budget";
 export interface ToolStat {
   count: number;
   errors: number;
+}
+
+/** 当前回合气泡：一条独立流式消息 + 其排版状态 */
+interface TurnStream {
+  stream: AppendStream;
+  /** 气泡中已有内容 */
+  hasContent: boolean;
+  /** 最后追加的帧类型（决定换行/空行） */
+  lastKind: "none" | "text" | "line";
 }
 
 export interface RunFeedbackDeps {
@@ -59,16 +64,12 @@ interface RunState {
   snapshotText: string;
   /** 已定稿 assistant 消息累计文本 */
   finalizedText: string;
-  /** 已追加到流的结果文本长度（增量计算基准） */
+  /** 已追加到流的结果文本长度（增量计算基准，跨气泡累计） */
   resultSentLen: number;
-  /** 流中已有内容 */
-  streamHasContent: boolean;
-  /** 最后追加的帧类型（决定换行/空行） */
-  lastKind: "none" | "text" | "line";
+  /** 当前回合气泡（null = 待惰性创建） */
+  cur: TurnStream | null;
   /** 最近一次成功追加的时间戳（空窗口活性线用） */
   lastAppendAt: number;
-  stream: AppendStream | null;
-  streamState: "unopened" | "open" | "dead";
   typingTimer?: ReturnType<typeof setInterval>;
   flushTimer?: ReturnType<typeof setInterval>;
   heartbeatTimer?: ReturnType<typeof setInterval>;
@@ -130,11 +131,8 @@ export class RunFeedback {
       snapshotText: "",
       finalizedText: "",
       resultSentLen: 0,
-      streamHasContent: false,
-      lastKind: "none",
+      cur: null,
       lastAppendAt: Date.now(),
-      stream: null,
-      streamState: "unopened",
       messageHeartbeats: 0,
     };
     this.run = run;
@@ -157,14 +155,33 @@ export class RunFeedback {
     }
   }
 
-  /** 工具开始：窗口计数 +1（汇总帧里以 `name * n` 呈现） */
-  onToolStart(toolName: string): void {
+  /** 工具调用开始：窗口计数 +1，时间线追加一行“🔧 工具名”（无参数） */
+  async onToolStart(toolName: string): Promise<void> {
     const run = this.run;
     if (!run) return;
     run.winTools.set(toolName, (run.winTools.get(toolName) ?? 0) + 1);
+    if (!this.deps.getStreamRelay()) return;
+    await this.pushAppend(run, `🔧 ${toolName}\n`, "line");
   }
 
-  /** 工具结束：总计计数（心跳 ⏱ 行用） */
+  /** 回合开始（message_start, assistant）：封口上一气泡，本回合内容进新气泡 */
+  async onTurnStart(): Promise<void> {
+    const run = this.run;
+    if (!run) return;
+    await this.sealTurn(run);
+  }
+
+  /** 封口当前气泡：补发剩余窗口 + DONE，之后内容进新气泡 */
+  private async sealTurn(run: RunState): Promise<void> {
+    const cur = run.cur;
+    if (!cur) return;
+    await this.flushWindow(run);
+    try {
+      await cur.stream.done();
+    } catch {}
+    run.cur = null;
+  }
+
   onToolEnd(toolName: string, isError: boolean): void {
     const run = this.run;
     if (!run) return;
@@ -195,17 +212,16 @@ export class RunFeedback {
 
     if (isError) {
       // 出错即弃流，错误摘要交回调用方走预算链路
-      run.streamState = "dead";
-      run.stream = null;
+      run.cur = null;
       return false;
     }
 
     run.finalizedText = [run.finalizedText, text].filter((s) => s.trim()).join("\n\n");
     run.snapshotText = "";
     run.thinkingMarked = false; // 下一条 assistant 消息重新计时思考标记
-    if (!this.deps.getStreamRelay() || run.streamState === "dead") return false;
+    if (!this.deps.getStreamRelay()) return false;
 
-    return await this.flushWindow();
+    return await this.flushWindow(run);
   }
 
   /** run 结束：发剩余汇总帧 + DONE，清定时器 */
@@ -213,10 +229,9 @@ export class RunFeedback {
     const run = this.run;
     this.clearTimers();
     this.run = null;
-    if (run?.stream && run.streamState === "open") {
+    if (run?.cur) {
       try {
-        await this.flushWindow(run);
-        await run.stream.done();
+        await this.sealTurn(run);
       } catch {
         // DONE 失败不补发——内容已随汇总帧展示（避免双发）
       }
@@ -226,7 +241,7 @@ export class RunFeedback {
   /** session_shutdown 等异常路径的清理 */
   dispose(): void {
     this.clearTimers();
-    this.run?.stream?.dispose();
+    this.run?.cur?.stream.dispose();
     this.run = null; // 未发 DONE 的气泡会停留在生成态（追加模式无撤销语义，可接受）
   }
 
@@ -256,13 +271,13 @@ export class RunFeedback {
 
   private async doFlushWindow(run?: RunState): Promise<boolean> {
     const r = run ?? this.run;
-    if (!r || r.streamState === "dead") return false;
+    if (!r || !r.cur) return true; // 本回合气泡尚未创建，无内容可补
     if (!this.deps.getStreamRelay()) return false;
 
     const full = [r.finalizedText, r.snapshotText].filter((s) => s.trim()).join("\n\n");
     const textDelta = full.slice(r.resultSentLen);
 
-    let kind = r.lastKind;
+    let kind = r.cur.lastKind;
     let frame = "";
     // ① 思考行（惰性：本消息出现 thinking 才有），首行带时间戳便于核对推送节奏
     if (r.winThinking) {
@@ -291,7 +306,7 @@ export class RunFeedback {
       // 空窗口：静默超过 STREAM_LIVENESS_MS 时补一条活性心跳行（长思考/长工具不再无推送）
       if (Date.now() - r.lastAppendAt >= STREAM_LIVENESS_MS) {
         const line = `[${nowStamp()}] ${formatHeartbeat(Date.now() - r.startedAt, r.tools)}`;
-        if (await this.pushAppend(r, (r.lastKind === "text" ? "\n" : "") + `${line}\n`, "line")) {
+        if (await this.pushAppend(r, (r.cur.lastKind === "text" ? "\n" : "") + `${line}\n`, "line")) {
           r.lastAppendAt = Date.now();
         }
       }
@@ -308,21 +323,21 @@ export class RunFeedback {
 
   /** 行类前缀：文本未收行时补换行；行与行相邻不加空行 */
   private prefixLine(run: RunState): string {
-    if (!run.streamHasContent) return "";
-    return run.lastKind === "text" ? "\n" : "";
+    if (!run.cur) return "";
+    return run.cur.lastKind === "text" ? "\n" : "";
   }
 
   /** 文本块前缀：行/块之后空一行分组；文本续写直接拼接 */
   private prefixText(run: RunState): string {
-    if (!run.streamHasContent) return "";
-    return run.lastKind === "text" ? "" : "\n";
+    if (!run.cur) return "";
+    return run.cur.lastKind === "text" ? "" : "\n";
   }
 
   /** 心跳兜底：流式路径的活性已由空窗口活性行（3s flush 内）覆盖；流不可用时发消息心跳（保险丝 ≤N 条） */
   private async beat(): Promise<void> {
     const run = this.run;
     if (!run) return;
-    if (this.deps.getStreamRelay() && run.streamState !== "dead") return;
+    if (this.deps.getStreamRelay()) return; // 活性由 3s flush 的空窗口活性行覆盖
 
     // 流不可用 → 消息心跳（保险丝）
     if (run.messageHeartbeats >= this.deps.getHeartbeatMaxMessages()) return;
@@ -340,16 +355,19 @@ export class RunFeedback {
     const bot = this.deps.bot();
     if (!bot) return false;
     try {
-      if (!run.stream) {
+      if (!run.cur) {
         if (!run.msgId) return false;
-        run.stream = new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
-          onError: (err) => this.handleStreamError(run, err),
-        });
-        run.streamState = "open";
+        run.cur = {
+          stream: new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
+            onError: (err) => this.handleStreamError(run, err),
+          }),
+          hasContent: false,
+          lastKind: "none",
+        };
       }
-      await run.stream.append(delta);
-      run.streamHasContent = true;
-      run.lastKind = kind;
+      await run.cur.stream.append(delta);
+      run.cur.hasContent = true;
+      run.cur.lastKind = kind;
       run.lastAppendAt = Date.now();
       return true;
     } catch (err) {
@@ -358,12 +376,11 @@ export class RunFeedback {
     }
   }
 
-  /** 流不可信：标记降级，并把尚未追加到流的结果文本用消息路径补发（避免结果丢失） */
+  /** 流不可信：丢弃当前气泡，并把尚未追加到流的结果文本用消息路径补发（避免结果丢失） */
   private handleStreamError(run: RunState, err: Error): void {
-    const wasDead = run.streamState === "dead";
-    run.streamState = "dead";
-    run.stream = null;
-    if (!wasDead) this.deps.onWarn(`流式通道不可用，已降级（${err.message}）`);
+    const had = run.cur !== null;
+    run.cur = null;
+    if (had) this.deps.onWarn(`流式通道不可用，本回合已降级（${err.message}）`);
     const rest = run.finalizedText.slice(run.resultSentLen);
     if (rest) {
       const bound = this.deps.boundOpenid();
