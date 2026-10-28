@@ -20,6 +20,8 @@ export interface StartBotOptions {
   /** F2 单人绑定；未提供时 accessPolicy 放行，由 M2 的"首个私聊用户自动绑定"兜底 */
   allowedOpenid?: string;
   markdownSupport?: boolean;
+  /** 诊断模式：SDK 内部日志（超时/限流/重连等）打到终端 */
+  debug?: boolean;
   /** 入站消息接线点（M2 起；M1 为空） */
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;
   /** 连接状态变化（UI 通知由调用方决定） */

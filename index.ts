@@ -36,6 +36,7 @@ const runFeedback = new RunFeedback({
   getHeartbeatMaxMessages: () => getSettings(readConfig().config).heartbeatMaxMessages,
   getStreamRelay: () => getSettings(readConfig().config).streamRelay,
   getStreamFlushMs: () => getSettings(readConfig().config).streamFlushMs,
+  getDebug: () => getSettings(readConfig().config).debug,
   makeChannel: () => ({
     budget,
     boundOpenid: readConfig().config.allowedOpenid ?? "",
@@ -84,6 +85,7 @@ export default function (pi: ExtensionAPI) {
       credentials: creds,
       allowedOpenid: config.allowedOpenid,
       markdownSupport: config.markdownSupport,
+      debug: config.debug,
       onMessage: createInboundHandler({
         pi,
         ctx,

@@ -37,6 +37,8 @@ export interface RunFeedbackDeps {
   /** 流式汇总帧间隔（毫秒，最小 300） */
   getStreamFlushMs: () => number;
   getStreamRelay: () => boolean;
+  /** 诊断模式：SDK 日志转终端 + 文本帧也带时间戳 */
+  getDebug: () => boolean;
   makeChannel: () => ReplyChannel;
   onWarn: (msg: string) => void;
 }
@@ -269,7 +271,9 @@ export class RunFeedback {
     }
     // ② 消息文本增量（先发完文本——工具总在 message_end 后执行，此时文本必然已定稿）
     if (textDelta) {
-      frame += (kind === "line" ? "\n" : "") + textDelta;
+      // 诊断模式：文本增量也带时间戳（内联，便于核对全部帧的推送节奏）
+      const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
+      frame += (kind === "line" ? "\n" : "") + `${stamp}${textDelta}`;
       kind = "text";
     }
     // ③ 工具计数行（文本之后），首行带时间戳
