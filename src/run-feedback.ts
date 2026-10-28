@@ -4,33 +4,25 @@ import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
 
 /**
- * F7 长任务反馈：run 级状态机（固定频率汇总帧版）。
+ * F7 长任务反馈：run 级状态机（汇总帧 + 文本气泡切分版）。
  *
  * 场景：user_input → thinking+tools（10~60 分钟）→ assistant message，n 轮循环。
- * 流式气泡 = 回合活动时间线，**每回合一个独立气泡**：
- * 回合（message_start）开始时封口上一气泡（补帧 + DONE），新气泡累计本回合的
- * 思考标记 / 工具计数 / 消息文本增量，按 STREAM_FLUSH_MS 固定频率合帧追加：
  *
- *   气泡1：💭 思考中... / 🔧 bash * 3 / 🔧 read * 2 / 消息1原文
- *   气泡2：🔧 write * 1 / 💭 思考中... / 🔧 bash * 2 / 消息2原文
- *   气泡3：最终回复原文
+ * 气泡切分规则：**每条带文本的 assistant 消息一个气泡**（文本 + 其后跟随的工具执行）；
+ * 无文本的回合（仅思考/工具）并入当前气泡；最终回复独立成泡。气泡内按
+ * `streamFlushMs`（默认 3000ms）固定频率发送窗口汇总帧：
  *
- * 任何一帧失败即标 dead：未发出的结果文本自动转消息路径补发；
- * streamRelay 关闭时整条时间线不可用，assistant 消息走普通消息路径（M2 行为）。
+ *   💭 思考中...        ← 惰性行：本条消息出现 thinking 才有（内容不回传，决策 #2）
+ *   （消息原文，流式增量，按 markdown 渲染）
+ *   🔧 bash * 2         ← 其后跟随的工具执行计数
+ *
+ * 帧内顺序：行组（思考/工具）→ 空行 → 文本增量（用户确认：文本先发完，工具汇总在后）。
+ * 任何一帧失败即弃气泡：未发出的结果文本自动转消息路径补发；下一个文本消息重试新气泡。
  */
 
 export interface ToolStat {
   count: number;
   errors: number;
-}
-
-/** 当前回合气泡：一条独立流式消息 + 其排版状态 */
-interface TurnStream {
-  stream: AppendStream;
-  /** 气泡中已有内容 */
-  hasContent: boolean;
-  /** 最后追加的帧类型（决定换行/空行） */
-  lastKind: "none" | "text" | "line";
 }
 
 export interface RunFeedbackDeps {
@@ -48,12 +40,28 @@ export interface RunFeedbackDeps {
   onWarn: (msg: string) => void;
 }
 
+interface ToolStat2 {
+  count: number;
+  errors: number;
+}
+
+/** 当前气泡：一条独立流式消息 + 其排版状态 */
+interface Bubble {
+  stream: AppendStream;
+  /** 气泡中已有内容 */
+  hasContent: boolean;
+  /** 气泡中已含消息文本（决定下一条文本消息是否开新气泡） */
+  hasText: boolean;
+  /** 最后追加的帧类型（决定换行/空行） */
+  lastKind: "none" | "text" | "line";
+}
+
 interface RunState {
   startedAt: number;
   openid: string;
   msgId?: string;
   /** 工具总计（心跳 ⏱ 行用） */
-  tools: Map<string, ToolStat>;
+  tools: Map<string, ToolStat2>;
   /** 本窗口出现思考（flush 后复位） */
   winThinking: boolean;
   /** 本消息已打过思考标记（逐消息复位，避免长思考刷屏） */
@@ -66,8 +74,8 @@ interface RunState {
   finalizedText: string;
   /** 已追加到流的结果文本长度（增量计算基准，跨气泡累计） */
   resultSentLen: number;
-  /** 当前回合气泡（null = 待惰性创建） */
-  cur: TurnStream | null;
+  /** 当前气泡（null = 待惰性创建） */
+  cur: Bubble | null;
   /** 最近一次成功追加的时间戳（空窗口活性线用） */
   lastAppendAt: number;
   typingTimer?: ReturnType<typeof setInterval>;
@@ -84,7 +92,7 @@ function nowStamp(): string {
 }
 
 /** 心跳文案：仅工具名×总次数与时长，无参数无响应（features.md 决策 #3） */
-export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat>): string {
+export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>): string {
   const minutes = Math.floor(elapsedMs / 60_000);
   const elapsedText = minutes < 1 ? "不到 1 分钟" : `${minutes} 分钟`;
   if (tools.size === 0) return `⏱ 已运行 ${elapsedText}（尚未产生工具调用）`;
@@ -102,6 +110,7 @@ export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
   private pending: { openid: string; msgId: string; at: number } | null = null;
   private run: RunState | null = null;
+  private flushQueue: Promise<boolean> = Promise.resolve(true);
 
   constructor(deps: RunFeedbackDeps) {
     this.deps = deps;
@@ -144,10 +153,10 @@ export class RunFeedback {
 
     // 固定频率汇总帧（间隔可配，毫秒）
     run.flushTimer = setInterval(() => {
-      void this.flushWindow();
+      void this.flushWindow(run);
     }, Math.max(this.deps.getStreamFlushMs(), 300));
 
-    // 节流心跳
+    // 心跳兜底（流式路径的活性由空窗口活性行覆盖）
     if (hbMinutes > 0) {
       run.heartbeatTimer = setInterval(() => {
         void this.beat();
@@ -155,33 +164,14 @@ export class RunFeedback {
     }
   }
 
-  /** 工具调用开始：窗口计数 +1，时间线追加一行“🔧 工具名”（无参数） */
-  async onToolStart(toolName: string): Promise<void> {
+  /** 工具开始：窗口计数 +1（汇总帧里以 `🔧 name * n` 呈现；不立即外发，避免与汇总帧双份） */
+  onToolStart(toolName: string): void {
     const run = this.run;
     if (!run) return;
     run.winTools.set(toolName, (run.winTools.get(toolName) ?? 0) + 1);
-    if (!this.deps.getStreamRelay()) return;
-    await this.pushAppend(run, `🔧 ${toolName}\n`, "line");
   }
 
-  /** 回合开始（message_start, assistant）：封口上一气泡，本回合内容进新气泡 */
-  async onTurnStart(): Promise<void> {
-    const run = this.run;
-    if (!run) return;
-    await this.sealTurn(run);
-  }
-
-  /** 封口当前气泡：补发剩余窗口 + DONE，之后内容进新气泡 */
-  private async sealTurn(run: RunState): Promise<void> {
-    const cur = run.cur;
-    if (!cur) return;
-    await this.flushWindow(run);
-    try {
-      await cur.stream.done();
-    } catch {}
-    run.cur = null;
-  }
-
+  /** 工具结束：总计计数（心跳 ⏱ 行用） */
   onToolEnd(toolName: string, isError: boolean): void {
     const run = this.run;
     if (!run) return;
@@ -191,7 +181,7 @@ export class RunFeedback {
     run.tools.set(toolName, stat);
   }
 
-  /** assistant 流式快照（message_update）：只更新窗口，3s 汇总帧统一发送 */
+  /** assistant 流式快照（message_update）：只更新窗口，汇总帧统一发送 */
   async onAssistantDelta(snapshotText: string, snapshotThinking: string): Promise<void> {
     const run = this.run;
     if (!run) return;
@@ -211,7 +201,7 @@ export class RunFeedback {
     if (!run) return false;
 
     if (isError) {
-      // 出错即弃流，错误摘要交回调用方走预算链路
+      // 出错即弃气泡，错误摘要交回调用方走预算链路
       run.cur = null;
       return false;
     }
@@ -224,17 +214,27 @@ export class RunFeedback {
     return await this.flushWindow(run);
   }
 
-  /** run 结束：发剩余汇总帧 + DONE，清定时器 */
+  /** 封口当前气泡：补发剩余窗口 + DONE，之后内容进新气泡 */
+  private async sealBubble(run: RunState): Promise<void> {
+    const cur = run.cur;
+    if (!cur) return;
+    await this.flushWindow(run);
+    try {
+      await cur.stream.done();
+    } catch {}
+    run.cur = null;
+  }
+
+  /** run 结束：封口最后一个气泡（补帧 + DONE），清定时器 */
   async onAgentEnd(): Promise<void> {
     const run = this.run;
     this.clearTimers();
     this.run = null;
-    if (run?.cur) {
+    if (run) {
+      // DONE 失败不补发——内容已随汇总帧展示（避免双发）
       try {
-        await this.sealTurn(run);
-      } catch {
-        // DONE 失败不补发——内容已随汇总帧展示（避免双发）
-      }
+        await this.sealBubble(run);
+      } catch {}
     }
   }
 
@@ -257,12 +257,11 @@ export class RunFeedback {
   }
 
   /**
-   * 把窗口增量合成一帧，顺序与真实时序一致：思考行 → 消息文本增量 → 工具计数行。
-   * 规则（用户确认）：消息文本发完之后才发送工具汇总；帧内/帧间的换行与空行由 lastKind 推导。
+   * 把窗口增量合成一帧。帧内顺序：思考/工具行组 → 空行 → 文本增量
+   * （用户确认：任何消息原文先推送、发完之后才推工具汇总）。
+   * 气泡边界：新文本到来且当前气泡已含文本 → 先把行组落旧气泡并 DONE，文本进新气泡。
    * 通过 promise 链串行化：限流重试期间（最长 7s）定时器再次触发也不会产生交错帧。
    */
-  private flushQueue: Promise<boolean> = Promise.resolve(true);
-
   flushWindow(run?: RunState): Promise<boolean> {
     const p = this.flushQueue.then(() => this.doFlushWindow(run));
     this.flushQueue = p.catch(() => false);
@@ -271,85 +270,92 @@ export class RunFeedback {
 
   private async doFlushWindow(run?: RunState): Promise<boolean> {
     const r = run ?? this.run;
-    if (!r || !r.cur) return true; // 本回合气泡尚未创建，无内容可补
+    if (!r) return false;
     if (!this.deps.getStreamRelay()) return false;
 
     const full = [r.finalizedText, r.snapshotText].filter((s) => s.trim()).join("\n\n");
     const textDelta = full.slice(r.resultSentLen);
+    const textVisible = textDelta.trim().length > 0;
 
-    let kind = r.cur.lastKind;
-    let frame = "";
-    // ① 思考行（惰性：本消息出现 thinking 才有），首行带时间戳便于核对推送节奏
-    if (r.winThinking) {
-      frame += (kind === "text" ? "\n" : "") + `[${nowStamp()}] 💭 思考中...\n`;
-      kind = "line";
-    }
-    // ② 消息文本增量（先发完文本——工具总在 message_end 后执行，此时文本必然已定稿）
-    if (textDelta) {
-      // 诊断模式：文本增量也带时间戳（内联，便于核对全部帧的推送节奏）
-      const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
-      frame += (kind === "line" ? "\n" : "") + `${stamp}${textDelta}`;
-      kind = "text";
-    }
-    // ③ 工具计数行（文本之后），首行带时间戳
-    let firstLine = true;
-    for (const [name, n] of r.winTools) {
-      if (n > 0) {
-        const stamp = kind === "text" || (kind === "line" && firstLine) ? `[${nowStamp()}] ` : "";
-        frame += (kind === "text" ? "\n" : "") + `${stamp}🔧 ${name} * ${n}\n`;
-        kind = "line";
-        firstLine = false;
-      }
+    // 气泡边界：新文本到来且当前气泡已含文本 → 行组落旧气泡 + DONE，文本进新气泡
+    if (textVisible && r.cur?.hasText) {
+      await this.appendLineGroups(r);
+      try {
+        await r.cur.stream.done();
+      } catch {}
+      r.cur = null;
+      r.winThinking = false;
+      r.winTools.clear();
     }
 
-    if (!frame) {
-      // 空窗口：静默超过 STREAM_LIVENESS_MS 时补一条活性心跳行（长思考/长工具不再无推送）
-      if (Date.now() - r.lastAppendAt >= STREAM_LIVENESS_MS) {
-        const line = `[${nowStamp()}] ${formatHeartbeat(Date.now() - r.startedAt, r.tools)}`;
-        if (await this.pushAppend(r, (r.cur.lastKind === "text" ? "\n" : "") + `${line}\n`, "line")) {
-          r.lastAppendAt = Date.now();
-        }
-      }
-      return true;
-    }
-    if (!(await this.pushAppend(r, frame, kind === "text" ? "text" : "line"))) return false;
+    // 行组（思考/工具计数）——无文本的窗口也照常汇总
+    const okLines = await this.appendLineGroups(r);
 
-    // 重置窗口，并推进结果文本增量基准（关键：否则每次 flush 都会重发全部文本）
+    // 文本增量（空白增量只推进基准，不追加）
+    let okText = true;
+    if (textVisible) {
+      okText = await this.appendText(r, textDelta);
+    } else if (textDelta) {
+      r.resultSentLen = full.length;
+    }
+
+    if (!okLines || !okText) return false;
+
+    // 重置窗口
     r.winThinking = false;
     r.winTools.clear();
-    r.resultSentLen = full.length;
     return true;
   }
 
-  /** 行类前缀：文本未收行时补换行；行与行相邻不加空行 */
-  private prefixLine(run: RunState): string {
-    if (!run.cur) return "";
-    return run.cur.lastKind === "text" ? "\n" : "";
+  /** 收集本窗口的思考/工具行组（无行返回空串） */
+  private collectWindowLines(r: RunState): string[] {
+    const lines: string[] = [];
+    if (r.winThinking) lines.push("💭 思考中...");
+    for (const [name, n] of r.winTools) {
+      if (n > 0) lines.push(`🔧 ${name} * ${n}`);
+    }
+    return lines;
   }
 
-  /** 文本块前缀：行/块之后空一行分组；文本续写直接拼接 */
-  private prefixText(run: RunState): string {
-    if (!run.cur) return "";
-    return run.cur.lastKind === "text" ? "" : "\n";
+  /** 追加行组：首行带时间戳；行与行相邻不空行；文本未收行时先补换行 */
+  private async appendLineGroups(r: RunState, lines?: string[]): Promise<boolean> {
+    const group = lines ?? this.collectWindowLines(r);
+    if (group.length === 0) return true;
+    const prefix = !r.cur || r.cur.lastKind !== "text" ? "" : "\n";
+    const stamp = r.cur?.hasContent ? `[${nowStamp()}] ` : `[${nowStamp()}] `;
+    const frame = prefix + stamp + group.join(`\n[${nowStamp()}] `) + "\n";
+    return this.pushAppend(r, frame, "line");
   }
 
-  /** 心跳兜底：流式路径的活性已由空窗口活性行（3s flush 内）覆盖；流不可用时发消息心跳（保险丝 ≤N 条） */
+  /** 追加文本增量：行组之后空一行分组；文本续写直接拼接；诊断模式带内联时间戳 */
+  private async appendText(r: RunState, text: string): Promise<boolean> {
+    const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
+    const prefix = !r.cur ? "" : r.cur.lastKind === "text" ? "" : "\n";
+    const ok = await this.pushAppend(r, prefix + stamp + text, "text");
+    if (ok && r.cur) r.cur.hasText = true;
+    return ok;
+  }
+
+  /** 心跳兜底：流式路径的活性由空窗口活性行覆盖；流不可用时发消息心跳（保险丝 ≤N 条） */
   private async beat(): Promise<void> {
     const run = this.run;
     if (!run) return;
-    if (this.deps.getStreamRelay()) return; // 活性由 3s flush 的空窗口活性行覆盖
+    if (this.deps.getStreamRelay()) return;
 
-    // 流不可用 → 消息心跳（保险丝）
     if (run.messageHeartbeats >= this.deps.getHeartbeatMaxMessages()) return;
     const bound = this.deps.boundOpenid();
     if (!bound) return;
     const bot = this.deps.bot();
     if (!bot) return;
     run.messageHeartbeats += 1;
-    await sendReply(bot, `[${nowStamp()}] ${formatHeartbeat(Date.now() - run.startedAt, run.tools)}`, this.deps.makeChannel());
+    await sendReply(
+      bot,
+      `[${nowStamp()}] ${formatHeartbeat(Date.now() - run.startedAt, run.tools)}`,
+      this.deps.makeChannel(),
+    );
   }
 
-  /** 追加一帧（惰性建流）；失败标 dead 并返回 false */
+  /** 追加一帧（惰性建气泡）；失败弃气泡并返回 false */
   private async pushAppend(run: RunState, delta: string, kind: "line" | "text"): Promise<boolean> {
     if (!delta) return true;
     const bot = this.deps.bot();
@@ -362,6 +368,7 @@ export class RunFeedback {
             onError: (err) => this.handleStreamError(run, err),
           }),
           hasContent: false,
+          hasText: false,
           lastKind: "none",
         };
       }
