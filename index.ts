@@ -149,6 +149,10 @@ export default function (pi: ExtensionAPI) {
     void runFeedback.onAgentEnd();
   });
 
+  pi.on("tool_execution_start", (event) => {
+    void runFeedback.onToolStart(event.toolName);
+  });
+
   pi.on("tool_execution_end", (event) => {
     runFeedback.onToolEnd(event.toolName, event.isError);
   });
@@ -160,7 +164,11 @@ export default function (pi: ExtensionAPI) {
       .filter((b) => b.type === "text")
       .map((b) => b.text)
       .join("");
-    void runFeedback.onAssistantDelta(snapshot);
+    const thinking = msg.content
+      .filter((b) => b.type === "thinking")
+      .map((b) => b.thinking)
+      .join("");
+    void runFeedback.onAssistantDelta(snapshot, thinking);
   });
 
   // —— pi → QQ：assistant 消息回传（非流式路径 + F7 流接管）——
@@ -307,10 +315,13 @@ export default function (pi: ExtensionAPI) {
           last.openid,
           last.msgId,
         );
-        await stream.append("**流式测试（append）** 第一帧");
-        await sleep(1200);
-        await stream.append("\n第二帧追加的内容（若能看到本行，追加语义可用）");
-        await sleep(1200);
+        await stream.append("💭 思考中…\n");
+        await sleep(800);
+        await stream.append("🔧 bash\n🔧 read\n");
+        await sleep(800);
+        await stream.append("**智能体消息**：第一回合回复内容。\n");
+        await sleep(800);
+        await stream.append("\n这是最终回复的流式追加内容。");
         let doneNote = "DONE 成功";
         try {
           await stream.done();
@@ -318,7 +329,7 @@ export default function (pi: ExtensionAPI) {
           doneNote = `DONE 帧被拒：${(doneErr as Error).message}`;
         }
         ctx.ui.notify(
-          `append 流式测试：两帧成功、${doneNote}。请看 QQ：两条追加文字是否都在气泡里？`,
+          `时间线流式测试：各帧成功、${doneNote}。请看 QQ：气泡应为 💭/🔧/消息文本 的时间线形态`,
           "info",
         );
       } catch (err) {

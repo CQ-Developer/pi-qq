@@ -43,6 +43,8 @@ interface RunState {
   tools: Map<string, ToolStat>;
   stream: AppendStream | null;
   streamState: "unopened" | "open" | "dead";
+  /** 当前 assistant 消息是否已打思考标记（逐消息重置） */
+  thinkingMarked: boolean;
   /** 结果文本已追加到流的长度（用于计算增量） */
   resultSentLen: number;
   /** 流中是否已有内容（决定结果追加前是否补空行） */
@@ -97,6 +99,7 @@ export class RunFeedback {
       tools: new Map(),
       stream: null,
       streamState: "unopened",
+      thinkingMarked: false,
       resultSentLen: 0,
       streamHasContent: false,
       finalizedText: "",
@@ -127,11 +130,24 @@ export class RunFeedback {
     run.tools.set(toolName, stat);
   }
 
-  /** assistant 文本流式快照（message_update）：streamRelay 开启时增量追加进流 */
-  async onAssistantDelta(snapshotText: string): Promise<void> {
+  /** 工具调用开始（tool_execution_start）：时间线追加一行“🔧 工具名”（无参数） */
+  async onToolStart(toolName: string): Promise<void> {
     const run = this.run;
     if (!run || run.streamState === "dead") return;
     if (!this.deps.getStreamRelay()) return;
+    await this.pushAppend(run, `🔧 ${toolName}\n`);
+  }
+
+  /** assistant 流式快照（message_update）：思考标记 + 文本增量，streamRelay 开启时追加进流 */
+  async onAssistantDelta(snapshotText: string, snapshotThinking: string): Promise<void> {
+    const run = this.run;
+    if (!run || run.streamState === "dead") return;
+    if (!this.deps.getStreamRelay()) return;
+    // 💭 思考中…：惰性标记（仅当本消息确实产生 thinking；思考内容不回传，决策 #2）
+    if (snapshotThinking && !run.thinkingMarked) {
+      run.thinkingMarked = true;
+      await this.pushAppend(run, "💭 思考中…\n");
+    }
     const full = [run.finalizedText, snapshotText].filter((s) => s.trim()).join("\n\n");
     if (full.length <= run.resultSentLen) return;
     const delta = full.slice(run.resultSentLen);
@@ -160,6 +176,7 @@ export class RunFeedback {
     if (!this.deps.getStreamRelay()) return false;
 
     run.finalizedText = [run.finalizedText, text].filter((s) => s.trim()).join("\n\n");
+    run.thinkingMarked = false; // 下一条 assistant 消息重新计时思考标记
     if (run.streamState === "dead") return false;
 
     const full = run.finalizedText;

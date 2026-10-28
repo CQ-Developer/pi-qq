@@ -152,6 +152,7 @@ pi-qq/
   - 首轮实测（2026-10-28）：确认/typing 正常；SDK 内置流式 replace 语义被平台拒绝（"已经提交的消息内容不可修改"，首帧可渲染、第二帧报错）；C2C markdown 渲染正常（`/qq-md` ✓）。
   - 修复：自实现 `src/append-stream.ts`（input_mode="append"，追加语义），RunFeedback 改为增量追加，`/qq-stream-test` 改测 append 模式。
   - 复验（2026-10-28）：append 两帧 + DONE 全部渲染 ✓，流式链路打通。后续任务：心跳/结果追加需开启 `streamRelay: true`。
+  - 时间线升级（用户构想）：流式气泡改为**回合活动时间线**——💭 思考中…（惰性标记，不回传内容）/ 🔧 工具名（tool_execution_start）/ 智能体消息原文（流式增量）依次追加，心跳与 DONE 照旧；帧失败自动降级消息路径并补发未发结果。
 
 ### M3 — 用量摘要
 
