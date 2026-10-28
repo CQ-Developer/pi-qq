@@ -193,11 +193,10 @@ export default function (pi: ExtensionAPI) {
     }
     if (!text) return;
 
-    // markdownSupport=true 时透传原始 Markdown（sendMarkdown 卡片在 M4 打磨）
-    const payload = settings.markdownSupport ? text : markdownToPlain(text);
+    // F7 流接管：流式帧按 markdown 渲染（实测表格/代码块正常），传原始文本保证增量长度一致
+    if (await runFeedback.onAssistantFinal(text, isError)) return;
 
-    // F7：流接管（含机会性尝试）→ 跳过普通发送，避免双发；agent_end 时 complete()
-    if (await runFeedback.onAssistantFinal(payload, isError)) return;
+    const payload = settings.markdownSupport ? text : markdownToPlain(text);
 
     const bound = config.allowedOpenid;
     if (!bound) {
@@ -315,13 +314,13 @@ export default function (pi: ExtensionAPI) {
           last.openid,
           last.msgId,
         );
-        await stream.append("💭 思考中…\n");
+        await stream.append("思考中...\nbash * 3\nread * 2\n");
+        await sleep(1200);
+        await stream.append("\n**中间消息原文**：第一回合回复。\n");
+        await sleep(1200);
+        await stream.append("edit * 1\n");
         await sleep(800);
-        await stream.append("🔧 bash\n🔧 read\n");
-        await sleep(800);
-        await stream.append("**智能体消息**：第一回合回复内容。\n");
-        await sleep(800);
-        await stream.append("\n这是最终回复的流式追加内容。");
+        await stream.append("\n**最终回复原文**（流式追加）");
         let doneNote = "DONE 成功";
         try {
           await stream.done();
