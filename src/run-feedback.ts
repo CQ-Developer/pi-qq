@@ -63,12 +63,21 @@ interface RunState {
   streamHasContent: boolean;
   /** 最后追加的帧类型（决定换行/空行） */
   lastKind: "none" | "text" | "line";
+  /** 最近一次成功追加的时间戳（空窗口活性线用） */
+  lastAppendAt: number;
   stream: AppendStream | null;
   streamState: "unopened" | "open" | "dead";
   typingTimer?: ReturnType<typeof setInterval>;
   flushTimer?: ReturnType<typeof setInterval>;
   heartbeatTimer?: ReturnType<typeof setInterval>;
   messageHeartbeats: number;
+}
+
+/** 本地时间 HH:MM:SS，用于汇总帧首行的时间戳 */
+function nowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /** 心跳文案：仅工具名×总次数与时长，无参数无响应（features.md 决策 #3） */
@@ -82,6 +91,7 @@ export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat>)
   return `⏱ 已运行 ${elapsedText} · ${parts.join(" · ")}${suffix}`;
 }
 
+const STREAM_LIVENESS_MS = 60_000; // 空窗口静默超过该时长时补活性心跳行
 const TYPING_INTERVAL_MS = 50_000; // 平台 typing 窗口 ~60s，提前续期
 const PENDING_TTL_MS = 15_000; // QQ 触发标记的有效期（超过视为本地 run）
 
@@ -120,6 +130,7 @@ export class RunFeedback {
       resultSentLen: 0,
       streamHasContent: false,
       lastKind: "none",
+      lastAppendAt: Date.now(),
       stream: null,
       streamState: "unopened",
       messageHeartbeats: 0,
@@ -231,8 +242,17 @@ export class RunFeedback {
   /**
    * 把窗口增量合成一帧，顺序与真实时序一致：思考行 → 消息文本增量 → 工具计数行。
    * 规则（用户确认）：消息文本发完之后才发送工具汇总；帧内/帧间的换行与空行由 lastKind 推导。
+   * 通过 promise 链串行化：限流重试期间（最长 7s）定时器再次触发也不会产生交错帧。
    */
-  private async flushWindow(run?: RunState): Promise<boolean> {
+  private flushQueue: Promise<boolean> = Promise.resolve(true);
+
+  flushWindow(run?: RunState): Promise<boolean> {
+    const p = this.flushQueue.then(() => this.doFlushWindow(run));
+    this.flushQueue = p.catch(() => false);
+    return p;
+  }
+
+  private async doFlushWindow(run?: RunState): Promise<boolean> {
     const r = run ?? this.run;
     if (!r || r.streamState === "dead") return false;
     if (!this.deps.getStreamRelay()) return false;
@@ -242,9 +262,9 @@ export class RunFeedback {
 
     let kind = r.lastKind;
     let frame = "";
-    // ① 思考行（惰性：本消息出现 thinking 才有）
+    // ① 思考行（惰性：本消息出现 thinking 才有），首行带时间戳便于核对推送节奏
     if (r.winThinking) {
-      frame += (kind === "text" ? "\n" : "") + "💭 思考中...\n";
+      frame += (kind === "text" ? "\n" : "") + `[${nowStamp()}] 💭 思考中...\n`;
       kind = "line";
     }
     // ② 消息文本增量（先发完文本——工具总在 message_end 后执行，此时文本必然已定稿）
@@ -252,15 +272,27 @@ export class RunFeedback {
       frame += (kind === "line" ? "\n" : "") + textDelta;
       kind = "text";
     }
-    // ③ 工具计数行（文本之后）
+    // ③ 工具计数行（文本之后），首行带时间戳
+    let firstLine = true;
     for (const [name, n] of r.winTools) {
       if (n > 0) {
-        frame += (kind === "text" ? "\n" : "") + `🔧 ${name} * ${n}\n`;
+        const stamp = kind === "text" || (kind === "line" && firstLine) ? `[${nowStamp()}] ` : "";
+        frame += (kind === "text" ? "\n" : "") + `${stamp}🔧 ${name} * ${n}\n`;
         kind = "line";
+        firstLine = false;
       }
     }
 
-    if (!frame) return true; // 窗口无增量
+    if (!frame) {
+      // 空窗口：静默超过 STREAM_LIVENESS_MS 时补一条活性心跳行（长思考/长工具不再无推送）
+      if (Date.now() - r.lastAppendAt >= STREAM_LIVENESS_MS) {
+        const line = `[${nowStamp()}] ${formatHeartbeat(Date.now() - r.startedAt, r.tools)}`;
+        if (await this.pushAppend(r, (r.lastKind === "text" ? "\n" : "") + `${line}\n`, "line")) {
+          r.lastAppendAt = Date.now();
+        }
+      }
+      return true;
+    }
     if (!(await this.pushAppend(r, frame, kind === "text" ? "text" : "line"))) return false;
 
     // 重置窗口，并推进结果文本增量基准（关键：否则每次 flush 都会重发全部文本）
@@ -282,18 +314,11 @@ export class RunFeedback {
     return run.lastKind === "text" ? "" : "\n";
   }
 
-  /** 心跳：streamRelay 开启时作为汇总行追加进流，降级消息心跳（保险丝 ≤N 条） */
+  /** 心跳兜底：流式路径的活性已由空窗口活性行（3s flush 内）覆盖；流不可用时发消息心跳（保险丝 ≤N 条） */
   private async beat(): Promise<void> {
     const run = this.run;
     if (!run) return;
-    const line = formatHeartbeat(Date.now() - run.startedAt, run.tools);
-    if (
-      this.deps.getStreamRelay() &&
-      run.streamState !== "dead" &&
-      (await this.pushAppend(run, (run.lastKind === "text" ? "\n" : "") + `${line}\n`, "line"))
-    ) {
-      return;
-    }
+    if (this.deps.getStreamRelay() && run.streamState !== "dead") return;
 
     // 流不可用 → 消息心跳（保险丝）
     if (run.messageHeartbeats >= this.deps.getHeartbeatMaxMessages()) return;
@@ -302,7 +327,7 @@ export class RunFeedback {
     const bot = this.deps.bot();
     if (!bot) return;
     run.messageHeartbeats += 1;
-    await sendReply(bot, line, this.deps.makeChannel());
+    await sendReply(bot, `[${nowStamp()}] ${formatHeartbeat(Date.now() - run.startedAt, run.tools)}`, this.deps.makeChannel());
   }
 
   /** 追加一帧（惰性建流）；失败标 dead 并返回 false */
@@ -321,6 +346,7 @@ export class RunFeedback {
       await run.stream.append(delta);
       run.streamHasContent = true;
       run.lastKind = kind;
+      run.lastAppendAt = Date.now();
       return true;
     } catch (err) {
       this.handleStreamError(run, err as Error);
