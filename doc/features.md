@@ -149,12 +149,12 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 **行为**：流式气泡 = **回合活动时间线**，按 `streamFlushMs`（默认 3000ms，最小 300）固定频率发送窗口汇总帧（`streamRelay` 默认开，实测可用）：
 
 ```
-思考中...
-bash * 3
-read * 2
+💭 思考中...
+🔧 bash * 3
+🔧 read * 2
 
 中间消息原文
-edit * 1
+🔧 edit * 1
 
 最终回复原文（流式增量）
 ```

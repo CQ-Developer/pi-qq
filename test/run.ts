@@ -99,9 +99,9 @@ const tools = new Map<string, { count: number; errors: number }>([
   ["bash", { count: 86, errors: 3 }],
   ["read", { count: 12, errors: 0 }],
 ]);
-eq(formatHeartbeat(25 * MIN, tools), "⏱ 已运行 25 分钟 · bash×86 · read×12 · 3 失败", "心跳：含失败数");
+eq(formatHeartbeat(25 * MIN, tools), "⏱ 已运行 25 分钟 · 🔧 bash * 86 · 🔧 read * 12 · 3 失败", "心跳：含失败数");
 tools.get("bash")!.errors = 0;
-eq(formatHeartbeat(65 * MIN, tools), "⏱ 已运行 65 分钟 · bash×86 · read×12", "心跳：无失败时省略失败段");
+eq(formatHeartbeat(65 * MIN, tools), "⏱ 已运行 65 分钟 · 🔧 bash * 86 · 🔧 read * 12", "心跳：无失败时省略失败段");
 
 // ———— AppendStream：节流 / 无损 / DONE / 限流重试 ————
 

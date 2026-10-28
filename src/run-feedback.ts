@@ -76,7 +76,7 @@ export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat>)
   const minutes = Math.floor(elapsedMs / 60_000);
   const elapsedText = minutes < 1 ? "不到 1 分钟" : `${minutes} 分钟`;
   if (tools.size === 0) return `⏱ 已运行 ${elapsedText}（尚未产生工具调用）`;
-  const parts = [...tools.entries()].map(([name, s]) => `${name}×${s.count}`);
+  const parts = [...tools.entries()].map(([name, s]) => `🔧 ${name} * ${s.count}`);
   const errors = [...tools.values()].reduce((n, s) => n + s.errors, 0);
   const suffix = errors > 0 ? ` · ${errors} 失败` : "";
   return `⏱ 已运行 ${elapsedText} · ${parts.join(" · ")}${suffix}`;
@@ -244,7 +244,7 @@ export class RunFeedback {
     let frame = "";
     // ① 思考行（惰性：本消息出现 thinking 才有）
     if (r.winThinking) {
-      frame += (kind === "text" ? "\n" : "") + "思考中...\n";
+      frame += (kind === "text" ? "\n" : "") + "💭 思考中...\n";
       kind = "line";
     }
     // ② 消息文本增量（先发完文本——工具总在 message_end 后执行，此时文本必然已定稿）
@@ -255,7 +255,7 @@ export class RunFeedback {
     // ③ 工具计数行（文本之后）
     for (const [name, n] of r.winTools) {
       if (n > 0) {
-        frame += (kind === "text" ? "\n" : "") + `${name} * ${n}\n`;
+        frame += (kind === "text" ? "\n" : "") + `🔧 ${name} * ${n}\n`;
         kind = "line";
       }
     }
@@ -263,9 +263,10 @@ export class RunFeedback {
     if (!frame) return true; // 窗口无增量
     if (!(await this.pushAppend(r, frame, kind === "text" ? "text" : "line"))) return false;
 
-    // 重置窗口
+    // 重置窗口，并推进结果文本增量基准（关键：否则每次 flush 都会重发全部文本）
     r.winThinking = false;
     r.winTools.clear();
+    r.resultSentLen = full.length;
     return true;
   }
 
