@@ -1,0 +1,156 @@
+/**
+ * M2 单元测试：markdownToPlain / chunkText / ReplyBudget。
+ * 运行：npx -y jiti test/run.ts（零测试框架依赖；后续可迁移 vitest）。
+ */
+import assert from "node:assert/strict";
+import { markdownToPlain, chunkText, TEXT_CHUNK_LIMIT } from "../src/outbound.ts";
+import { ReplyBudget } from "../src/reply-budget.ts";
+
+let passed = 0;
+function ok(cond: boolean, msg: string): void {
+  if (!cond) {
+    console.error(`FAIL: ${msg}`);
+    process.exit(1);
+  }
+  passed += 1;
+  console.log(`ok: ${msg}`);
+}
+function eq(actual: unknown, expected: unknown, msg: string): void {
+  try {
+    assert.deepEqual(actual, expected);
+  } catch (e) {
+    console.error(`FAIL: ${msg}\n  actual:   ${JSON.stringify(actual)}\n  expected: ${JSON.stringify(expected)}`);
+    process.exit(1);
+  }
+  passed += 1;
+  console.log(`ok: ${msg}`);
+}
+
+// ———— markdownToPlain ————
+
+eq(markdownToPlain("# 标题\n正文"), "标题\n正文", "标题去 #");
+eq(markdownToPlain("**粗** 和 *斜* 与 __粗__"), "粗 和 斜 与 粗", "强调标记去除");
+eq(markdownToPlain("运行 `npm test` 看结果"), "运行 npm test 看结果", "行内代码去反引号");
+eq(markdownToPlain("见 [文档](https://x.cn/a) 说明"), "见 文档（https://x.cn/a） 说明", "链接转 文字（url）");
+eq(markdownToPlain("地址 [https://x.cn](https://x.cn)"), "地址 https://x.cn", "文字与 url 相同只留 url");
+eq(markdownToPlain("![架构图](https://x.cn/i.png)"), "架构图", "图片保留 alt");
+eq(markdownToPlain("- 项目一\n- 项目二\n1. 甲"), "• 项目一\n• 项目二\n1. 甲", "无序列表转 •、有序保留");
+eq(markdownToPlain("> 引用内容"), "引用内容", "引用去 >");
+eq(
+  markdownToPlain("| a | b |\n|---|---|\n| 1 | 2 |"),
+  "a | b\n1 | 2",
+  "表格逐行退化（分隔行丢弃）",
+);
+eq(markdownToPlain("```\ncode **keep**\n```"), "code **keep**", "围栏内容原样保留");
+eq(markdownToPlain("上文\n---\n下文"), "上文\n\n下文", "水平线转空行");
+eq(markdownToPlain("~~删除~~"), "删除", "删除线去除");
+eq(markdownToPlain("snake_case_word 保留"), "snake_case_word 保留", "下划线标识符不被误删");
+eq(markdownToPlain("a\n\n\n\nb"), "a\n\nb", "压缩多余空行");
+
+// ———— chunkText ————
+
+eq(chunkText("短文本"), ["短文本"], "短文本不分块");
+const lines = Array.from({ length: 100 }, (_, i) => `第 ${i} 行内容 padding padding padding`).join("\n");
+const chunks = chunkText(lines, 200);
+ok(chunks.every((c) => c.length <= 200), "分块均不超限");
+eq(chunks.join(""), lines, "分块无损拼接");
+const noNewline = "x".repeat(1000);
+const hardChunks = chunkText(noNewline, 300);
+eq(hardChunks.join(""), noNewline, "无换行硬切仍无损");
+eq(hardChunks.length, 4, "硬切块数正确（1000/300）");
+ok(chunkText("a".repeat(TEXT_CHUNK_LIMIT)).length === 1, "等于上限时不分块");
+
+// ———— ReplyBudget ————
+
+const t0 = 1_700_000_000_000;
+const budget = new ReplyBudget();
+
+eq(budget.acquire(t0).mode, "proactive", "无入站记录 → proactive");
+
+budget.observeInbound("openid-U", "msg-1", t0);
+eq(budget.acquire(t0), { mode: "passive", openid: "openid-U", msgId: "msg-1" }, "新鲜入站 → passive");
+
+// 同一 msgId 连续 4 次被动后，第 5 次降级（限制按 msgId 计数）
+const same = new ReplyBudget();
+same.observeInbound("openid-U", "msg-x", t0);
+for (let i = 0; i < 4; i++) {
+  const r = same.acquire(t0);
+  ok(r.mode === "passive", `同 msgId 第 ${i + 1} 次被动允许`);
+  same.commitPassive(r.msgId!);
+}
+eq(same.acquire(t0).mode, "proactive", "同 msgId 第 5 次 → 超限降级");
+
+budget.observeInbound("openid-U", "msg-stale", t0);
+eq(budget.acquire(t0 + 6 * 60_000).mode, "proactive", "msgId 超 5 分钟 → 过期降级");
+eq(budget.acquire(t0 + 4 * 60_000).mode, "passive", "5 分钟内仍可被动");
+
+// 新 msgId 独立计数
+budget.observeInbound("openid-U", "msg-fresh-2", t0);
+const fresh = budget.acquire(t0);
+ok(fresh.mode === "passive" && fresh.msgId === "msg-fresh-2", "新 msgId 独立额度");
+
+// ———— RunFeedback.formatHeartbeat ————
+
+import { formatHeartbeat } from "../src/run-feedback.ts";
+
+const MIN = 60_000;
+eq(formatHeartbeat(30 * 1000, new Map()), "⏱ 已运行 不到 1 分钟（尚未产生工具调用）", "心跳：无工具调用");
+const tools = new Map<string, { count: number; errors: number }>([
+  ["bash", { count: 86, errors: 3 }],
+  ["read", { count: 12, errors: 0 }],
+]);
+eq(formatHeartbeat(25 * MIN, tools), "⏱ 已运行 25 分钟 · bash×86 · read×12 · 3 失败", "心跳：含失败数");
+tools.get("bash")!.errors = 0;
+eq(formatHeartbeat(65 * MIN, tools), "⏱ 已运行 65 分钟 · bash×86 · read×12", "心跳：无失败时省略失败段");
+
+// ———— AppendStream：节流 / 无损 / DONE / 限流重试 ————
+
+import { AppendStream } from "../src/append-stream.ts";
+
+function makeFakeApi() {
+  const calls: Array<Record<string, unknown>> = [];
+  const api = {
+    failNext: 0,
+    async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+      if (api.failNext > 0) {
+        api.failNext -= 1;
+        const err = new Error("HTTP 429 rate limited") as Error & { status?: number };
+        err.status = 429;
+        throw err;
+      }
+      calls.push(req);
+      return { id: `sm-${calls.length}` };
+    },
+  };
+  return { api, calls };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+{
+  const { api, calls } = makeFakeApi();
+  const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 20, retryBaseMs: 5 });
+  const pieces = Array.from({ length: 20 }, (_, i) => `片段${i},`);
+  for (const p of pieces) await stream.append(p);
+  ok(calls.length <= 4, `20 次快速 append 仅 ${calls.length} 帧（节流生效）`);
+  await stream.done();
+  const content = calls.map((c) => c.content_raw as string).join("");
+  eq(content, pieces.join(""), "节流分帧后内容无损、顺序正确");
+  const last = calls[calls.length - 1];
+  eq(last.input_state, 10, "最后一帧为 DONE");
+  eq(last.content_raw, "", "DONE 帧不携带内容");
+  ok(new Set(calls.map((c) => c.index as number)).size === calls.length, "index 递增不重复");
+}
+
+{
+  const { api, calls } = makeFakeApi();
+  api.failNext = 2; // 前两帧限流，第 3 次重试成功
+  const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 20, retryBaseMs: 5 });
+  await stream.append("限流重试片段");
+  await stream.done();
+  ok(calls.length >= 2, "限流退避后重试成功");
+  const content = calls.map((c) => c.content_raw as string).join("");
+  eq(content, "限流重试片段", "重试不丢内容、不重复");
+}
+
+console.log(`\nALL PASS (${passed} assertions)`);

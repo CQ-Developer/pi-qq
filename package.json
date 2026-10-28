@@ -1,0 +1,16 @@
+{
+  "name": "pi-qq",
+  "version": "0.1.0",
+  "description": "pi 扩展：通过 QQ 机器人把 pi 接入 QQ 单人私聊（C2C）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "npx -y -p typescript tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tencent-connect/qqbot-connector": "^1.2.0",
+    "@tencent-connect/qqbot-nodejs": "^1.0.5",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
