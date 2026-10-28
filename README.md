@@ -63,6 +63,7 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 | `heartbeatMinutes` | `10` | 长任务心跳间隔（分钟），`0` 关闭 |
 | `heartbeatMaxMessages` | `3` | 每 run 消息心跳上限（流式心跳不受限） |
 | `streamRelay` | `true` | 流式载体（append 追加语义）；关闭则心跳与结果全走普通消息 |
+| `streamFlushMs` | `3000` | 流式汇总帧间隔（毫秒，最小 300） |
 
 ## 命令
 

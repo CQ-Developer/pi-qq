@@ -35,6 +35,7 @@ const runFeedback = new RunFeedback({
   getHeartbeatMinutes: () => getSettings(readConfig().config).heartbeatMinutes,
   getHeartbeatMaxMessages: () => getSettings(readConfig().config).heartbeatMaxMessages,
   getStreamRelay: () => getSettings(readConfig().config).streamRelay,
+  getStreamFlushMs: () => getSettings(readConfig().config).streamFlushMs,
   makeChannel: () => ({
     budget,
     boundOpenid: readConfig().config.allowedOpenid ?? "",
@@ -295,7 +296,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("qq-stream-test", {
-    description: "pi-qq 诊断：追加模式（append）流式测试——两帧增量 + DONE",
+    description: "pi-qq 诊断：汇总帧流式测试（思考/工具计数/文本增量）",
     handler: async (_args, ctx) => {
       if (!running) {
         ctx.ui.notify("pi-qq 未连接", "warning");
@@ -332,7 +333,7 @@ export default function (pi: ExtensionAPI) {
           "info",
         );
       } catch (err) {
-        ctx.ui.notify(`append 流式测试失败：${(err as Error).message}`, "error");
+        ctx.ui.notify(`汇总帧测试失败：${(err as Error).message}`, "error");
       }
     },
   });

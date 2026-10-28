@@ -27,6 +27,8 @@ export interface PiQQSettings {
   heartbeatMinutes?: number;
   /** F7：每 run 消息心跳上限（流式心跳不受限） */
   heartbeatMaxMessages?: number;
+  /** F7：流式汇总帧间隔（毫秒，最小 300）；帧内容为窗口内思考/工具计数/文本增量 */
+  streamFlushMs?: number;
   /** F7：流式载体开关。QQ stream_messages 仅支持 markdown 内容（无权限时帧被接受但不渲染），
    *  无 markdown 权限的机器人必须保持 false（实测：气泡停在 "..." 且结果被流接管丢失） */
   streamRelay?: boolean;
@@ -124,6 +126,7 @@ export function getSettings(config: PiQQConfig): ResolvedSettings {
     imageMaxSize: config.imageMaxSize ?? 10 * 1024 * 1024,
     heartbeatMinutes: config.heartbeatMinutes ?? 10,
     heartbeatMaxMessages: config.heartbeatMaxMessages ?? 3,
+    streamFlushMs: config.streamFlushMs ?? 3000,
     // append 语义已实测可用（含节流与限流退避）；失败自动降级消息路径，默认开启
     streamRelay: config.streamRelay ?? true,
   };

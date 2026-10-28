@@ -34,6 +34,8 @@ export interface RunFeedbackDeps {
   boundOpenid: () => string | undefined;
   getHeartbeatMinutes: () => number;
   getHeartbeatMaxMessages: () => number;
+  /** 流式汇总帧间隔（毫秒，最小 300） */
+  getStreamFlushMs: () => number;
   getStreamRelay: () => boolean;
   makeChannel: () => ReplyChannel;
   onWarn: (msg: string) => void;
@@ -80,7 +82,6 @@ export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat>)
   return `⏱ 已运行 ${elapsedText} · ${parts.join(" · ")}${suffix}`;
 }
 
-const STREAM_FLUSH_MS = 3000; // 汇总帧固定频率
 const TYPING_INTERVAL_MS = 50_000; // 平台 typing 窗口 ~60s，提前续期
 const PENDING_TTL_MS = 15_000; // QQ 触发标记的有效期（超过视为本地 run）
 
@@ -130,10 +131,10 @@ export class RunFeedback {
       void bot.sendTyping({ scope: "c2c", targetId: run.openid }, 60).catch(() => {});
     }, TYPING_INTERVAL_MS);
 
-    // 固定频率汇总帧
+    // 固定频率汇总帧（间隔可配，毫秒）
     run.flushTimer = setInterval(() => {
       void this.flushWindow();
-    }, STREAM_FLUSH_MS);
+    }, Math.max(this.deps.getStreamFlushMs(), 300));
 
     // 节流心跳
     if (hbMinutes > 0) {
@@ -228,8 +229,8 @@ export class RunFeedback {
   }
 
   /**
-   * 把窗口增量合成一帧：思考行 → 工具计数行 → （空行）→ 文本增量。
-   * 帧内/帧间的换行与空行由 lastKind 推导，匹配设计稿的分组排版。
+   * 把窗口增量合成一帧，顺序与真实时序一致：思考行 → 消息文本增量 → 工具计数行。
+   * 规则（用户确认）：消息文本发完之后才发送工具汇总；帧内/帧间的换行与空行由 lastKind 推导。
    */
   private async flushWindow(run?: RunState): Promise<boolean> {
     const r = run ?? this.run;
@@ -239,15 +240,28 @@ export class RunFeedback {
     const full = [r.finalizedText, r.snapshotText].filter((s) => s.trim()).join("\n\n");
     const textDelta = full.slice(r.resultSentLen);
 
+    let kind = r.lastKind;
     let frame = "";
-    if (r.winThinking) frame += this.prefixLine(r) + "思考中...\n";
-    for (const [name, n] of r.winTools) {
-      if (n > 0) frame += this.prefixLine(r) + `${name} * ${n}\n`;
+    // ① 思考行（惰性：本消息出现 thinking 才有）
+    if (r.winThinking) {
+      frame += (kind === "text" ? "\n" : "") + "思考中...\n";
+      kind = "line";
     }
-    if (textDelta) frame += this.prefixText(r) + textDelta;
+    // ② 消息文本增量（先发完文本——工具总在 message_end 后执行，此时文本必然已定稿）
+    if (textDelta) {
+      frame += (kind === "line" ? "\n" : "") + textDelta;
+      kind = "text";
+    }
+    // ③ 工具计数行（文本之后）
+    for (const [name, n] of r.winTools) {
+      if (n > 0) {
+        frame += (kind === "text" ? "\n" : "") + `${name} * ${n}\n`;
+        kind = "line";
+      }
+    }
 
     if (!frame) return true; // 窗口无增量
-    if (!(await this.pushAppend(r, frame, textDelta ? "text" : "line"))) return false;
+    if (!(await this.pushAppend(r, frame, kind === "text" ? "text" : "line"))) return false;
 
     // 重置窗口
     r.winThinking = false;
@@ -272,7 +286,11 @@ export class RunFeedback {
     const run = this.run;
     if (!run) return;
     const line = formatHeartbeat(Date.now() - run.startedAt, run.tools);
-    if (this.deps.getStreamRelay() && run.streamState !== "dead" && (await this.pushAppend(run, this.prefixLine(run) + `${line}\n`, "line"))) {
+    if (
+      this.deps.getStreamRelay() &&
+      run.streamState !== "dead" &&
+      (await this.pushAppend(run, (run.lastKind === "text" ? "\n" : "") + `${line}\n`, "line"))
+    ) {
       return;
     }
 
