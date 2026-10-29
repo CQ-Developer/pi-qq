@@ -1,5 +1,5 @@
 {
-  "name": "@cq-developer/pi-qq",
+  "name": "@chen_hu_hu/pi-qq",
   "version": "1.0.0",
   "description": "pi 扩展：通过 QQ 机器人把 pi 接入 QQ 单人私聊（C2C）",
   "license": "MIT",

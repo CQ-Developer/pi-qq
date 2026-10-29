@@ -22,7 +22,7 @@
 ### 从 npm / Pi 市场安装（推荐）
 
 ```bash
-pi install npm:@cq-developer/pi-qq
+pi install npm:@chen_hu_hu/pi-qq
 ```
 
 包内已声明 `pi-package` 关键字与 `pi.extensions`，发布后可在 [Pi package gallery](https://pi.dev/packages) 中搜索到。
