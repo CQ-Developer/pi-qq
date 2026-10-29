@@ -35,11 +35,10 @@ pi-qq/
     ├── images.ts          # F3：图片类型/大小校验、15s 超时下载、ImageContent 组装
     ├── files.ts           # F3：文件下载落盘、安全文件名、提示词路径关联
     ├── download.ts        # 图片/文件共用：超时与流式大小限制下载
-    ├── format.ts          # 人类可读字节格式化
+    ├── format.ts          # 人类可读字节/ token 数格式化
     ├── outbound.ts        # F4：markdown→纯文本转换、流式(openStream)/降级(sendText)、分块
     ├── reply-budget.ts    # §3：被动回复预算（msgId 5min 窗口、4条/h、降级主动发送）
-    ├── budget-status.ts   # /qq-budget 纯格式化（普通/流式/估算剩余）
-    └── usage.ts           # F5/F6：本次 run 用量汇总（agent_end messages）、严格三行摘要
+    └── budget-status.ts   # /qq-budget 纯格式化（普通/流式/估算剩余）
 ```
 
 职责边界：`index.ts` 只做装配与订阅，不含业务逻辑；每个模块可独立测试；模块间只经 `index.ts` 传递的共享状态对象（bot 实例、当前 target/msgId、配置）通信。
@@ -51,9 +50,8 @@ pi-qq/
 | QQ → pi | `bot.on("message")`（kind=c2c） | 白名单 → QQ 命令（`/new` `/stop` `/compact` `/status` `/help`）→ 文本+图片 → `pi.sendUserMessage()` |
 | pi → QQ | `message_update`（assistant） | 流式：`openStream().update(转换后全文)`，节流 ≥300ms |
 | pi → QQ | `message_end`（assistant） | `stream.complete()`；无流上下文时 `sendText`；`stopReason==="error"` 回错误摘要 |
-| pi → QQ | `agent_end` | 用量摘要一条（F5 本次 run token/缓存命中率 + F6 上下文占比） |
 | 状态 | `session_start` / `session_shutdown` | 有内存登录态则启动 bot / 幂等停止 |
-| 汇总 | `agent_end` | 从 `event.messages` 汇总本次 run 的 assistant/toolResult usage |
+| 收尾 | `agent_end` | 封口最后一个流式气泡（DONE）；不再发送用量摘要 |
 
 ## 3. 里程碑
 
@@ -88,13 +86,14 @@ pi-qq/
 
 **验收**：QQ 发任务 → 不发送确认 → 10s 内收到首个汇总帧 → typing 持续 → 心跳按期到达（流或消息）→ 结果回传不双发。
 
-### M3 — 用量摘要（F5 + F6）
+### M3 — 用量摘要（已取消）
 
-1. `usage.ts`：`agent_end` 从 `event.messages` 汇总本次 run 的 assistant + toolResult usage；上下文取 `ctx.getContextUsage()`（`tokens===null` 显示"重建中"）。
-2. 严格三行格式：`📊 用量摘要` / `• 输入：4.1k (99.9%)` / `• 输出：2.3k` / `• 上下文：0.4%`；输入为总输入（含 cacheRead/cacheWrite），括号为缓存命中率。
-3. 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送。
+用量摘要已按用户要求移除：
 
-**验收**：每轮对话后 QQ 收到一条三行摘要，数字与本次 run 实际用量一致。
+- 不再在 `agent_end` 汇总或发送 token/缓存/成本/上下文摘要。
+- 上下文占比通过 QQ 侧 `/status` 或 pi 终端 `/qq-status` 查看。
+- `src/usage.ts`、`usageRelay` 配置和对应单测已删除。
+- 收益：每轮少一条 QQ 消息，降低被动额度消耗。
 
 ### M4 — 图片与打磨（F3 + markdownSupport 透传）
 
@@ -166,16 +165,14 @@ pi-qq/
   - 四轮实测（2026-10-29，`log/pi.jsonl` + `log/qq.png`）：首条中间文本（工具活动之后的 assistant 消息）被并入活动气泡，未独立成泡。根因：切泡条件要求旧气泡已含文本，而首条文本之前只有思考/工具行组。修复：文本消息首个增量到达时，只要当前气泡已有内容就封口（含仅行组）；工具计数行格式改为 `[n] 🔧 name`（心跳同步），新增活动气泡→文本气泡回归断言。
   - 五轮调整（2026-10-29，用户要求）：删除 t=0 的"✅ 已收到"开始确认（含忙碌合并提示），节省被动额度；汇总帧默认间隔 3000ms → 10000ms，工具调用每 10s 汇总一次（`streamFlushMs` 仍可配置）。
   - 六轮调整（2026-10-29，用户 QQ 截图）：中间文本消息与工具汇总混在同一气泡（如“已写入…”后紧跟 read 行）。改为**文本/活动严格分泡**：每条 assistant 文本独占纯文本气泡，思考/工具行组进活动气泡，文本前后的工具均另起活动气泡；新增“活动→文本→活动→文本→活动→最终文本”六气泡交错回归断言。
-  - 七轮自检（2026-10-29，`log/pi.png` + `log/qq.png`）：用量摘要与 pi Session Info 完全一致（输入 14.3k/缓存 92.8%、输出 1.1k、上下文 0.4%）。发现无文本 assistant 消息不走 `onAssistantFinal`，逐消息思考标记未重置，导致下一条消息的 thinking 行被吞（截图中 read 前缺 thinking）。修复：`message_end` 对无文本 assistant 也调用 `onAssistantFinal("")`，冲刷行组并重置逐消息状态；新增“无文本消息不吞后续行组”回归断言。
+  - 七轮自检（2026-10-29，`log/pi.png` + `log/qq.png`）：当时的用量摘要与 pi Session Info 一致（该摘要后来已移除）。发现无文本 assistant 消息不走 `onAssistantFinal`，逐消息思考标记未重置，导致下一条消息的 thinking 行被吞（截图中 read 前缺 thinking）。修复：`message_end` 对无文本 assistant 也调用 `onAssistantFinal("")`，冲刷行组并重置逐消息状态；新增“无文本消息不吞后续行组”回归断言。
   - 八轮调整（2026-10-29，重跑截图）：read 与下一条消息的 thinking 落入同一 10s 窗口时，旧逻辑固定“thinking 优先”，显示顺序与真实事件相反（应 read → thinking → bash）。修复：窗口行组改为 `winLines` 事件序列，按事件到达顺序输出；连续同名工具合并计数；新增严格顺序回归断言。
 
-### M3 — 用量摘要
+### M3 — 用量摘要（已取消）
 
-- [x] `src/usage.ts`：`agent_end` 从 `event.messages` 汇总本次 run（assistant + toolResult 嵌套 usage）
-- [x] 严格三行摘要：输入（总输入）+ 缓存命中率、输出、上下文占比；`tokens===null` 显示重建中
-- [x] 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送
-- [ ] 验收（待 QQ 实测）：摘要数字与本次 run 实际用量一致
-  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组/图片类型与大小校验/QQ /new 分发/预算快照/流式气泡计数/文件保存与提示词（vitest：8 个测试文件 / 81 个测试通过）。
+- [x] 按用户要求移除每轮用量摘要；上下文占比改用 `/status` / `/qq-status`
+- [x] 删除 `src/usage.ts`、`usageRelay` 配置及对应测试
+  - 当前全量：8 个测试文件 / 76 个测试通过。
 
 ### M4 — 图片与打磨
 
@@ -185,9 +182,9 @@ pi-qq/
 - [x] `markdownSupport: true`：SDK `sendText` 自动 msg_type=2（无需新增 sendMarkdown 路径）
 - [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
 - [x] `/qq-budget` 诊断命令（普通被动剩余 / 流式气泡数 / 估算剩余 / 最近 msgId 新鲜度）
-- [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 81 个测试；`npm test`）
+- [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 76 个测试；`npm test`）
 - [ ] 长代码块转文件附件（backlog，暂缓）
-- [x] 多气泡 + 摘要下的被动额度实测（2026-10-29：`/qq-budget` 实测符合预期：4 个流式气泡 + 1 条摘要，普通剩余 3 / 估算剩余 0 / 窗口有效）
+- [x] 多气泡流式额度实测（2026-10-29：当时包含 1 条摘要；摘要后来已移除，仅作历史记录）
 - [x] `debug` 抓超时日志：AppendStream 限流重试/最终失败 + run start/end 日志
 - [x] 验收：QQ 发图后 pi 能描述图片内容；全程额度不超限（2026-10-29 实测通过）
 - [ ] 文件传输实机验收（QQ 发 zip/pdf 等，确认保存路径与提示词关联）

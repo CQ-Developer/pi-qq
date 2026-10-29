@@ -15,8 +15,6 @@ export interface PiQQSettings {
   streamAssistant?: boolean;
   /** F4: bot has QQ markdown permission; pass Markdown through when true */
   markdownSupport?: boolean;
-  /** F5/F6: usage summary switch */
-  usageRelay?: boolean;
   /** F2: how a busy agent handles new messages */
   deliverAs?: "steer" | "followUp";
   /** F3: QQ image download limit (bytes) */
@@ -68,7 +66,6 @@ export function getSettings(config: PiQQConfig): ResolvedSettings {
   return {
     streamAssistant: config.streamAssistant ?? true,
     markdownSupport: config.markdownSupport ?? false,
-    usageRelay: config.usageRelay ?? true,
     deliverAs: config.deliverAs ?? "steer",
     imageMaxSize: config.imageMaxSize ?? 10 * 1024 * 1024,
     fileMaxSize: config.fileMaxSize ?? 50 * 1024 * 1024,

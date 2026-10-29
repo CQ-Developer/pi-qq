@@ -7,7 +7,7 @@ import { markdownToPlain, sendReply } from "./src/outbound";
 import { ReplyBudget } from "./src/reply-budget";
 import { RunFeedback } from "./src/run-feedback";
 import { AppendStream } from "./src/append-stream";
-import { formatTokenCount, formatUsageSummary, sumUsageMessages, type UsageTotals } from "./src/usage";
+import { formatTokenCount } from "./src/format";
 import { formatBudgetStatus } from "./src/budget-status";
 
 /**
@@ -69,32 +69,6 @@ export default function (pi: ExtensionAPI) {
   const getDeliverAs = () => getSettings(readConfig().config).deliverAs;
 
   const onWarn = (ctx: ExtensionContext) => (msg: string) => ctx.ui.notify(`pi-qq ${msg}`, "warning");
-
-  /** F5/F6：在 agent_end 时快照本次 run 用量，返回发送函数（等时间线封口后再调用） */
-  const prepareUsageSummary = (ctx: ExtensionContext, usage: UsageTotals): (() => void) | null => {
-    const { config } = readConfig();
-    const settings = getSettings(config);
-    if (!settings.usageRelay) return null;
-
-    const bound = getLoginState()?.allowedOpenid;
-    const bot = running?.bot;
-    const hasUsage = usage.input + usage.output + usage.cacheRead + usage.cacheWrite > 0;
-    if (!bound || !bot || !hasUsage) return null;
-
-    const summary = formatUsageSummary({
-      usage,
-      context: ctx.getContextUsage(),
-    });
-    // 快照文本，避免等待时间线封口期间新 run 覆盖本次数据
-    return () => {
-      if (running?.bot !== bot) return;
-      void sendReply(bot, summary, {
-        budget,
-        boundOpenid: bound,
-        onWarn: onWarn(ctx),
-      });
-    };
-  };
 
   const getStatusLines = (): string[] => {
     const login = getLoginState();
@@ -184,22 +158,8 @@ export default function (pi: ExtensionAPI) {
     runFeedback.onAgentStart();
   });
 
-  pi.on("agent_end", (event, ctx) => {
-    const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
-    // 错误/中止的 run 不发摘要：自动重试时避免每轮失败都刷一条消息
-    const completed =
-      lastAssistant !== undefined && lastAssistant.stopReason !== "error" && lastAssistant.stopReason !== "aborted";
-    const wasQQRun = runFeedback.isQQTriggeredRun();
-    // 在异步封口时间线前快照本次 run 的用量，避免新 run 覆盖
-    const runUsage = sumUsageMessages(event.messages);
-    const sendSummary = wasQQRun && completed ? prepareUsageSummary(ctx, runUsage) : null;
-    // 先封口时间线气泡，再发用量摘要（保证 QQ 消息顺序）
-    void runFeedback
-      .onAgentEnd()
-      .then(() => {
-        sendSummary?.();
-      })
-      .catch(() => {});
+  pi.on("agent_end", () => {
+    void runFeedback.onAgentEnd();
   });
 
   pi.on("tool_execution_start", (event) => {

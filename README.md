@@ -61,7 +61,7 @@ QQ-side commands:
 | `/new` | Start a new pi session |
 | `/stop` | Abort the current run |
 | `/compact` | Compact the current context |
-| `/status` | Show session and usage status |
+| `/status` | Show session and context status |
 | `/help` | Show command help |
 
 ## Settings
@@ -80,7 +80,6 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 | --- | --- | --- |
 | `streamAssistant` | `true` | Stream assistant replies |
 | `markdownSupport` | `false` | Bot has QQ Markdown permission; pass Markdown through |
-| `usageRelay` | `true` | Send the per-run usage summary |
 | `deliverAs` | `"steer"` | Queue new messages while busy: `steer` or `followUp` |
 | `imageMaxSize` | `10485760` | QQ image download limit in bytes (10MB) |
 | `fileMaxSize` | `52428800` | QQ file download limit in bytes (50MB) |
