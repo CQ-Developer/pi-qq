@@ -8,17 +8,15 @@ import type { ReplyBudget } from "./reply-budget";
  *
  * 场景：user_input → thinking+tools（10~60 分钟）→ assistant message，n 轮循环。
  *
- * 气泡切分规则：**每条带文本的 assistant 消息一个气泡**（文本 + 其后跟随的工具执行）。
- * 文本消息的首个增量到达时，若当前气泡已有内容（包括仅有思考/工具行组），先封口
- * 旧气泡，再以该文本开新气泡；同一消息的后续增量继续追加；纯思考/工具的回合并入
- * 当前气泡；最终回复独立成泡。气泡内按 `streamFlushMs`（默认 10000ms）固定频率发送
- * 窗口汇总帧：
+ * 气泡切分规则：**assistant 文本消息与思考/工具汇总使用独立气泡**。
+ * 文本消息（同一 assistant 消息的流式增量）独占一个文本气泡；思考/工具行组进入
+ * 活动气泡。文本首个增量到达时封口当前活动气泡；工具/思考出现时封口当前文本气泡，
+ * 新行组进新的活动气泡；最终回复独立成文本气泡。气泡内按 `streamFlushMs`
+ * （默认 10000ms）固定频率发送窗口汇总帧：
  *
- *   💭 思考中...        ← 惰性行：本条消息出现 thinking 才有（内容不回传，决策 #2）
- *   （消息原文，流式增量，按 markdown 渲染）
- *   [2] 🔧 bash         ← 其后跟随的工具执行计数（行组外层带 [HH:MM:SS] 时间戳）
+ *   活动气泡：💭 思考中... / [2] 🔧 bash（行组外层带 [HH:MM:SS] 时间戳）
+ *   文本气泡：消息原文（流式增量，按 markdown 渲染）
  *
- * 帧内顺序：行组（思考/工具）→ 空行 → 文本增量（用户确认：文本先发完，工具汇总在后）。
  * 任何一帧失败即弃气泡：未发出的结果文本自动转消息路径补发；下一个文本消息重试新气泡。
  */
 
@@ -47,15 +45,10 @@ interface ToolStat2 {
   errors: number;
 }
 
-/** 当前气泡：一条独立流式消息 + 其排版状态 */
+/** 当前气泡：一条独立流式消息；kind 决定它只接收文本还是思考/工具行组 */
 interface Bubble {
   stream: AppendStream;
-  /** 气泡中已有内容 */
-  hasContent: boolean;
-  /** 气泡中已含消息文本（决定下一条文本消息是否开新气泡） */
-  hasText: boolean;
-  /** 最后追加的帧类型（决定换行/空行） */
-  lastKind: "none" | "text" | "line";
+  kind: "activity" | "text";
 }
 
 interface RunState {
@@ -76,7 +69,7 @@ interface RunState {
   finalizedText: string;
   /** 已追加到流的结果文本长度（增量计算基准，跨气泡累计） */
   resultSentLen: number;
-  /** 上一条文本消息已定稿：下一条新文本到达时封口当前气泡 */
+  /** 上一条文本消息已定稿：下一条文本消息首个增量到达时封口当前文本气泡 */
   startNewBubble: boolean;
   /** 当前气泡（null = 待惰性创建） */
   cur: Bubble | null;
@@ -214,13 +207,7 @@ export class RunFeedback {
 
     if (isError) {
       // 出错也先封口当前气泡（结束 QQ 的生成态），错误摘要交回调用方走消息链路
-      const cur = run.cur;
-      run.cur = null;
-      if (cur) {
-        try {
-          await cur.stream.done();
-        } catch {}
-      }
+      await this.closeBubble(run);
       return false;
     }
 
@@ -239,6 +226,11 @@ export class RunFeedback {
   /** 封口当前气泡：补发剩余窗口 + DONE。flush 可能因切泡换掉 cur，需重新读取。 */
   private async sealBubble(run: RunState): Promise<void> {
     await this.flushWindow(run);
+    await this.closeBubble(run);
+  }
+
+  /** 关闭当前气泡并发送 DONE；DONE 失败也视为已关闭（追加模式无撤销语义）。 */
+  private async closeBubble(run: RunState): Promise<void> {
     const cur = run.cur;
     if (!cur) return;
     run.cur = null;
@@ -279,10 +271,8 @@ export class RunFeedback {
   }
 
   /**
-   * 把窗口增量合成一帧。帧内顺序：思考/工具行组 → 空行 → 文本增量
-   * （用户确认：任何消息原文先推送、发完之后才推工具汇总）。
-   * 气泡边界：**每条文本消息的首个增量**到达时，只要当前气泡已有内容（含仅有思考/工具
-   * 行组）就封口旧气泡，文本起新气泡；同一条消息的后续增量继续追加，不切泡。
+   * 把窗口增量写入对应气泡：思考/工具行组进活动气泡，文本进文本气泡。
+   * 文本消息首个增量或行组到达时切换气泡；同一消息的后续增量不切泡。
    * 通过 promise 链串行化：限流重试期间（最长 7s）定时器再次触发也不会产生交错帧。
    */
   flushWindow(run?: RunState): Promise<boolean> {
@@ -300,21 +290,11 @@ export class RunFeedback {
     const textDelta = full.slice(r.resultSentLen);
     const textVisible = textDelta.trim().length > 0;
 
-    // 气泡边界：新一条文本消息的首个增量到达，且当前气泡已有内容
-    // （包括只有思考/工具行组的情况）→ 行组落旧气泡 + DONE，文本进新气泡
-    const startsNewTextMessage = r.startNewBubble || !r.cur?.hasText;
-    if (textVisible && startsNewTextMessage && r.cur?.hasContent) {
-      const sealed = await this.appendLinesAndSeal(r);
-      if (!sealed) return false;
-      r.winThinking = false;
-      r.winTools.clear();
-    }
-
     // 行组（思考/工具计数）——无文本的窗口也照常汇总
     const okLines = await this.appendLineGroups(r);
     if (!okLines) return false;
 
-    // 文本增量（空白增量只推进基准，不追加）
+    // 文本消息独立成泡（空白增量只推进基准，不追加）
     if (textVisible) {
       const okText = await this.appendText(r, textDelta);
       if (!okText) return false;
@@ -331,18 +311,6 @@ export class RunFeedback {
     return true;
   }
 
-  /** 把待发行组落入当前气泡后封口（仅用于消息间的气泡切分） */
-  private async appendLinesAndSeal(r: RunState): Promise<boolean> {
-    if (!(await this.appendLineGroups(r))) return false;
-    const cur = r.cur;
-    if (!cur) return true;
-    r.cur = null;
-    try {
-      await cur.stream.done();
-    } catch {}
-    return true;
-  }
-
   /** 收集本窗口的思考/工具行组（无行返回空串） */
   private collectWindowLines(r: RunState): string[] {
     const lines: string[] = [];
@@ -353,23 +321,21 @@ export class RunFeedback {
     return lines;
   }
 
-  /** 追加行组：首行带时间戳；行与行相邻不空行；文本未收行时先补换行 */
+  /** 追加行组：只进活动气泡；首行带时间戳；行与行相邻不空行，跨帧直接续行 */
   private async appendLineGroups(r: RunState, lines?: string[]): Promise<boolean> {
     const group = lines ?? this.collectWindowLines(r);
     if (group.length === 0) return true;
-    const prefix = !r.cur || r.cur.lastKind !== "text" ? "" : "\n";
     const stamp = `[${nowStamp()}] `;
-    const frame = prefix + stamp + group.join(`\n${stamp}`) + "\n";
-    return this.pushAppend(r, frame, "line");
+    const frame = stamp + group.join(`\n${stamp}`) + "\n";
+    return this.pushAppend(r, frame, "activity");
   }
 
-  /** 追加文本增量：行组之后空一行分组；文本续写直接拼接；诊断模式带内联时间戳 */
+  /** 追加文本：文本消息独占气泡，同一消息续写直接拼接；诊断模式带内联时间戳 */
   private async appendText(r: RunState, text: string): Promise<boolean> {
+    // 上一条文本消息已定稿 → 封口旧文本气泡，本条消息另起一泡
+    if (r.startNewBubble) await this.closeBubble(r);
     const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
-    const prefix = !r.cur ? "" : r.cur.lastKind === "text" ? "" : "\n";
-    const ok = await this.pushAppend(r, prefix + stamp + text, "text");
-    if (ok && r.cur) r.cur.hasText = true;
-    return ok;
+    return this.pushAppend(r, stamp + text, "text");
   }
 
   /** 心跳兜底：流式路径的活性由空窗口活性行覆盖；流不可用时发消息心跳（保险丝 ≤N 条） */
@@ -391,26 +357,25 @@ export class RunFeedback {
     );
   }
 
-  /** 追加一帧（惰性建气泡）；失败弃气泡并返回 false */
-  private async pushAppend(run: RunState, delta: string, kind: "line" | "text"): Promise<boolean> {
+  /** 追加一帧（惰性建气泡；内容类型变化时先封口旧气泡）；失败弃气泡并返回 false */
+  private async pushAppend(run: RunState, delta: string, kind: "activity" | "text"): Promise<boolean> {
     if (!delta) return true;
     const bot = this.deps.bot();
     if (!bot) return false;
     try {
+      if (run.cur && run.cur.kind !== kind) {
+        await this.closeBubble(run);
+      }
       if (!run.cur) {
         if (!run.msgId) return false;
         run.cur = {
           stream: new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
             onError: (err) => this.handleStreamError(run, err),
           }),
-          hasContent: false,
-          hasText: false,
-          lastKind: "none",
+          kind,
         };
       }
       await run.cur.stream.append(delta);
-      run.cur.hasContent = true;
-      run.cur.lastKind = kind;
       run.lastAppendAt = Date.now();
       return true;
     } catch (err) {

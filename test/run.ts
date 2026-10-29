@@ -251,14 +251,45 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
   await rf.flushWindow(); // 文本首个增量 → 封口活动气泡，文本单独成泡
   await rf.onAssistantFinal("中间消息", false);
   rf.onToolStart("write");
-  await rf.flushWindow(); // 文本定稿后的工具并入文本气泡
+  await rf.flushWindow(); // 文本定稿后的工具进新的活动气泡
   await rf.onAgentEnd();
 
   const bubbles = collectBubbles(calls);
-  eq(bubbles.length, 2, "工具活动后的首条文本消息单独成泡");
+  eq(bubbles.length, 3, "活动气泡与文本气泡相互独立");
   ok(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 bash$/.test(bubbles[0]), "活动气泡的工具行使用 [n] 🔧 name 格式");
-  ok(bubbles[1].startsWith("中间消息"), "文本进入新气泡而不是并入活动气泡");
-  ok(/\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 write/.test(bubbles[1]), "文本之后的工具并入文本气泡");
+  eq(bubbles[1], "中间消息", "assistant 文本是纯文本气泡（不含工具行）");
+  ok(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 write$/.test(bubbles[2]), "文本之后的工具另起活动气泡");
+}
+
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-interleaved");
+  rf.onAgentStart();
+  rf.onToolStart("write");
+  await rf.flushWindow(); // 活动 1
+  rf.onAssistantDelta("消息一", "");
+  await rf.flushWindow(); // 文本 1
+  await rf.onAssistantFinal("消息一", false);
+  rf.onToolStart("read");
+  await rf.flushWindow(); // 活动 2
+  rf.onAssistantDelta("消息二", "");
+  await rf.flushWindow(); // 文本 2
+  await rf.onAssistantFinal("消息二", false);
+  rf.onToolStart("bash");
+  await rf.flushWindow(); // 活动 3
+  rf.onAssistantDelta("最终回复", "");
+  await rf.flushWindow(); // 文本 3
+  await rf.onAssistantFinal("最终回复", false);
+  await rf.onAgentEnd();
+
+  const bubbles = collectBubbles(calls);
+  eq(bubbles.length, 6, "每条文本消息与每段活动各成独立气泡");
+  eq(bubbles[1], "消息一", "中间消息一为纯文本气泡");
+  eq(bubbles[3], "消息二", "中间消息二为纯文本气泡");
+  eq(bubbles[5], "最终回复", "最终回复为纯文本气泡");
+  ok(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 write$/.test(bubbles[0]), "活动 1 只含工具汇总");
+  ok(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 read$/.test(bubbles[2]), "活动 2 只含工具汇总");
+  ok(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 bash$/.test(bubbles[4]), "活动 3 只含工具汇总");
 }
 
 {
