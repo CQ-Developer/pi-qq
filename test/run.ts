@@ -91,7 +91,7 @@ ok(fresh.mode === "passive" && fresh.msgId === "msg-fresh-2", "新 msgId 独立�
 
 // ———— RunFeedback.formatHeartbeat ————
 
-import { formatHeartbeat } from "../src/run-feedback.ts";
+import { RunFeedback, formatHeartbeat } from "../src/run-feedback.ts";
 
 const MIN = 60_000;
 eq(formatHeartbeat(30 * 1000, new Map()), "⏱ 已运行 不到 1 分钟（尚未产生工具调用）", "心跳：无工具调用");
@@ -151,6 +151,116 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   ok(calls.length >= 2, "限流退避后重试成功");
   const content = calls.map((c) => c.content_raw as string).join("");
   eq(content, "限流重试片段", "重试不丢内容、不重复");
+}
+
+// ———— RunFeedback：重复文本 / 气泡封口回归 ————
+
+function makeRunHarness() {
+  const calls: Array<Record<string, unknown>> = [];
+  const api = {
+    async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+      calls.push({ ...req });
+      return { id: `sm-${calls.length}` };
+    },
+  };
+  const bot = {
+    messageApi: api,
+    getCredentials: () => ({}),
+    sendTyping: async () => {},
+  };
+  const deps = {
+    bot: () => bot,
+    budget: new ReplyBudget(),
+    boundOpenid: () => "openid-u",
+    getHeartbeatMinutes: () => 0,
+    getHeartbeatMaxMessages: () => 3,
+    getStreamFlushMs: () => 300,
+    getStreamRelay: () => true,
+    getDebug: () => false,
+    makeChannel: () => ({ budget: new ReplyBudget(), boundOpenid: "openid-u" }),
+    onWarn: () => {},
+  };
+  return { rf: new RunFeedback(deps as never), calls };
+}
+
+const DONE_STATE = 10; // StreamInputState.DONE
+
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-1");
+  rf.onAgentStart();
+  await rf.onAssistantDelta("前半", "");
+  await rf.flushWindow();
+  await rf.onAssistantDelta("前半后半", "");
+  await rf.flushWindow();
+  ok(await rf.onAssistantFinal("前半后半", false), "流式接管首条消息");
+  await rf.onAgentEnd();
+
+  const generating = calls
+    .filter((c) => c.input_state !== DONE_STATE)
+    .map((c) => c.content_raw as string)
+    .join("");
+  eq(generating, "前半后半", "同一消息多次快照只发送一份全文（不重复）");
+  eq(calls.filter((c) => c.input_state === DONE_STATE).length, 1, "单条文本消息只封一个气泡");
+  eq(calls.at(-1)?.input_state, DONE_STATE, "run 结束时最后气泡收到 DONE");
+}
+
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-2");
+  rf.onAgentStart();
+  await rf.onAssistantDelta("第一条", "");
+  await rf.onAssistantFinal("第一条", false);
+  await rf.onAssistantDelta("第二条", "");
+  await rf.onAssistantFinal("第二条", false);
+  await rf.onAgentEnd();
+
+  const bubbles: string[] = [];
+  let current = "";
+  for (const c of calls) {
+    if (c.input_state === DONE_STATE) {
+      bubbles.push(current.trim());
+      current = "";
+    } else {
+      current += c.content_raw as string;
+    }
+  }
+  eq(bubbles, ["第一条", "第二条"], "两条文本消息各成一个气泡，内容不重复");
+  eq(calls.at(-1)?.input_state, DONE_STATE, "多气泡 run 结束时最后气泡收到 DONE");
+}
+
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-3");
+  rf.onAgentStart();
+  await rf.onAssistantDelta("部分输出", "");
+  await rf.flushWindow();
+  eq(await rf.onAssistantFinal("部分输出", true), false, "错误消息不走流接管");
+  await rf.onAgentEnd();
+  eq(calls.at(-1)?.input_state, DONE_STATE, "错误路径也会封口气泡（不留下生成中状态）");
+}
+
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-4");
+  rf.onAgentStart();
+  await rf.onAssistantDelta("先行", "");
+  await rf.flushWindow();
+  // 定稿时补上剩余增量：仍属于同一条消息，不能切泡
+  await rf.onAssistantFinal("先行后补", false);
+  await rf.onAgentEnd();
+
+  const bubbles: string[] = [];
+  let current = "";
+  for (const c of calls) {
+    if (c.input_state === DONE_STATE) {
+      bubbles.push(current.trim());
+      current = "";
+    } else {
+      current += c.content_raw as string;
+    }
+  }
+  eq(bubbles, ["先行后补"], "同一条消息定稿时的残余增量不切泡");
 }
 
 console.log(`\nALL PASS (${passed} assertions)`);

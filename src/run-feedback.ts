@@ -74,6 +74,8 @@ interface RunState {
   finalizedText: string;
   /** 已追加到流的结果文本长度（增量计算基准，跨气泡累计） */
   resultSentLen: number;
+  /** 上一条文本消息已定稿：下一条新文本到达时封口当前气泡 */
+  startNewBubble: boolean;
   /** 当前气泡（null = 待惰性创建） */
   cur: Bubble | null;
   /** 最近一次成功追加的时间戳（空窗口活性线用） */
@@ -140,6 +142,7 @@ export class RunFeedback {
       snapshotText: "",
       finalizedText: "",
       resultSentLen: 0,
+      startNewBubble: false,
       cur: null,
       lastAppendAt: Date.now(),
       messageHeartbeats: 0,
@@ -201,8 +204,14 @@ export class RunFeedback {
     if (!run) return false;
 
     if (isError) {
-      // 出错即弃气泡，错误摘要交回调用方走预算链路
+      // 出错也先封口当前气泡（结束 QQ 的生成态），错误摘要交回调用方走消息链路
+      const cur = run.cur;
       run.cur = null;
+      if (cur) {
+        try {
+          await cur.stream.done();
+        } catch {}
+      }
       return false;
     }
 
@@ -211,18 +220,22 @@ export class RunFeedback {
     run.thinkingMarked = false; // 下一条 assistant 消息重新计时思考标记
     if (!this.deps.getStreamRelay()) return false;
 
-    return await this.flushWindow(run);
+    // 先把本条消息剩余的快照补发完，再把边界标记留给下一条文本消息
+    // （若在 flush 前置位，本条消息的残余增量会被误判为新消息而切泡）
+    const handled = await this.flushWindow(run);
+    run.startNewBubble = true;
+    return handled;
   }
 
-  /** 封口当前气泡：补发剩余窗口 + DONE，之后内容进新气泡 */
+  /** 封口当前气泡：补发剩余窗口 + DONE。flush 可能因切泡换掉 cur，需重新读取。 */
   private async sealBubble(run: RunState): Promise<void> {
+    await this.flushWindow(run);
     const cur = run.cur;
     if (!cur) return;
-    await this.flushWindow(run);
+    run.cur = null;
     try {
       await cur.stream.done();
     } catch {}
-    run.cur = null;
   }
 
   /** run 结束：封口最后一个气泡（补帧 + DONE），清定时器 */
@@ -259,7 +272,8 @@ export class RunFeedback {
   /**
    * 把窗口增量合成一帧。帧内顺序：思考/工具行组 → 空行 → 文本增量
    * （用户确认：任何消息原文先推送、发完之后才推工具汇总）。
-   * 气泡边界：新文本到来且当前气泡已含文本 → 先把行组落旧气泡并 DONE，文本进新气泡。
+   * 气泡边界：**仅当上一条文本消息已定稿**、新文本到达且当前气泡已含文本时
+   * 才封口开新气泡；同一条消息的流式增量继续追加，不切泡。
    * 通过 promise 链串行化：限流重试期间（最长 7s）定时器再次触发也不会产生交错帧。
    */
   flushWindow(run?: RunState): Promise<boolean> {
@@ -277,33 +291,44 @@ export class RunFeedback {
     const textDelta = full.slice(r.resultSentLen);
     const textVisible = textDelta.trim().length > 0;
 
-    // 气泡边界：新文本到来且当前气泡已含文本 → 行组落旧气泡 + DONE，文本进新气泡
-    if (textVisible && r.cur?.hasText) {
-      await this.appendLineGroups(r);
-      try {
-        await r.cur.stream.done();
-      } catch {}
-      r.cur = null;
+    // 气泡边界：新的一条文本消息到达且当前气泡已有文本 → 行组落旧气泡 + DONE，文本进新气泡
+    if (textVisible && r.startNewBubble && r.cur?.hasText) {
+      const sealed = await this.appendLinesAndSeal(r);
+      if (!sealed) return false;
       r.winThinking = false;
       r.winTools.clear();
     }
 
     // 行组（思考/工具计数）——无文本的窗口也照常汇总
     const okLines = await this.appendLineGroups(r);
+    if (!okLines) return false;
 
     // 文本增量（空白增量只推进基准，不追加）
-    let okText = true;
     if (textVisible) {
-      okText = await this.appendText(r, textDelta);
+      const okText = await this.appendText(r, textDelta);
+      if (!okText) return false;
+      // 关键：推进已发送基准，否则下一帧会把同一段全文再追加一次
+      r.resultSentLen = full.length;
+      r.startNewBubble = false;
     } else if (textDelta) {
       r.resultSentLen = full.length;
     }
 
-    if (!okLines || !okText) return false;
-
     // 重置窗口
     r.winThinking = false;
     r.winTools.clear();
+    return true;
+  }
+
+  /** 把待发行组落入当前气泡后封口（仅用于消息间的气泡切分） */
+  private async appendLinesAndSeal(r: RunState): Promise<boolean> {
+    if (!(await this.appendLineGroups(r))) return false;
+    const cur = r.cur;
+    if (!cur) return true;
+    r.cur = null;
+    try {
+      await cur.stream.done();
+    } catch {}
     return true;
   }
 
