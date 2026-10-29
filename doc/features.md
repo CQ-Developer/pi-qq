@@ -85,20 +85,36 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
   - `/new` 新会话、`/stop` 中止当前 run（`ctx.abort()`）、`/compact` 压缩上下文（`ctx.compact()`）、`/status` 会话与用量状态、`/help` 命令帮助。
 - agent 工作期间向 QQ 发送 typing 提示（SDK `sendTyping`，C2C only）。
 
-### F3 发送图片（QQ → pi）
+### F3 发送图片与文件（QQ → pi）
 
-**目标**：用户在 QQ 上把图片发给 pi，作为视觉输入参与对话。
+**目标**：用户在 QQ 上把图片或文件发给 pi；图片作为视觉输入，文件保存到本机并在提示词中给出路径。
 
-**行为**
+**图片行为**
 
 - 数据源：入站 C2C 消息的 `attachments`（`content_type` / `url` / `filename` / `size`）。
 - 扩展下载图片 → 校验类型（jpg / jpeg / png / webp / gif）与大小 → 转 `ImageContent`（base64 + mimeType）→ 与消息文本一起 `pi.sendUserMessage()`。
 - 类型判断：`content_type` 优先（兼容 `image/jpg`），非图片类型时按文件名扩展名兜底；明确声明为不支持的 `image/*`（如 svg）直接拒绝。
 - 下载约束：单张超时 15s；`imageMaxSize` 默认 10MB；先看附件元数据，再在流式读取时二次限制实际字节数。
 - 一条消息多张图片时按原顺序处理；部分失败时成功的图片仍注入，并回一条失败清单。
-- 全部失败且没有文字 → 不注入 pi，只回失败提示；有文字 → 文字仍注入并提示图片失败。
-- 当前模型无视觉能力（`ctx.model.input` 不含 `image`）时，QQ 提示“当前模型不支持图片输入”；有文字则只发送文字。
+- 全部失败且没有文字/文件 → 不注入 pi，只回失败提示；有文字或文件 → 仍注入并提示图片失败。
+- 当前模型无视觉能力（`ctx.model.input` 不含 `image`）时，QQ 提示并跳过图片；文字/文件仍处理。
 - 已确认：pi 不向 QQ 发送图片——LLM 只能输出纯文本，无图片生成场景。
+
+**文件行为**
+
+- 非图片附件（如 zip/pdf/doc）下载后保存到 `~/.pi/agent/pi-qq-files/YYYY-MM-DD/<msgId>/<安全文件名>`。
+- 文件名去掉路径与非法字符；同名文件自动加 `-1`、`-2` 后缀；不会写出保存目录。
+- 单文件超时 60s；`fileMaxSize` 默认 50MB；同样先看元数据，再在流式读取时二次限流。
+- 一条消息多个文件按原顺序保存；部分失败时成功的文件仍保留并给出失败清单。
+- 提示词中追加文件块，例如：
+  ```text
+  用户通过 QQ 发送了以下文件（已保存到本机，可用 read/bash 等工具访问）：
+  - /home/chen/.pi/agent/pi-qq-files/2026-10-29/xxx/report.pdf（1.4MB，原始名：report.pdf）
+
+  用户消息：
+  帮我总结这个文件
+  ```
+- 纯文件消息（无文字）也会触发 run，提示词只含文件块；文件内容不直接注入 LLM，由 pi 用工具按需读取。
 
 ### F4 回传 assistant 消息
 
@@ -208,6 +224,7 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | `usageRelay` | `true` | 本次 run 的 token/缓存命中率/上下文占比摘要开关 |
 | `deliverAs` | `"steer"` | 忙碌时新消息的处理方式 |
 | `imageMaxSize` | `10MB` | QQ 图片下载上限 |
+| `fileMaxSize` | `50MB` | QQ 文件下载上限 |
 | `heartbeatMinutes` | `10`（0 关闭） | F7 节流心跳间隔 |
 | `heartbeatMaxMessages` | `3` | F7 每 run 消息心跳上限（流式心跳不受限） |
 | `streamRelay` | `true` | F7 流式载体开关（append 追加 + 节流合帧 + 限流退避，实测可用；失败自动降级消息路径） |
@@ -256,4 +273,4 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | M1 | F1 登录接入（配置直连 + 扫码登录）+ 凭据持久化 + 连接启动 | 配置直连或扫码后 `/qq-status` 显示在线 |
 | M2 | F2 单人聊天 + F4 assistant 回传（先非流式） | QQ 发消息得到 pi 回复 |
 | M3 | F5/F6 用量摘要（本次 run 输入/缓存命中率/输出/上下文） | 严格三行摘要正确呈现 |
-| M4 | F3 QQ 图片消息 + markdownSupport + 打磨 | 图片可进入 pi 会话；无视觉模型有提示 |
+| M4 | F3 QQ 图片/文件消息 + markdownSupport + 打磨 | 图片可进入 pi 会话；文件保存并关联到提示词 |

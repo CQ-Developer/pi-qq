@@ -120,6 +120,7 @@ export default function (pi: ExtensionAPI) {
         getBoundOpenid,
         getDeliverAs,
         getImageMaxSize: () => getSettings(readConfig().config).imageMaxSize,
+        getFileMaxSize: () => getSettings(readConfig().config).fileMaxSize,
         getStatusLines,
         onWarn: onWarn(ctx),
         markQQTrigger: (openid, msgId) => runFeedback.markQQTrigger(openid, msgId),

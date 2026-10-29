@@ -1,11 +1,9 @@
 /** QQ 图片附件 → pi ImageContent：类型/大小校验、带超时的受限下载。 */
+import { downloadLimited, type InboundAttachmentLike } from "./download";
+import { formatBytes } from "./format";
 
-export interface InboundAttachmentLike {
-  content_type: string;
-  url: string;
-  filename?: string;
-  size?: number;
-}
+export { formatBytes } from "./format";
+export type { InboundAttachmentLike } from "./download";
 
 export interface ImageContentLike {
   type: "image";
@@ -59,10 +57,11 @@ export function resolveImageMime(contentType: string | undefined, filename: stri
   return ext ? (MIME_BY_EXTENSION[ext] ?? null) : null;
 }
 
-export function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${bytes}B`;
+/** 是否为图片附件（含不支持的 image/*，由图片流程给出失败提示）。 */
+export function isImageAttachment(attachment: InboundAttachmentLike): boolean {
+  const type = (attachment.content_type ?? "").toLowerCase();
+  if (type.startsWith("image/")) return true;
+  return resolveImageMime(attachment.content_type, attachment.filename) !== null;
 }
 
 /** 文本 + 图片组合为 pi.sendUserMessage 的内容；无图片时保持纯字符串。 */
@@ -88,37 +87,6 @@ function attachmentLabel(filename: string | undefined, index: number): string {
   return name || `图片 ${index + 1}`;
 }
 
-async function readBodyLimited(response: Response, limit: number): Promise<Buffer> {
-  if (!response.body) {
-    const body = Buffer.from(await response.arrayBuffer());
-    if (body.byteLength > limit) {
-      throw new Error(`图片过大（${formatBytes(body.byteLength)} > ${formatBytes(limit)}）`);
-    }
-    return body;
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > limit) {
-        await reader.cancel();
-        throw new Error(`图片过大（>${formatBytes(limit)}）`);
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  if (total === 0) throw new Error("图片内容为空");
-  return Buffer.concat(chunks, total);
-}
-
 async function downloadOne(
   attachment: InboundAttachmentLike,
   index: number,
@@ -134,45 +102,21 @@ async function downloadOne(
     return { failure: { filename, reason: `图片过大（${formatBytes(attachment.size)} > ${formatBytes(maxSize)}）` } };
   }
 
-  let parsed: URL;
   try {
-    parsed = new URL(attachment.url);
-  } catch {
-    return { failure: { filename, reason: "图片地址无效" } };
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { failure: { filename, reason: "不支持的图片地址协议" } };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
-  try {
-    const response = await fetchImpl(parsed.toString(), { signal: controller.signal, redirect: "follow" });
-    if (!response.ok) {
-      return { failure: { filename, reason: `下载失败（HTTP ${response.status}）` } };
-    }
-
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > maxSize) {
-      await response.body?.cancel();
-      return { failure: { filename, reason: `图片过大（${formatBytes(contentLength)} > ${formatBytes(maxSize)}）` } };
-    }
-
-    const body = await readBodyLimited(response, maxSize);
+    const body = await downloadLimited({
+      url: attachment.url,
+      maxSize,
+      timeoutMs: DOWNLOAD_TIMEOUT_MS,
+      kind: "图片",
+      fetchImpl,
+    });
     return { image: { type: "image", data: body.toString("base64"), mimeType } };
   } catch (err) {
-    const reason = controller.signal.aborted
-      ? `下载超时（${DOWNLOAD_TIMEOUT_MS / 1000}s）`
-      : err instanceof Error
-        ? err.message
-        : "下载失败";
-    return { failure: { filename, reason } };
-  } finally {
-    clearTimeout(timer);
+    return { failure: { filename, reason: err instanceof Error ? err.message : "下载失败" } };
   }
 }
 
-/** 按原顺序下载所有附件；单张失败不影响其他图片。 */
+/** 按原顺序下载所有图片；单张失败不影响其他图片。 */
 export async function resolveInboundImages(
   attachments: readonly InboundAttachmentLike[],
   maxSize: number,

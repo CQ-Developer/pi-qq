@@ -21,6 +21,8 @@ export interface PiQQSettings {
   deliverAs?: "steer" | "followUp";
   /** F3：QQ 图片下载上限（字节） */
   imageMaxSize?: number;
+  /** F3：QQ 文件下载上限（字节）；默认 50MB */
+  fileMaxSize?: number;
   /** F7：节流心跳间隔（分钟），0 关闭 */
   heartbeatMinutes?: number;
   /** F7：每 run 消息心跳上限（流式心跳不受限） */
@@ -123,6 +125,7 @@ export function getSettings(config: PiQQConfig): ResolvedSettings {
     usageRelay: config.usageRelay ?? true,
     deliverAs: config.deliverAs ?? "steer",
     imageMaxSize: config.imageMaxSize ?? 10 * 1024 * 1024,
+    fileMaxSize: config.fileMaxSize ?? 50 * 1024 * 1024,
     heartbeatMinutes: config.heartbeatMinutes ?? 10,
     heartbeatMaxMessages: config.heartbeatMaxMessages ?? 3,
     streamFlushMs: config.streamFlushMs ?? 10_000,

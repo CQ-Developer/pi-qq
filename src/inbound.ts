@@ -3,7 +3,14 @@ import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { setAllowedOpenid } from "./config";
 import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
-import { buildImageMessageContent, formatImageFailures, resolveInboundImages, type ImageContentLike } from "./images";
+import {
+  buildImageMessageContent,
+  formatImageFailures,
+  isImageAttachment,
+  resolveInboundImages,
+  type ImageContentLike,
+} from "./images";
+import { formatFilePrompt, saveInboundFiles, type SavedFile } from "./files";
 
 /**
  * F2：QQ → pi 入站处理。
@@ -21,6 +28,9 @@ export interface InboundDeps {
   getBoundOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
   getImageMaxSize: () => number;
+  getFileMaxSize: () => number;
+  /** 测试可注入；默认 saveInboundFiles */
+  saveFiles?: typeof saveInboundFiles;
   getStatusLines: () => string[];
   onWarn: (msg: string) => void;
   /** F7：标记接下来的 run 由 QQ 触发（供 RunFeedback 建立确认/心跳/typing） */
@@ -49,6 +59,7 @@ export function createInboundHandler(deps: InboundDeps) {
       onWarn: deps.onWarn,
     };
     const reply = (text: string) => sendReply(bot, text, channel);
+    const saveFiles = deps.saveFiles ?? saveInboundFiles;
 
     const text = (msg.content ?? "").trim();
     if (text.startsWith("/")) {
@@ -62,26 +73,42 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F3：QQ 图片 → pi ImageContent（先校验模型视觉能力，避免无谓下载）
+    // F3：图片转 ImageContent，非图片附件保存到本地并在提示词中给出路径
+    const imageAttachments = attachments.filter(isImageAttachment);
+    const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
+    const failures: Array<{ filename: string; reason: string }> = [];
+
     let images: ImageContentLike[] = [];
-    if (attachments.length > 0) {
+    if (imageAttachments.length > 0) {
       const supportsImages = deps.ctx.model?.input.includes("image") ?? false;
       if (!supportsImages) {
-        await reply(text ? "当前模型不支持图片输入，已只发送文字" : "当前模型不支持图片输入");
-        if (!text) return;
+        await reply(`当前模型不支持图片输入，已跳过 ${imageAttachments.length} 张图片`);
       } else {
-        const result = await resolveInboundImages(attachments, deps.getImageMaxSize());
+        const result = await resolveInboundImages(imageAttachments, deps.getImageMaxSize());
         images = result.images;
-        if (result.failures.length > 0) {
-          await reply(formatImageFailures(result.failures, images.length));
-        }
-        if (!text && images.length === 0) return;
+        failures.push(...result.failures);
       }
     }
 
+    let files: SavedFile[] = [];
+    if (fileAttachments.length > 0) {
+      const result = await saveFiles(fileAttachments, {
+        maxSize: deps.getFileMaxSize(),
+        dirKey: msg.messageId,
+      });
+      files = result.files;
+      failures.push(...result.failures);
+    }
+
+    if (failures.length > 0) {
+      await reply(formatImageFailures(failures, images.length + files.length));
+    }
+    if (!text && images.length === 0 && files.length === 0) return;
+
     // F7：标记 QQ 触发的 run（RunFeedback 据此建立 typing/时间线），不发送开始确认
     deps.markQQTrigger(msg.senderId, msg.messageId);
-    deps.pi.sendUserMessage(buildImageMessageContent(text, images), { deliverAs: deps.getDeliverAs() });
+    const promptText = formatFilePrompt(files, text);
+    deps.pi.sendUserMessage(buildImageMessageContent(promptText, images), { deliverAs: deps.getDeliverAs() });
   };
 }
 

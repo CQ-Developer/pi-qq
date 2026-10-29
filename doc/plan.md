@@ -31,8 +31,11 @@ pi-qq/
     ├── config.ts          # ~/.pi/agent/pi-qq.json 读写（0600、schema 兼容大小写、字段合并）
     ├── login.ts           # F1：方式 A 直连判定 / 方式 B 扫码（connector + TUI 二维码弹窗）
     ├── bot.ts             # QQBot 实例生命周期：start/stop、中间件装配、重连/致命关闭码上报
-    ├── inbound.ts         # F2/F3：白名单 → QQ 命令拦截 → 图片下载转 ImageContent → sendUserMessage
-    ├── images.ts          # F3：附件类型/大小校验、15s 超时下载、ImageContent 组装
+    ├── inbound.ts         # F2/F3：白名单 → QQ 命令拦截 → 图片/文件附件 → sendUserMessage
+    ├── images.ts          # F3：图片类型/大小校验、15s 超时下载、ImageContent 组装
+    ├── files.ts           # F3：文件下载落盘、安全文件名、提示词路径关联
+    ├── download.ts        # 图片/文件共用：超时与流式大小限制下载
+    ├── format.ts          # 人类可读字节格式化
     ├── outbound.ts        # F4：markdown→纯文本转换、流式(openStream)/降级(sendText)、分块
     ├── reply-budget.ts    # §3：被动回复预算（msgId 5min 窗口、4条/h、降级主动发送）
     ├── budget-status.ts   # /qq-budget 纯格式化（普通/流式/估算剩余）
@@ -95,12 +98,12 @@ pi-qq/
 
 ### M4 — 图片与打磨（F3 + markdownSupport 透传）
 
-1. [x] F3 图片：`images.ts` 类型/大小校验、15s 超时下载、流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示。
+1. [x] F3 图片/文件：图片转 `ImageContent`；非图片附件保存到 `~/.pi/agent/pi-qq-files/YYYY-MM-DD/<msgId>/`，提示词中追加绝对路径、大小与原始文件名；`fileMaxSize` 默认 50MB。
 2. [x] `markdownSupport: true`：`QQBot` 构造时已传入该开关，SDK 的 `sendText` 自动使用 msg_type=2；调用方保留原始 Markdown 即可，无需额外 `sendMarkdown`。
 3. [x] QQ 侧 `/new`：inbound 调用隐藏扩展命令 `qq-new`，命令 handler 使用 `ctx.newSession()`；非 idle 时提示先 `/stop`。
-4. [ ] 长代码块转文件附件；[ ] 多气泡 + 摘要额度实测（可用 `/qq-budget` 查看流式气泡与估算剩余）。
+4. [ ] 长代码块转文件附件（backlog）；多气泡 + 摘要额度实测已完成。
 
-**验收**：QQ 发图后 pi 能描述图片内容；无视觉模型有明确提示；额度全程不超限。
+**验收**：QQ 发图后 pi 能描述图片内容；QQ 发文件后保存到本机并在提示词中关联路径；额度全程不超限。
 
 ## 4. 验证策略
 
@@ -172,20 +175,21 @@ pi-qq/
 - [x] 严格三行摘要：输入（总输入）+ 缓存命中率、输出、上下文占比；`tokens===null` 显示重建中
 - [x] 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送
 - [ ] 验收（待 QQ 实测）：摘要数字与本次 run 实际用量一致
-  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组/图片类型与大小校验/QQ /new 分发/预算快照/流式气泡计数（vitest：7 个测试文件 / 69 个测试通过）。
+  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组/图片类型与大小校验/QQ /new 分发/预算快照/流式气泡计数/文件保存与提示词（vitest：8 个测试文件 / 81 个测试通过）。
 
 ### M4 — 图片与打磨
 
-- [x] F3 图片：`images.ts` 类型/大小校验 + 15s 超时 + 流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示
+- [x] F3 图片/文件：图片注入；文件落盘 + 提示词路径关联 + `fileMaxSize`
 - [x] 流式接线（M2.5 已完成，`AppendStream` + 文本/活动分泡）
 - [x] `/compact` 命令、typing 指示（C2C）
 - [x] `markdownSupport: true`：SDK `sendText` 自动 msg_type=2（无需新增 sendMarkdown 路径）
 - [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
 - [x] `/qq-budget` 诊断命令（普通被动剩余 / 流式气泡数 / 估算剩余 / 最近 msgId 新鲜度）
-- [x] 单元测试迁移到 vitest（`test/*.test.ts`，7 个文件 / 69 个测试；`npm test`）
+- [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 81 个测试；`npm test`）
 - [ ] 长代码块转文件附件（backlog，暂缓）
 - [x] 多气泡 + 摘要下的被动额度实测（2026-10-29：`/qq-budget` 实测符合预期：4 个流式气泡 + 1 条摘要，普通剩余 3 / 估算剩余 0 / 窗口有效）
 - [x] `debug` 抓超时日志：AppendStream 限流重试/最终失败 + run start/end 日志
 - [x] 验收：QQ 发图后 pi 能描述图片内容；全程额度不超限（2026-10-29 实测通过）
+- [ ] 文件传输实机验收（QQ 发 zip/pdf 等，确认保存路径与提示词关联）
   - 2026-10-29：图片+文字、纯图片（均被模型正确识别）、非图片附件拒绝（zip 提示“附件处理失败”）、多气泡+摘要额度诊断已实测通过。
   - 无视觉模型场景按用户决定不验证（代码仍保留 `ctx.model.input` 检查）。

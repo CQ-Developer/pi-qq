@@ -8,12 +8,12 @@
 ## 功能特性
 
 - **扫码登录 / 配置直连**：`/qq-login` 扫码即用（自动换取凭据并绑定单人），或在配置文件写入 `AppID`/`AppSecret` 免扫码直连
-- **单人聊天**：绑定用户私聊消息直接进入 pi 会话（含图片），白名单外的消息完全隔离
+- **单人聊天**：绑定用户私聊消息直接进入 pi 会话（含图片/文件），白名单外的消息完全隔离
 - **完整回复**：assistant 消息实时回传（流式追加 / 降级分块），Markdown 转手机可读纯文本
 - **长任务反馈**："正在输入"保鲜 + 每 10s 汇总工具调用 + 节流心跳（`⏱ 已运行 25 分钟 · [86] 🔧 bash · [12] 🔧 read`），数十分钟级任务不再黑盒等待
 - **用量摘要**：每次 QQ 任务后回传本次 run 的输入（含缓存命中率）、输出与上下文占比，严格三行
-- **发送图片**：QQ 端发图 → 自动下载注入 pi 作为视觉输入（jpg/png/webp/gif，默认 10MB 上限）
-- **诊断命令**：`/qq-md`、`/qq-stream-test` 快速验证平台能力
+- **发送图片/文件**：QQ 端发图自动注入 pi；QQ 端发文件自动保存到本机，并把路径写入提示词（图片默认 10MB、文件默认 50MB）
+- **诊断命令**：`/qq-md`、`/qq-stream-test`、`/qq-budget` 快速验证平台能力与额度
 
 架构与决策记录见 [doc/features.md](./doc/features.md)，实施计划与验收见 [doc/plan.md](./doc/plan.md)。
 
@@ -60,6 +60,7 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 | `usageRelay` | `true` | 本次 run 的输入/缓存命中率/输出/上下文摘要开关 |
 | `deliverAs` | `"steer"` | agent 忙碌时新消息的处理方式：`steer` 并入当前任务 / `followUp` 排队 |
 | `imageMaxSize` | `10485760` | QQ 图片下载上限（字节，默认 10MB） |
+| `fileMaxSize` | `52428800` | QQ 文件下载上限（字节，默认 50MB） |
 | `heartbeatMinutes` | `10` | 长任务心跳间隔（分钟），`0` 关闭 |
 | `heartbeatMaxMessages` | `3` | 每 run 消息心跳上限（流式心跳不受限） |
 | `streamRelay` | `true` | 流式载体（append 追加语义）；关闭则心跳与结果全走普通消息 |
@@ -98,7 +99,7 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 ```bash
 npm install              # 安装依赖（prettier / vitest 为 devDependencies）
 npm run typecheck        # 类型检查
-npm test                 # vitest（7 个测试文件 / 69 个测试）
+npm test                 # vitest（8 个测试文件 / 81 个测试）
 npm run format           # Prettier 格式化
 npm run format:check     # Prettier 校验
 ```
@@ -108,7 +109,8 @@ npm run format:check     # Prettier 校验
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
 `config`（配置读写）/ `login`（扫码）/ `bot`（生命周期）/ `inbound`（QQ→pi）/
 `outbound`（pi→QQ 文本）/ `reply-budget`（被动回复额度）/ `budget-status`（`/qq-budget` 格式化）/ `run-feedback`（长任务反馈）/
-`append-stream`（追加模式流式发送器）/ `usage`（token 累计与用量摘要）/ `images`（QQ 图片下载与校验）。
+`append-stream`（追加模式流式发送器）/ `usage`（token 累计与用量摘要）/ `images`（QQ 图片下载与校验）/
+`files`（QQ 文件落盘与提示词路径）/ `download`（附件限流下载）/ `format`（字节格式化）。
 
 ## 已知平台限制（实测）
 

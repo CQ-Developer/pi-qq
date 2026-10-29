@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import { createInboundHandler } from "../src/inbound";
 import { ReplyBudget } from "../src/reply-budget";
 
-function makeInboundHarness(isIdle: boolean) {
+function makeInboundHarness(
+  isIdle: boolean,
+  opts: {
+    content?: string;
+    attachments?: unknown[];
+    modelInput?: string[];
+    saveFiles?: (attachments: unknown, options: unknown) => Promise<unknown>;
+  } = {},
+) {
   const sent: string[] = [];
   const userMessages: Array<{ content: unknown; options: unknown }> = [];
   let triggers = 0;
@@ -15,7 +23,7 @@ function makeInboundHarness(isIdle: boolean) {
   const ctx = {
     isIdle: () => isIdle,
     ui: { notify: () => {} },
-    model: { input: ["text"] },
+    model: { input: opts.modelInput ?? ["text"] },
   };
   const deps = {
     pi: {
@@ -29,6 +37,8 @@ function makeInboundHarness(isIdle: boolean) {
     getBoundOpenid: () => "openid-u",
     getDeliverAs: () => "steer",
     getImageMaxSize: () => 1024,
+    getFileMaxSize: () => 50 * 1024 * 1024,
+    saveFiles: opts.saveFiles,
     getStatusLines: () => [],
     onWarn: () => {},
     markQQTrigger: () => {
@@ -43,12 +53,52 @@ function makeInboundHarness(isIdle: boolean) {
         kind: "c2c",
         senderId: "openid-u",
         messageId: "msg-new",
-        content: "/new",
-        attachments: [],
+        content: opts.content ?? "/new",
+        attachments: opts.attachments ?? [],
       } as never,
     );
   return { run, sent, userMessages, triggers: () => triggers };
 }
+
+describe("inbound files", () => {
+  const saved = { path: "/tmp/pi-qq-files/x.zip", originalName: "x.zip", size: 1234 };
+  const attachment = { content_type: "application/zip", url: "https://example.com/x.zip", filename: "x.zip" };
+
+  it("保存文件并把路径与用户消息一起注入提示词", async () => {
+    let received: unknown[] | undefined;
+    const harness = makeInboundHarness(true, {
+      content: "分析这个文件",
+      attachments: [attachment],
+      saveFiles: async (attachments) => {
+        received = attachments as unknown[];
+        return { files: [saved], failures: [] };
+      },
+    });
+
+    await harness.run();
+    expect(received).toHaveLength(1);
+    expect(harness.userMessages).toHaveLength(1);
+    const content = harness.userMessages[0]?.content as string;
+    expect(content).toContain(saved.path);
+    expect(content).toContain("原始名：x.zip");
+    expect(content).toContain("用户消息：\n分析这个文件");
+    expect(harness.triggers()).toBe(1);
+  });
+
+  it("纯文件消息也会触发 run，提示词只含文件块", async () => {
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [attachment],
+      saveFiles: async () => ({ files: [saved], failures: [] }),
+    });
+
+    await harness.run();
+    const content = harness.userMessages[0]?.content as string;
+    expect(content).toContain(saved.path);
+    expect(content).not.toContain("用户消息：");
+    expect(harness.triggers()).toBe(1);
+  });
+});
 
 describe("inbound /new", () => {
   it("idle 时回复并调用 qq-new 扩展命令，不触发 agent run", async () => {
