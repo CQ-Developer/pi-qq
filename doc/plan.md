@@ -100,7 +100,6 @@ pi-qq/
 1. [x] F3 图片/文件：图片转 `ImageContent`；非图片附件保存到当前工作空间的 `.pi/pi-qq/YYYY-MM-DD/<msgId>/`，提示词中追加绝对路径、大小与原始文件名；`fileMaxSize` 默认 50MB。
 2. [x] `markdownSupport: true`：`QQBot` 构造时已传入该开关，SDK 的 `sendText` 自动使用 msg_type=2；调用方保留原始 Markdown 即可，无需额外 `sendMarkdown`。
 3. [x] QQ 侧 `/new`：inbound 调用隐藏扩展命令 `qq-new`，命令 handler 使用 `ctx.newSession()`；非 idle 时提示先 `/stop`。
-4. [ ] 长代码块转文件附件（backlog）；多气泡 + 摘要额度实测已完成。
 
 **验收**：QQ 发图后 pi 能描述图片内容；QQ 发文件后保存到本机并在提示词中关联路径；额度全程不超限。
 
@@ -183,7 +182,6 @@ pi-qq/
 - [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
 - [x] `/qq-budget` 诊断命令（普通被动剩余 / 流式气泡数 / 估算剩余 / 最近 msgId 新鲜度）
 - [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 77 个测试；`npm test`）
-- [ ] 长代码块转文件附件（backlog，暂缓）
 - [x] 多气泡流式额度实测（2026-10-29：当时包含 1 条摘要；摘要后来已移除，仅作历史记录）
 - [x] `debug` 抓超时日志：AppendStream 限流重试/最终失败 + run start/end 日志
 - [x] 验收：QQ 发图后 pi 能描述图片内容；全程额度不超限（2026-10-29 实测通过）
