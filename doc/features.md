@@ -8,7 +8,7 @@
 | 依赖 | 用途 |
 | --- | --- |
 | `@tencent-connect/qqbot-nodejs` | QQ 开放平台协议层：WebSocket Gateway、C2C 消息收发、媒体上传、流式消息 |
-| `@tencent-connect/qqbot-connector` | 扫码登录（方式 B）：展示二维码，扫码后换取 `appId / appSecret / userOpenid` |
+| `@tencent-connect/qqbot-connector` | 扫码登录：展示二维码，扫码后换取 `appId / appSecret / userOpenid`（仅内存） |
 | `@earendil-works/pi-coding-agent`（ExtensionAPI） | pi 扩展宿主：事件订阅、命令注册、消息注入、上下文用量 |
 
 ---
@@ -35,41 +35,28 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 ## 2. 核心功能
 
-### F1 登录接入（配置直连 / 扫码）
+### F1 扫码登录（仅扫码）
 
-**目标**：两种方式接入机器人，凭据统一存放在 `~/.pi/agent/pi-qq.json`（权限 `0600`）。
+**目标**：唯一登录方式是 `/qq-login` 扫码；凭据只保存在进程内存，绝不落盘。pi 进程退出后必须重新扫码。
 
-**方式 A：配置文件直连（免扫码）**
-
-用户预先在 `~/.pi/agent/pi-qq.json` 写入：
-
-```json
-{
-    "AppID": "...",
-    "AppSecret": "..."
-}
-```
-
-- 规则（已确认）：配置文件中存在有效凭据 → 启动时直接构造 `QQBot` 接入，**无需扫码**；否则进入扫码流程。
-- 读取时兼容小写 `appId` / `appSecret`；文件中其余配置项（§4）可共存。
-- 手动配置时若未填 `allowedOpenid`：第一个发来 C2C 私聊的用户自动绑定为单人用户（写入配置并在 pi 侧提示），也可手动预先填写。
-
-**方式 B：扫码登录**
+**行为**
 
 1. 用户在 pi 中执行 `/qq-login`。
-2. 扩展调用 `startQrConnect({ displayQrCodeToConsole: false, signal })`：
-   - `onQrDisplayed(url)`：TUI 模式下用 `qrcode-terminal`（零依赖）把 `url` 画成 ASCII 二维码嵌入 `ctx.ui` 弹窗；非 TUI 模式直接打印 URL。
-   - `onQrExpired()`：提示"二维码已过期，已自动刷新"。
-   - `onSuccess([{ appId, appSecret, userOpenid }])`：进入下一步。
-3. 凭据按方式 A 的 schema 写回 `~/.pi/agent/pi-qq.json`，`userOpenid` 写入默认单人绑定。`userOpenid` 即**扫码人的 openid**：QQ 开放平台用户的机器人内唯一标识（非 QQ 号，平台不向机器人暴露真实 QQ 号）；谁扫码绑定，谁就是允许对话的"单人"，写入 `allowedOpenid` 作为白名单。
-4. 立即构造 `QQBot` 并启动；未扫码完成前可随时取消（`stop()` / AbortSignal）。
+2. 扩展停止现有连接，调用 `startQrConnect({ displayQrCodeToConsole: false, signal })`：
+   - `onQrDisplayed(url)`：TUI 用 `qrcode-terminal` 把 URL 画成 ASCII 二维码；非 TUI 输出 URL。
+   - `onQrExpired()`：提示二维码过期并自动刷新。
+   - `onSuccess([{ appId, appSecret, userOpenid }])`：获取凭据与扫码人 openid。
+3. 凭据写入进程内存（`globalThis` 登录状态），不写 `~/.pi/agent/pi-qq.json`。`userOpenid` 作为唯一绑定的 QQ 用户白名单。
+4. 立即构造 `QQBot` 并启动；未完成扫码前可取消（Esc / AbortSignal）。
+5. 同一 pi 进程内的 session reload / `/new` 会复用内存登录；pi 进程退出后内存清空，下次启动必须重新 `/qq-login`。
+6. `/qq-logout` 立即清除内存凭据并断开连接；之后可重新扫码。
 
 **通用**
 
-- `/qq-status` 显示登录方式、凭据来源、绑定用户、连接状态；`/qq-logout` 清除凭据并断开。
-- `/qq-login` 始终可用：已直连时重新扫码换绑。
-- 职责划分：connector 负责**登录协议**（生成绑定任务、轮询、解密凭据），二维码绘制只是展示层；M1 允许先用 connector 自带控制台打印（`displayQrCodeToConsole: true`）跑通，再优化 TUI 弹窗（直接 console 打印会破坏 pi TUI 渲染）。
-- 凭据脱敏：日志与 `/qq-status` 中只显示 `AppID` 前几位。
+- `/qq-status`、`/qq-login`、`/qq-logout`、`/qq-budget`、`/qq-md`、`/qq-stream-test`、`/qq-new` 的命令说明与 pi 终端输出均为英文。
+- `/qq-status` 显示登录状态（in memory）、连接状态、模型、上下文与绑定用户；AppID 仅显示前 4 位 + `****`。
+- 配置文件 `~/.pi/agent/pi-qq.json` 只保存非敏感设置；旧的 `AppID` / `AppSecret` / `allowedOpenid` 键会被忽略，不再用于登录。
+- 白名单只接受扫码绑定的 openid；未登录时入站消息直接忽略。
 
 ### F2 单人聊天
 
@@ -77,7 +64,7 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **行为**
 
-- 仅接受 `kind === "c2c"` 的入站消息；发送者 openid 必须等于配置的 `allowedOpenid`（复用 SDK `accessPolicy` 白名单中间件，其他用户静默忽略）。入站消息的 `senderId` 即发送者的 openid。
+- 仅接受 `kind === "c2c"` 的入站消息；发送者 openid 必须等于本次扫码绑定的内存白名单（复用 SDK `accessPolicy`，其他用户静默忽略）。入站消息的 `senderId` 即发送者的 openid。
 - 普通文本 → `pi.sendUserMessage(text)`，触发正常 agent run。
 - 图片消息的处理见 F3（QQ → pi）。
 - agent 忙碌时收到新消息 → 按 `deliverAs`（默认 `steer`，可配置 `followUp`）排队。
@@ -108,10 +95,10 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 - 一条消息多个文件按原顺序保存；部分失败时成功的文件仍保留并给出失败清单。
 - 提示词中追加文件块，例如：
   ```text
-  用户通过 QQ 发送了以下文件（已保存到本机，可用 read/bash 等工具访问）：
-  - /home/chen/project/myproj/.pi/pi-qq/2026-10-29/xxx/report.pdf（1.4MB，原始名：report.pdf）
+  User sent the following file(s) via QQ (saved locally; use read/bash or other tools to access):
+  - /home/chen/project/myproj/.pi/pi-qq/2026-10-29/xxx/report.pdf (1.4MB, original name: report.pdf)
 
-  用户消息：
+  User message:
   帮我总结这个文件
   ```
 - 纯文件消息（无文字）也会触发 run，提示词只含文件块；文件内容不直接注入 LLM，由 pi 用工具按需读取。
@@ -213,12 +200,10 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 
 ## 4. 配置
 
-`~/.pi/agent/pi-qq.json`（手动配置或扫码登录写入，同一文件、同一 schema）：
+`~/.pi/agent/pi-qq.json`（只保存设置；不含凭据、不写入登录信息）：
 
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
-| `AppID` / `AppSecret` | 手动填写或扫码写入 | 机器人凭据（`0600` 保护）；存在即免扫码直连（兼容小写 `appId` / `appSecret`） |
-| `allowedOpenid` | 扫码自动写入；手动配置时可选（缺省首个私聊用户绑定） | 单人绑定的 openid |
 | `streamAssistant` | `true` | assistant 流式回传开关 |
 | `markdownSupport` | `false` | 机器人是否有 markdown 权限；`true` 时回传透传 Markdown |
 | `usageRelay` | `true` | 本次 run 的 token/缓存命中率/上下文占比摘要开关 |
@@ -235,21 +220,21 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 
 | 位置 | 命令 | 行为 |
 | --- | --- | --- |
-| pi 侧 | `/qq-login` | 扫码登录并绑定 |
+| pi 侧 | `/qq-login` | 扫码登录并绑定（QR only） |
 | pi 侧 | `/qq-status` | 登录态、连接状态、绑定用户 |
 | pi 侧 | `/qq-budget` | 诊断：被动额度、流式气泡数、最近 msgId 新鲜度 |
-| pi 侧 | `/qq-logout` | 清除凭据并断开 |
-| pi 侧 | `/qq-send <text>` | 手动向绑定用户发一条测试消息 |
+| pi 侧 | `/qq-logout` | 清除内存凭据并断开 |
+| pi 侧 | `/qq-new` | 重置当前会话（QQ `/new` 调用） |
 | pi 侧 | `/qq-md [text]` | 诊断：发送 Markdown 消息，验证 C2C markdown 渲染能力 |
 | pi 侧 | `/qq-stream-test` | 诊断：开流→三帧→complete，验证流式帧是否渲染 |
 | QQ 侧 | `/new` `/stop` `/compact` `/status` `/help` | 会话控制（见 F2） |
 
 ## 6. 可靠性与安全
 
-- **生命周期**：`session_start` 启动、`session_shutdown` 幂等关闭；SDK 默认无限重连（退避 1s→60s），4914/4915 致命关闭码上报为不可恢复，提示重新 `/qq-login` 或检查凭据。
+- **生命周期**：`session_start` 仅在进程内存有登录态时启动；`session_shutdown` 幂等关闭。SDK 默认无限重连（退避 1s→60s），4914/4915 致命关闭码上报为不可恢复，提示重新 `/qq-login`。
 - **回声与去重**：启用 SDK `messageFilter`（跳过 bot 回声）与 `concurrencyGuard`（同用户串行），避免流式与回复互相踩踏。
 - **安全**：
-  - 凭据文件 `0600`，日志脱敏；扩展以 pi 同等权限运行，白名单外的消息不进入 pi（不产生任何工具执行）。
+  - 凭据仅保存在进程内存、不落盘；日志与 `/qq-status` 脱敏；扩展以 pi 同等权限运行，白名单外的消息不进入 pi（不产生任何工具执行）。
   - QQ 侧无 shell 类命令；一切工具执行都经由 pi 自身权限体系。
 
 ## 7. 决策记录
@@ -262,7 +247,7 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | 4 | 图片方向 | F3 为 QQ → pi（用户发图给 pi）；pi 不向 QQ 发图片（LLM 仅输出纯文本） |
 | 5 | 成本展示 | 不在 QQ 摘要中展示成本；摘要严格三行（输入/缓存命中率、输出、上下文） |
 | 6 | 回复格式 | 回复通常为 Markdown 格式的总结/提问文本（不在回复中写代码）；默认轻量转纯文本，有 markdown 权限可透传 |
-| 7 | 登录方式 | 双通道：`~/.pi/agent/pi-qq.json` 存在 `AppID`/`AppSecret` 即免扫码直连，否则扫码登录；凭据统一存该文件 |
+| 7 | 登录方式 | 仅 `/qq-login` 扫码；凭据只存进程内存、不落盘；pi 进程退出后必须重新扫码 |
 | 8 | 长任务反馈 | typing 保鲜 + 每 10s 汇总工具调用 + 节流心跳（默认 10 分钟/条，流式载体优先，每 run ≤3 条消息心跳保险丝）+ 机会性流式（平台拒绝即降级）；不发送开始确认 |
 | 9 | 流式可用性（实测三轮） | ① C2C markdown（msg_type=2，`sendMarkdown`）渲染正常；② SDK 内置流式 `input_mode="replace"` 被平台拒绝（"已经提交的消息内容不可修改"），首帧可渲染、后续帧报错；③ 自实现 `AppendStream`（input_mode="append"，增量追加 + DONE）实测通过；补齐节流合帧（500ms）与限流退避重试后**默认开启**，失败自动降级消息路径 |
 
@@ -270,7 +255,7 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 
 | 阶段 | 内容 | 验收 |
 | --- | --- | --- |
-| M1 | F1 登录接入（配置直连 + 扫码登录）+ 凭据持久化 + 连接启动 | 配置直连或扫码后 `/qq-status` 显示在线 |
+| M1 | F1 扫码登录 + 内存凭据 + 连接启动 | 扫码后 `/qq-status` 在线；重启 pi 需重新扫码 |
 | M2 | F2 单人聊天 + F4 assistant 回传（先非流式） | QQ 发消息得到 pi 回复 |
 | M3 | F5/F6 用量摘要（本次 run 输入/缓存命中率/输出/上下文） | 严格三行摘要正确呈现 |
 | M4 | F3 QQ 图片/文件消息 + markdownSupport + 打磨 | 图片可进入 pi 会话；文件保存并关联到提示词 |

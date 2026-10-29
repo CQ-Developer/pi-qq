@@ -24,7 +24,7 @@ export type BotState =
 
 export interface StartBotOptions {
   credentials: Credentials;
-  /** F2 单人绑定；未提供时 accessPolicy 放行，由 M2 的"首个私聊用户自动绑定"兜底 */
+  /** F2: QR-bound single user; production always provides it */
   allowedOpenid?: string;
   markdownSupport?: boolean;
   /** 诊断模式：SDK 内部日志（超时/限流/重连等）打到终端 */
@@ -54,7 +54,7 @@ export function startBot(opts: StartBotOptions): RunningBot {
   bot.use(messageFilter({ skipSelfEcho: true }));
   // 清洗 @marker / face tags 等协议标记，只留纯文本
   bot.use(contentSanitizer({ stripBotMention: true }));
-  // 单人白名单：仅 C2C 生效；未绑定时放行（自动绑定逻辑在 inbound 层）
+  // Single-user allowlist for C2C; inbound also rejects when no QR login is active.
   bot.use(accessPolicy(opts.allowedOpenid ? { c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } } : {}));
   // 同用户串行处理，避免流式与回复互相踩踏
   bot.use(concurrencyGuard());
@@ -72,19 +72,19 @@ export function startBot(opts: StartBotOptions): RunningBot {
   let stopped = false;
   report("starting");
   void bot.start().catch((err: unknown) => {
-    if (stopped) return; // 主动 stop() 的正常返回，不算错误
+    if (stopped) return; // Normal return from an explicit stop().
     const code = (err as { code?: string }).code;
     if (code === GatewayErrorCode.FATAL_CLOSE) {
       const closeCode = (err as { closeCode?: number }).closeCode;
       report(
         "blocked",
-        `连接被服务端致命关闭（${closeCode ?? "未知关闭码"}，4914=已下线/仅沙箱、4915=封禁）：` +
-          `请到 QQ 开放平台确认机器人状态，或 /qq-login 重新换绑`,
+        `Connection closed by the server (${closeCode ?? "unknown"}, 4914=offline/sandbox, 4915=banned). ` +
+          `Check the bot status on the QQ Open Platform, or run /qq-login again.`,
       );
     } else if (code === GatewayErrorCode.RETRY_EXHAUSTED) {
-      report("stopped", `重连预算耗尽：${(err as Error).message}；可执行 /qq-login 重试`);
+      report("stopped", `Reconnect budget exhausted: ${(err as Error).message}; run /qq-login to retry.`);
     } else {
-      report("stopped", `启动失败：${(err as Error).message}；请检查凭据与网络`);
+      report("stopped", `Startup failed: ${(err as Error).message}; check credentials and network.`);
     }
   });
 

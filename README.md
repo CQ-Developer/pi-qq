@@ -1,135 +1,102 @@
 # pi-qq
 
-> pi 扩展：通过 QQ 机器人把 [pi](https://github.com/earendil-works/pi) 接入 QQ 单人私聊（C2C）。
-> 手机 QQ 上发消息（文字/图片/文件）→ pi 在机器上干活 → 完整回复（Markdown → 纯文本）+ 用量摘要回传到 QQ。
+Connect [pi](https://github.com/earendil-works/pi) to a QQ private chat. Send text, images, or files from mobile QQ; pi works on your machine and sends the result back to QQ.
 
-基于腾讯官方 SDK [`@tencent-connect/qqbot-nodejs`](https://www.npmjs.com/package/@tencent-connect/qqbot-nodejs) 与 [`@tencent-connect/qqbot-connector`](https://www.npmjs.com/package/@tencent-connect/qqbot-connector)。
-
-## 功能特性
-
-- **扫码登录 / 配置直连**：`/qq-login` 扫码即用（自动换取凭据并绑定单人），或在配置文件写入 `AppID`/`AppSecret` 免扫码直连
-- **单人聊天**：绑定用户私聊消息直接进入 pi 会话（含图片/文件），白名单外的消息完全隔离
-- **完整回复**：assistant 消息实时回传（流式追加 / 降级分块），Markdown 转手机可读纯文本
-- **长任务反馈**："正在输入"保鲜 + 每 10s 汇总工具调用 + 节流心跳（`⏱ 已运行 25 分钟 · [86] 🔧 bash · [12] 🔧 read`），数十分钟级任务不再黑盒等待
-- **用量摘要**：每次 QQ 任务后回传本次 run 的输入（含缓存命中率）、输出与上下文占比，严格三行
-- **发送图片/文件**：QQ 端发图自动注入 pi；QQ 端发文件保存到当前工作空间 `.pi/pi-qq/`，并把路径写入提示词（图片默认 10MB、文件默认 50MB）
-- **诊断命令**：`/qq-md`、`/qq-stream-test`、`/qq-budget` 快速验证平台能力与额度
-
-架构与决策记录见 [doc/features.md](./doc/features.md)，实施计划与验收见 [doc/plan.md](./doc/plan.md)。
-
-## 快速开始
-
-### 从 npm / Pi 市场安装（推荐）
+## Install
 
 ```bash
 pi install npm:@chen_hu_hu/pi-qq
 ```
 
-包内已声明 `pi-package` 关键字与 `pi.extensions`，发布后可在 [Pi package gallery](https://pi.dev/packages) 中搜索到。
-
-### 本地开发
-
-#### 1. 安装依赖
-
-```bash
-npm install
-```
-
-#### 2. 登录机器人（二选一）
-
-**方式 A：配置直连（推荐）** — 写入 `~/.pi/agent/pi-qq.json` 后启动 pi 自动连接：
-
-```json
-{
-    "AppID": "你的 AppID",
-    "AppSecret": "你的 AppSecret"
-}
-```
-
-**方式 B：扫码登录** — pi 中执行 `/qq-login`，用手机 QQ 扫码，凭据自动写回同一文件，
-扫码人的 openid 自动绑定为"单人"白名单。
-
-#### 3. 本地加载扩展
+For local development:
 
 ```bash
 pi --extension /path/to/pi-qq
-# 或放入用户扩展目录，所有会话自动加载：
-ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 ```
 
-## 配置项
+## Login
 
-`~/.pi/agent/pi-qq.json`（手动配置或扫码写入，同一文件；除凭据外均可省略）：
+1. Start pi.
+2. Run `/qq-login`.
+3. Scan the QR code with mobile QQ.
 
-| 字段 | 默认 | 说明 |
+Credentials are kept in process memory only. Restarting pi requires scanning again. `/qq-logout` clears the in-memory credentials immediately.
+
+## Usage
+
+Send a QQ private message to the bot to start a task.
+
+- **Text**: normal chat message.
+- **Images**: sent to pi as vision input.
+- **Files**: saved under the current workspace at `.pi/pi-qq/YYYY-MM-DD/<msgId>/`; the saved path, size, and original filename are added to the prompt.
+
+Example file prompt seen by pi:
+
+```text
+User sent the following file via QQ (saved locally; use read/bash or other tools to access it):
+- /home/chen/project/myproj/.pi/pi-qq/2026-10-29/xxx/report.pdf (1.4MB, original name: report.pdf)
+
+User message:
+Summarize this file.
+```
+
+## Commands
+
+Run these in the pi terminal:
+
+| Command | Description |
+| --- | --- |
+| `/qq-login` | Log in with a QR code and bind the scanning QQ user |
+| `/qq-status` | Show login, connection, model, context, and bound user |
+| `/qq-logout` | Log out and clear in-memory credentials |
+| `/qq-budget` | Show passive-reply budget and stream-bubble diagnostics |
+| `/qq-md [text]` | Send a Markdown test message |
+| `/qq-stream-test` | Run a streamed timeline diagnostic |
+| `/qq-new` | Reset the current session (used by QQ `/new`) |
+
+QQ-side commands:
+
+| Command | Description |
+| --- | --- |
+| `/new` | Start a new pi session |
+| `/stop` | Abort the current run |
+| `/compact` | Compact the current context |
+| `/status` | Show session and usage status |
+| `/help` | Show command help |
+
+## Settings
+
+Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains settings only; credentials are never written to it.
+
+```json
+{
+  "markdownSupport": false,
+  "streamFlushMs": 10000,
+  "debug": false
+}
+```
+
+| Key | Default | Description |
 | --- | --- | --- |
-| `AppID` / `AppSecret` | 无 | 机器人凭据（文件权限 `0600`）；存在即免扫码直连（兼容小写 `appId`/`appSecret`） |
-| `allowedOpenid` | 扫码自动写入 | 单人绑定的 openid；手动配置时缺省则首个私聊用户自动绑定 |
-| `streamAssistant` | `true` | assistant 流式回传开关（关闭则整条回复完成后一次性发送） |
-| `markdownSupport` | `false` | 机器人是否有 markdown 权限；`true` 时回传透传原始 Markdown |
-| `usageRelay` | `true` | 本次 run 的输入/缓存命中率/输出/上下文摘要开关 |
-| `deliverAs` | `"steer"` | agent 忙碌时新消息的处理方式：`steer` 并入当前任务 / `followUp` 排队 |
-| `imageMaxSize` | `10485760` | QQ 图片下载上限（字节，默认 10MB） |
-| `fileMaxSize` | `52428800` | QQ 文件下载上限（字节，默认 50MB） |
-| `heartbeatMinutes` | `10` | 长任务心跳间隔（分钟），`0` 关闭 |
-| `heartbeatMaxMessages` | `3` | 每 run 消息心跳上限（流式心跳不受限） |
-| `streamRelay` | `true` | 流式载体（append 追加语义）；关闭则心跳与结果全走普通消息 |
-| `streamFlushMs` | `10000` | 流式汇总帧间隔（毫秒，最小 300；默认每 10s 汇总工具调用） |
-| `debug` | `false` | 诊断模式：SDK 日志 + 流式限流重试/超时日志 + 文本帧时间戳 |
+| `streamAssistant` | `true` | Stream assistant replies |
+| `markdownSupport` | `false` | Bot has QQ Markdown permission; pass Markdown through |
+| `usageRelay` | `true` | Send the per-run usage summary |
+| `deliverAs` | `"steer"` | Queue new messages while busy: `steer` or `followUp` |
+| `imageMaxSize` | `10485760` | QQ image download limit in bytes (10MB) |
+| `fileMaxSize` | `52428800` | QQ file download limit in bytes (50MB) |
+| `heartbeatMinutes` | `10` | Long-task heartbeat interval; `0` disables |
+| `heartbeatMaxMessages` | `3` | Per-run message heartbeat limit |
+| `streamRelay` | `true` | Use append-mode stream bubbles |
+| `streamFlushMs` | `10000` | Stream summary frame interval in ms (minimum 300) |
+| `debug` | `false` | SDK and stream retry/timeout diagnostics |
 
-## 命令
+## Notes
 
-| 位置 | 命令 | 行为 |
-| --- | --- | --- |
-| pi 侧 | `/qq-login` | 扫码登录/换绑 |
-| pi 侧 | `/qq-status` | 登录态、连接状态、绑定用户 |
-| pi 侧 | `/qq-budget` | 诊断：被动额度、流式气泡数、最近 msgId 新鲜度 |
-| pi 侧 | `/qq-logout` | 清除凭据并断开 |
-| pi 侧 | `/qq-md [text]` | 诊断：验证 C2C markdown 渲染能力 |
-| pi 侧 | `/qq-stream-test` | 诊断：追加模式流式全链路验证 |
-| QQ 侧 | `/new` `/stop` `/compact` `/status` `/help` | 会话控制（`/new` 会通过扩展命令重置会话） |
+- Only C2C (QQ private chat) is supported.
+- Incoming images are passed to the model as vision input; the current model must support image input.
+- Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
+- QQ limits passive replies per inbound message. Use `/qq-budget` to inspect the local budget.
 
-## 一个回合的消息形态
-
-QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总严格分泡，末尾附用量摘要）：
-
-```
-[活动气泡：💭思考/[n]🔧工具计数] ← streamRelay 开启时，每 10s 汇总
-[文本气泡：assistant 消息原文]   ← 每条文本消息独立成泡
-[活动气泡：后续工具汇总]
-[文本气泡：最终回复原文]
-📊 用量摘要
-• 输入：4.1k (99.9%)
-• 输出：2.3k
-• 上下文：0.4%
-```
-
-## 开发
-
-```bash
-npm install              # 安装依赖（prettier / vitest 为 devDependencies）
-npm run typecheck        # 类型检查
-npm test                 # vitest（8 个测试文件 / 81 个测试）
-npm run format           # Prettier 格式化
-npm run format:check     # Prettier 校验
-```
-
-单测位于 `test/*.test.ts`（vitest），`npm run typecheck` 同时检查测试代码。
-
-模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
-`config`（配置读写）/ `login`（扫码）/ `bot`（生命周期）/ `inbound`（QQ→pi）/
-`outbound`（pi→QQ 文本）/ `reply-budget`（被动回复额度）/ `budget-status`（`/qq-budget` 格式化）/ `run-feedback`（长任务反馈）/
-`append-stream`（追加模式流式发送器）/ `usage`（token 累计与用量摘要）/ `images`（QQ 图片下载与校验）/
-`files`（QQ 文件落盘与提示词路径）/ `download`（附件限流下载）/ `format`（字节格式化）。
-
-## 已知平台限制（实测）
-
-- **流式必须用追加语义**：SDK 内置的 `input_mode="replace"` 被平台拒绝（"已经提交的消息内容不可修改"），
-  本项目自实现 append 模式（增量追加 + DONE），见 `src/append-stream.ts`
-- **被动回复额度**：每条入站消息约 4 条/小时、msgId 约 5 分钟内有效；超限自动降级主动发送
-- **主动消息有严格配额**：长任务的心跳默认走流式（0 额度），消息心跳有保险丝（每 run ≤3 条）
-- 流式帧内容类型固定为 markdown（`sendMarkdown` 同理）；无 markdown 渲染能力的场景请关闭 `streamRelay`
-
-## 许可
+## License
 
 MIT

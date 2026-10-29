@@ -85,8 +85,8 @@ describe("inbound files", () => {
     expect(harness.userMessages).toHaveLength(1);
     const content = harness.userMessages[0]?.content as string;
     expect(content).toContain(saved.path);
-    expect(content).toContain("原始名：x.zip");
-    expect(content).toContain("用户消息：\n分析这个文件");
+    expect(content).toContain("original name: x.zip");
+    expect(content).toContain("User message:\n分析这个文件");
     expect(harness.triggers()).toBe(1);
   });
 
@@ -100,7 +100,7 @@ describe("inbound files", () => {
     await harness.run();
     const content = harness.userMessages[0]?.content as string;
     expect(content).toContain(saved.path);
-    expect(content).not.toContain("用户消息：");
+    expect(content).not.toContain("User message:");
     expect(harness.triggers()).toBe(1);
   });
 });

@@ -15,7 +15,7 @@ npm i @tencent-connect/qqbot-nodejs @tencent-connect/qqbot-connector qrcode-term
 | 包 | 版本锚点 | 用途 |
 | --- | --- | --- |
 | `@tencent-connect/qqbot-nodejs` | ^1.0.5 | QQ 协议层（本地另有源码 `/home/chen/project/qqbot-nodejs` 可查阅） |
-| `@tencent-connect/qqbot-connector` | ^1.2.0 | 扫码登录（方式 B） |
+| `@tencent-connect/qqbot-connector` | ^1.2.0 | 扫码登录（唯一登录方式） |
 | `qrcode-terminal` | ^0.12 | 二维码 ASCII 渲染（零依赖） |
 
 开发加载方式：`pi --extension /home/chen/project/pi-qq`（jiti 直接跑 TS，无需构建）。
@@ -28,8 +28,8 @@ pi-qq/
 ├── tsconfig.json          # 仅编辑器/typecheck 用，无构建
 ├── index.ts               # 扩展入口：registerCommand + pi.on 订阅 + 生命周期
 └── src/
-    ├── config.ts          # ~/.pi/agent/pi-qq.json 读写（0600、schema 兼容大小写、字段合并）
-    ├── login.ts           # F1：方式 A 直连判定 / 方式 B 扫码（connector + TUI 二维码弹窗）
+    ├── config.ts          # ~/.pi/agent/pi-qq.json 只读设置（不含凭据）
+    ├── login.ts           # F1：仅扫码登录（connector + TUI 二维码弹窗；凭据只返回内存）
     ├── bot.ts             # QQBot 实例生命周期：start/stop、中间件装配、重连/致命关闭码上报
     ├── inbound.ts         # F2/F3：白名单 → QQ 命令拦截 → 图片/文件附件 → sendUserMessage
     ├── images.ts          # F3：图片类型/大小校验、15s 超时下载、ImageContent 组装
@@ -52,21 +52,21 @@ pi-qq/
 | pi → QQ | `message_update`（assistant） | 流式：`openStream().update(转换后全文)`，节流 ≥300ms |
 | pi → QQ | `message_end`（assistant） | `stream.complete()`；无流上下文时 `sendText`；`stopReason==="error"` 回错误摘要 |
 | pi → QQ | `agent_end` | 用量摘要一条（F5 本次 run token/缓存命中率 + F6 上下文占比） |
-| 状态 | `session_start` / `session_shutdown` | 读配置启动 bot（A→B 判定）/ 幂等停止 |
+| 状态 | `session_start` / `session_shutdown` | 有内存登录态则启动 bot / 幂等停止 |
 | 汇总 | `agent_end` | 从 `event.messages` 汇总本次 run 的 assistant/toolResult usage |
 
 ## 3. 里程碑
 
 ### M1 — 登录接入与连接（F1 + bot.ts + config.ts）
 
-1. `package.json`、`tsconfig.json`、目录骨架；`config.ts`：读取/写入 `~/.pi/agent/pi-qq.json`（`AppID`/`AppSecret` 大小写兼容、其余字段合并保留、0600）。
-2. `bot.ts`：`createBot(credentials)`、`start/stop`、装配 `messageFilter`（回声过滤）+ `accessPolicy`（白名单）+ `concurrencyGuard`；`ready/disconnected/error` 上报到 `ctx.ui`。
+1. `package.json`、`tsconfig.json`、目录骨架；`config.ts`：只读 `~/.pi/agent/pi-qq.json` 设置，不读写凭据。
+2. `bot.ts`：`start/stop`、装配 `messageFilter`（回声过滤）+ `accessPolicy`（白名单）+ `concurrencyGuard`；`ready/disconnected/error` 上报到 `ctx.ui`。
 3. `login.ts` + `index.ts`：
-   - `session_start`：配置有凭据 → 直连（方式 A）；无凭据 → `ctx.ui.notify` 提示 `/qq-login`。
-   - `/qq-login`：`startQrConnect`（`displayQrCodeToConsole: false`），`onQrDisplayed` 在 TUI 弹窗画二维码（`qrcode-terminal`），`onSuccess` 写配置并启动。
-   - `/qq-status`（登录方式/来源/绑定用户/连接状态）、`/qq-logout`。
+   - `session_start`：进程内存有登录态则启动；否则提示 `/qq-login`。
+   - `/qq-login`：`startQrConnect`（`displayQrCodeToConsole: false`），`onQrDisplayed` 在 TUI 弹窗画二维码（`qrcode-terminal`），`onSuccess` 把凭据与 openid 存入内存并启动。
+   - `/qq-status`（内存登录/连接/绑定用户）、`/qq-logout`（清内存凭据）。
 
-**验收**：手写配置文件启动后 `/qq-status` 显示在线；删掉凭据走扫码后同样在线；`4914/4915` 致命关闭码给出明确提示。
+**验收**：扫码后 `/qq-status` 在线；pi 进程重启后需重新扫码；`4914/4915` 致命关闭码给出明确提示。
 
 ### M2 — 单人聊天与完整回复（F2 文本 + F4 非流式 + reply-budget.ts）
 
@@ -118,7 +118,7 @@ pi-qq/
 | 流式消息对非 C2C/过期 `msgId` 抛错 | 流式路径崩溃 | `openStream` 前置校验，失败即降级 `sendText`（M4 已含） |
 | 被动额度耗尽（长 run 多回复） | 消息发不出去 | reply-budget 统一发牌，超限降级主动+提示；摘要固定合并 |
 | markdown 转换漏判 | QQ 端残留记号 | 转换函数单测覆盖常见结构；允许透传开关兜底 |
-| connector 混淆代码异常 / 扫码接口变更 | 扫码不可用 | 方式 A 直连始终可用（不依赖 connector） |
+| connector 混淆代码异常 / 扫码接口变更 | 无法登录 | 重试扫码；升级 connector；保留日志排查 |
 | pi 事件在非 TUI 模式无 UI | 扩展报错 | 所有 `ctx.ui` 调用前判 `ctx.hasUI`/`ctx.mode` |
 
 ## 6. Todo-List（随进度勾选）
@@ -127,16 +127,16 @@ pi-qq/
 
 - [x] 依赖安装：`@tencent-connect/qqbot-nodejs` + `@tencent-connect/qqbot-connector` + `qrcode-terminal`（用户已执行）
 - [x] pi / SDK / connector API 签名核对（types.d.ts + 本地源码）
-- [x] `package.json` 完善（`type: module`、private、description）
+- [x] `package.json` 完善（`type: module`、description；发布时移除 private）
 - [x] `tsconfig.json`（`moduleResolution: bundler`；`paths` 借用 pi 发行目录类型 + `typeRoots` 借用其 @types/node，typecheck 走 `npx typescript`，无需安装 devDeps）
 
 ### M1 — 登录接入与连接
 
-- [x] `src/config.ts`：`~/.pi/agent/pi-qq.json` 读写（`AppID`/`AppSecret` 大小写兼容、字段合并保留、`0600`、credentials/allowedOpenid 存取）
+- [x] `src/config.ts`：`~/.pi/agent/pi-qq.json` 只读设置（不含凭据）
 - [x] `src/bot.ts`：`createBot/start/stop`、中间件装配（messageFilter/accessPolicy/concurrencyGuard）、连接状态跟踪、致命关闭码上报
-- [x] `src/login.ts`：方式 A 直连判定 + 方式 B `startQrConnect`（含二维码展示与取消）
-- [x] `index.ts`：`/qq-login` `/qq-status` `/qq-logout` 命令 + `session_start` 自动接入 + `session_shutdown` 幂等停止
-- [x] 验收：配置直连在线 / 扫码在线 / `4914` `4915` 明确提示（用户实测通过；`4914/4915` 与扫码路径如未触发可在后续使用中观察）
+- [x] `src/login.ts`：仅扫码 `startQrConnect`（含二维码展示与取消；凭据返回内存）
+- [x] `index.ts`：`/qq-login` `/qq-status` `/qq-logout` 命令 + 内存登录态 + `session_start` 接入 + `session_shutdown` 幂等停止
+- [x] 验收：扫码在线 / pi 重启后重新扫码 / `4914` `4915` 明确提示（扫码路径已实测；`4914/4915` 如未触发可在后续观察）
 
 ### M2 — 单人聊天与完整回复（非流式）
 

@@ -91,14 +91,14 @@ describe("formatBudgetStatus", () => {
 
   it("有目标时展示普通/流式/估算剩余", () => {
     expect(formatBudgetStatus(snapshot, last, t0 + 12_000)).toEqual([
-      "pi-qq 被动回复预算",
-      "上限：4 条/msg（1h）",
-      "最近入站：openid-1… / msg-1234…，12s 前",
-      "普通被动剩余：3",
-      "流式气泡：2 条（当前 msgId）",
-      "估算剩余：1 条（仅诊断）",
-      "msgId 窗口：有效",
-      "已记录：普通 1 条 / 流式 5 条 / 跟踪 1 个 msgId",
+      "pi-qq passive reply budget",
+      "Limit: 4/msg (1h)",
+      "Last inbound: openid-1… / msg-1234…, 12s ago",
+      "Passive remaining: 3",
+      "Stream bubbles: 2 (current msgId)",
+      "Estimated remaining: 1 (diagnostic only)",
+      "msgId window: valid",
+      "Recorded: passive 1 / stream 5 / 1 msgId(s)",
     ]);
   });
 
@@ -116,14 +116,14 @@ describe("formatBudgetStatus", () => {
       streamBubblesTotal: 0,
     };
     expect(formatBudgetStatus(empty, undefined, t0)).toEqual([
-      "pi-qq 被动回复预算",
-      "上限：4 条/msg（1h）",
-      "最近入站：无",
-      "普通被动剩余：—",
-      "流式气泡：0 条（当前 msgId）",
-      "估算剩余：— 条（仅诊断）",
-      "msgId 窗口：—",
-      "已记录：普通 0 条 / 流式 0 条 / 跟踪 0 个 msgId",
+      "pi-qq passive reply budget",
+      "Limit: 4/msg (1h)",
+      "Last inbound: none",
+      "Passive remaining: —",
+      "Stream bubbles: 0 (current msgId)",
+      "Estimated remaining: — (diagnostic only)",
+      "msgId window: —",
+      "Recorded: passive 0 / stream 0 / 0 msgId(s)",
     ]);
   });
 });

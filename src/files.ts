@@ -129,10 +129,10 @@ export function formatFilePrompt(files: readonly SavedFile[], userText: string):
   if (files.length === 0) return userText;
 
   const lines = [
-    "用户通过 QQ 发送了以下文件（已保存到本机，可用 read/bash 等工具访问）：",
-    ...files.map((file) => `- ${file.path}（${formatBytes(file.size)}，原始名：${file.originalName}）`),
+    "User sent the following file(s) via QQ (saved locally; use read/bash or other tools to access):",
+    ...files.map((file) => `- ${file.path} (${formatBytes(file.size)}, original name: ${file.originalName})`),
   ];
   const text = userText.trim();
-  if (text) lines.push("", "用户消息：", text);
+  if (text) lines.push("", "User message:", text);
   return lines.join("\n");
 }

@@ -25,9 +25,9 @@ describe("formatFilePrompt", () => {
 
   it("包含路径、大小、原始名和用户消息", () => {
     expect(formatFilePrompt(files, "分析它")).toBe(
-      "用户通过 QQ 发送了以下文件（已保存到本机，可用 read/bash 等工具访问）：\n" +
-        "- /tmp/a.zip（1.5MB，原始名：a.zip）\n\n" +
-        "用户消息：\n分析它",
+      "User sent the following file(s) via QQ (saved locally; use read/bash or other tools to access):\n" +
+        "- /tmp/a.zip (1.5MB, original name: a.zip)\n\n" +
+        "User message:\n分析它",
     );
   });
 
@@ -36,7 +36,7 @@ describe("formatFilePrompt", () => {
   });
 
   it("无文本时只输出文件块", () => {
-    expect(formatFilePrompt(files, "  ")).not.toContain("用户消息");
+    expect(formatFilePrompt(files, "  ")).not.toContain("User message:");
   });
 });
 

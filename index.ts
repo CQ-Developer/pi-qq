@@ -1,13 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import {
-  clearCredentials,
-  getCredentials,
-  getSettings,
-  readConfig,
-  saveCredentials,
-  type Credentials,
-  type PiQQConfig,
-} from "./src/config";
+import { getSettings, readConfig, type Credentials } from "./src/config";
 import { startBot, type BotState, type RunningBot } from "./src/bot";
 import { runQrLogin } from "./src/login";
 import { createInboundHandler } from "./src/inbound";
@@ -19,12 +11,30 @@ import { formatTokenCount, formatUsageSummary, sumUsageMessages, type UsageTotal
 import { formatBudgetStatus } from "./src/budget-status";
 
 /**
- * pi-qq 扩展入口：
- * - M1：登录接入（配置直连 / 扫码）、/qq-login /qq-status /qq-logout、生命周期
- * - M2：QQ 单人聊天注入 pi（inbound）+ assistant 消息非流式回传（message_end）
+ * pi-qq extension entry.
+ * QR login only; credentials live in process memory and are never persisted.
  */
 
-/** 会话级状态；reload/会话切换后由新 runtime 重建 */
+/** In-memory login state; survives extension reload/session replacement in one process. */
+interface LoginState {
+  credentials: Credentials;
+  allowedOpenid: string;
+}
+
+const LOGIN_STATE_KEY = "__piQQLoginState";
+type GlobalWithLogin = typeof globalThis & { [LOGIN_STATE_KEY]?: LoginState };
+
+function getLoginState(): LoginState | undefined {
+  return (globalThis as GlobalWithLogin)[LOGIN_STATE_KEY];
+}
+
+function setLoginState(state: LoginState | undefined): void {
+  const store = globalThis as GlobalWithLogin;
+  if (state) store[LOGIN_STATE_KEY] = state;
+  else delete store[LOGIN_STATE_KEY];
+}
+
+/** Session-level runtime state; rebuilt by a new runtime after reload/session switch. */
 let running: RunningBot | undefined;
 let lastState: BotState = "stopped";
 let stateDetail: string | undefined;
@@ -33,7 +43,7 @@ const budget = new ReplyBudget();
 const runFeedback = new RunFeedback({
   bot: () => running?.bot,
   budget,
-  boundOpenid: () => readConfig().config.allowedOpenid,
+  boundOpenid: () => getLoginState()?.allowedOpenid,
   getHeartbeatMinutes: () => getSettings(readConfig().config).heartbeatMinutes,
   getHeartbeatMaxMessages: () => getSettings(readConfig().config).heartbeatMaxMessages,
   getStreamRelay: () => getSettings(readConfig().config).streamRelay,
@@ -41,20 +51,20 @@ const runFeedback = new RunFeedback({
   getDebug: () => getSettings(readConfig().config).debug,
   makeChannel: () => ({
     budget,
-    boundOpenid: readConfig().config.allowedOpenid ?? "",
+    boundOpenid: getLoginState()?.allowedOpenid ?? "",
     onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
   }),
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
 });
 
-const fmtTokens = (n: number | null): string => (n === null ? "未知" : formatTokenCount(n));
+const fmtTokens = (n: number | null): string => (n === null ? "unknown" : formatTokenCount(n));
 
 export default function (pi: ExtensionAPI) {
   const maskAppId = (appId: string) => `${appId.slice(0, 4)}****`;
 
   // —— 实时配置读取器（绑定/设置变更即时生效）——
 
-  const getAllowedOpenid = () => readConfig().config.allowedOpenid;
+  const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getBoundOpenid = getAllowedOpenid;
   const getDeliverAs = () => getSettings(readConfig().config).deliverAs;
 
@@ -66,7 +76,7 @@ export default function (pi: ExtensionAPI) {
     const settings = getSettings(config);
     if (!settings.usageRelay) return null;
 
-    const bound = config.allowedOpenid;
+    const bound = getLoginState()?.allowedOpenid;
     const bot = running?.bot;
     const hasUsage = usage.input + usage.output + usage.cacheRead + usage.cacheWrite > 0;
     if (!bound || !bot || !hasUsage) return null;
@@ -87,31 +97,34 @@ export default function (pi: ExtensionAPI) {
   };
 
   const getStatusLines = (): string[] => {
-    const { config } = readConfig();
+    const login = getLoginState();
     const usage = sessionCtx?.getContextUsage();
     const model = sessionCtx?.model;
     return [
-      "pi-qq 状态",
-      `连接：${lastState}${stateDetail ? `（${stateDetail}）` : ""}`,
-      `模型：${model?.name ?? "未选择"}`,
+      "pi-qq status",
+      `Login: ${login ? `QR login, in memory (AppID ${maskAppId(login.credentials.appId)})` : "not logged in"}`,
+      `Connection: ${lastState}${stateDetail ? ` (${stateDetail})` : ""}`,
+      `Model: ${model?.name ?? "none"}`,
       usage
-        ? `上下文：${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)}（${usage.percent?.toFixed(1) ?? "?"}%）`
-        : "上下文：未知",
-      `绑定用户：${config.allowedOpenid ?? "未绑定（首个私聊用户将自动绑定）"}`,
+        ? `Context: ${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)} (${usage.percent?.toFixed(1) ?? "?"}%)`
+        : "Context: unknown",
+      `Bound user: ${login?.allowedOpenid ?? "none"}`,
+      `Settings: ~/.pi/agent/pi-qq.json`,
     ];
   };
 
-  // —— 登录与连接（M1）——
+  // —— Login and connection ——
 
-  const startWithCredentials = (ctx: ExtensionContext, creds: Credentials, config: PiQQConfig, source: string) => {
+  const startWithCredentials = (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
+    const settings = getSettings(readConfig().config);
     running?.stop();
     stateDetail = undefined;
     sessionCtx = ctx;
     running = startBot({
       credentials: creds,
-      allowedOpenid: config.allowedOpenid,
-      markdownSupport: config.markdownSupport,
-      debug: config.debug,
+      allowedOpenid,
+      markdownSupport: settings.markdownSupport,
+      debug: settings.debug,
       onMessage: createInboundHandler({
         pi,
         ctx,
@@ -128,13 +141,12 @@ export default function (pi: ExtensionAPI) {
       onStateChange: (state, detail) => {
         lastState = state;
         stateDetail = detail;
-        // 只对用户需要知道的状态发通知；reconnecting 高频且 SDK 会自愈，不打扰
-        if (state === "connected") ctx.ui.notify(`pi-qq 已连接（${source}）`, "info");
-        else if (state === "blocked") ctx.ui.notify(`pi-qq ${detail ?? "连接被致命关闭"}`, "error");
+        if (state === "connected") ctx.ui.notify("pi-qq connected", "info");
+        else if (state === "blocked") ctx.ui.notify(`pi-qq ${detail ?? "connection blocked"}`, "error");
         else if (state === "stopped" && detail) ctx.ui.notify(`pi-qq ${detail}`, "warning");
       },
       onRecoverableError: () => {
-        // 可恢复错误由 SDK 自动重连；长时间故障约每分钟一次，M1 不告警
+        // Recoverable errors are handled by the SDK reconnect loop.
       },
     });
   };
@@ -143,22 +155,21 @@ export default function (pi: ExtensionAPI) {
     running?.stop();
     running = undefined;
     lastState = "stopped";
+    stateDetail = undefined;
   };
 
-  // —— 生命周期 ——
+  // —— Lifecycle ——
 
   pi.on("session_start", (_event, ctx) => {
-    const { config, error } = readConfig();
-    if (error) {
-      ctx.ui.notify(`pi-qq ${error}`, "error");
-      return;
-    }
-    const creds = getCredentials(config);
-    if (creds) {
-      startWithCredentials(ctx, creds, config, "配置直连");
+    const { error } = readConfig();
+    if (error) ctx.ui.notify(`pi-qq ${error}`, "error");
+
+    const login = getLoginState();
+    if (login) {
+      startWithCredentials(ctx, login.credentials, login.allowedOpenid);
     } else if (ctx.hasUI) {
       ctx.ui.notify(
-        "pi-qq 未配置机器人凭据：执行 /qq-login 扫码登录，或在 ~/.pi/agent/pi-qq.json 写入 { AppID, AppSecret } 后重启会话",
+        "pi-qq is not logged in. Run /qq-login and scan a QR code. Credentials are kept in memory only; restarting pi requires scanning again.",
         "warning",
       );
     }
@@ -248,9 +259,9 @@ export default function (pi: ExtensionAPI) {
 
     const payload = settings.markdownSupport ? text : markdownToPlain(text);
 
-    const bound = config.allowedOpenid;
+    const bound = getLoginState()?.allowedOpenid;
     if (!bound) {
-      ctx.ui.notify("pi-qq：未绑定用户，跳过回传", "warning");
+      ctx.ui.notify("pi-qq: no bound QQ user; skipping reply.", "warning");
       return;
     }
 
@@ -261,142 +272,126 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  // —— 命令（M1）——
+  // —— Commands ——
 
   pi.registerCommand("qq-login", {
-    description: "pi-qq：扫码登录/换绑 QQ 机器人（凭据写入 ~/.pi/agent/pi-qq.json）",
+    description: "pi-qq: log in with a QR code and bind the scanning QQ user",
     handler: async (_args, ctx) => {
-      const { config, error } = readConfig();
-      if (error) {
-        ctx.ui.notify(`pi-qq ${error}`, "error");
+      const { error } = readConfig();
+      if (error) ctx.ui.notify(`pi-qq ${error}`, "error");
+
+      stopIfRunning();
+      setLoginState(undefined);
+      const result = await runQrLogin(ctx);
+      if (!result) return;
+      if (!result.userOpenid) {
+        ctx.ui.notify("pi-qq: QR login did not return a user openid; cannot bind.", "error");
         return;
       }
-      if (getCredentials(config) && running) {
-        stopIfRunning();
-        ctx.ui.notify("已断开当前连接，开始扫码换绑…", "info");
-      }
-      const creds = await runQrLogin(ctx);
-      if (!creds) return; // 取消或失败，原因已提示
-      saveCredentials(creds, { userOpenid: creds.userOpenid });
-      startWithCredentials(
-        ctx,
-        creds,
-        { ...config, allowedOpenid: creds.userOpenid ?? config.allowedOpenid },
-        "扫码登录",
-      );
+
+      const credentials: Credentials = { appId: result.appId, appSecret: result.appSecret };
+      setLoginState({ credentials, allowedOpenid: result.userOpenid });
+      startWithCredentials(ctx, credentials, result.userOpenid);
     },
   });
 
   pi.registerCommand("qq-status", {
-    description: "pi-qq：查看登录态、连接状态与绑定用户",
+    description: "pi-qq: show login, connection, and bound QQ user",
     handler: async (_args, ctx) => {
-      const { config, error } = readConfig();
-      const creds = error ? null : getCredentials(config);
-      const source = creds ? (config.AppID ? "配置文件（AppID）" : "扫码写入") : "未配置";
-      const lines = [
-        "pi-qq 状态",
-        `连接：${lastState}${stateDetail ? `（${stateDetail}）` : ""}`,
-        creds ? `凭据：${maskAppId(creds.appId)}（来源：${source}）` : "凭据：未配置",
-        `绑定用户：${config.allowedOpenid ?? "未绑定"}`,
-        "配置文件：~/.pi/agent/pi-qq.json",
-      ];
-      ctx.ui.notify(lines.join("\n"), error ? "warning" : "info");
+      ctx.ui.notify(getStatusLines().join("\n"), "info");
     },
   });
 
   pi.registerCommand("qq-budget", {
-    description: "pi-qq 诊断：查看被动回复预算、流式气泡与最近入站目标",
+    description: "pi-qq: show passive reply budget, stream bubbles, and last inbound target",
     handler: async (_args, ctx) => {
       ctx.ui.notify(formatBudgetStatus(budget.snapshot(), budget.lastTarget).join("\n"), "info");
     },
   });
 
   pi.registerCommand("qq-logout", {
-    description: "pi-qq：清除凭据并断开连接（保留绑定与设置）",
+    description: "pi-qq: log out and clear in-memory credentials",
     handler: async (_args, ctx) => {
       stopIfRunning();
-      clearCredentials();
-      ctx.ui.notify("pi-qq 已断开并清除凭据（绑定与设置保留）", "info");
+      setLoginState(undefined);
+      ctx.ui.notify("pi-qq logged out. Credentials cleared from memory; run /qq-login to scan again.", "info");
     },
   });
 
   pi.registerCommand("qq-new", {
-    description: "pi-qq：重置当前会话（供 QQ 侧 /new 调用）",
+    description: "pi-qq: reset the current session (used by QQ /new)",
     handler: async (_args, ctx) => {
       if (!ctx.isIdle()) {
-        ctx.ui.notify("任务运行中，无法重置会话；请先 /stop", "warning");
+        ctx.ui.notify("pi-qq: the agent is busy; run /stop before resetting the session.", "warning");
         return;
       }
       const { cancelled } = await ctx.newSession();
-      if (cancelled) ctx.ui.notify("会话重置已取消", "warning");
+      if (cancelled) ctx.ui.notify("pi-qq: session reset cancelled.", "warning");
     },
   });
 
-  // —— 诊断命令（markdown / 流式能力实证）——
+  // —— Diagnostic commands ——
 
   const diagTarget = () => {
     const last = budget.lastTarget;
     if (last) return { scope: "c2c" as const, targetId: last.openid, msgId: last.msgId };
-    const bound = readConfig().config.allowedOpenid;
+    const bound = getLoginState()?.allowedOpenid;
     return bound ? { scope: "c2c" as const, targetId: bound } : undefined;
   };
 
   pi.registerCommand("qq-md", {
-    description: "pi-qq 诊断：发送一条 Markdown 消息（验证 C2C markdown 渲染能力）",
+    description: "pi-qq: send a Markdown message to verify QQ C2C Markdown rendering",
     handler: async (args, ctx) => {
       if (!running) {
-        ctx.ui.notify("pi-qq 未连接", "warning");
+        ctx.ui.notify("pi-qq is not connected.", "warning");
         return;
       }
       const target = diagTarget();
       if (!target) {
-        ctx.ui.notify("pi-qq：无可用发送目标（请先在 QQ 发一条消息，或配置 allowedOpenid）", "warning");
+        ctx.ui.notify("pi-qq: no send target. Send a QQ message first.", "warning");
         return;
       }
-      const content = args?.trim() || "**Markdown 测试**\n# 一级标题\n- 列表项一\n- 列表项二\n[链接](https://qq.com)";
+      const content = args?.trim() || "**Markdown test**\n# Heading\n- Item one\n- Item two\n[Link](https://qq.com)";
       try {
         await running.bot.sendMarkdown(target, content);
-        ctx.ui.notify(
-          "已发送 Markdown 测试消息：若 QQ 中渲染为富文本 → C2C markdown 可用；若显示原文/报错 → 记录现象",
-          "info",
-        );
+        ctx.ui.notify("Markdown test sent. Check whether QQ renders it as rich text.", "info");
       } catch (err) {
-        ctx.ui.notify(`Markdown 发送失败：${(err as Error).message}`, "error");
+        ctx.ui.notify(`Markdown send failed: ${(err as Error).message}`, "error");
       }
     },
   });
 
   pi.registerCommand("qq-stream-test", {
-    description: "pi-qq 诊断：汇总帧流式测试（思考/工具计数/文本增量）",
+    description: "pi-qq: run a streamed timeline diagnostic (thinking/tools/text)",
     handler: async (_args, ctx) => {
       if (!running) {
-        ctx.ui.notify("pi-qq 未连接", "warning");
+        ctx.ui.notify("pi-qq is not connected.", "warning");
         return;
       }
       const last = budget.lastTarget;
       if (!last) {
-        ctx.ui.notify("pi-qq：请先在 QQ 给机器人发一条消息（流式需要锚定 msgId）", "warning");
+        ctx.ui.notify("pi-qq: send a QQ message first (streaming needs a msgId).", "warning");
         return;
       }
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
         const stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
-        await stream.append("思考中...\n[3] 🔧 bash\n[2] 🔧 read\n");
+        await stream.append("Thinking...\n[3] 🔧 bash\n[2] 🔧 read\n");
         await sleep(1200);
-        await stream.append("\n**中间消息原文**：第一回合回复。\n");
+        await stream.append("\n**Intermediate message**: first-turn reply.\n");
         await sleep(1200);
         await stream.append("[1] 🔧 edit\n");
         await sleep(800);
-        await stream.append("\n**最终回复原文**（流式追加）");
-        let doneNote = "DONE 成功";
+        await stream.append("\n**Final reply** (streamed append)");
+        let doneNote = "DONE succeeded";
         try {
           await stream.done();
         } catch (doneErr) {
-          doneNote = `DONE 帧被拒：${(doneErr as Error).message}`;
+          doneNote = `DONE rejected: ${(doneErr as Error).message}`;
         }
-        ctx.ui.notify(`时间线流式测试：各帧成功、${doneNote}。请看 QQ：气泡应为 💭/🔧/消息文本 的时间线形态`, "info");
+        ctx.ui.notify(`Stream timeline test: frames sent, ${doneNote}. Check the QQ activity timeline.`, "info");
       } catch (err) {
-        ctx.ui.notify(`汇总帧测试失败：${(err as Error).message}`, "error");
+        ctx.ui.notify(`Stream timeline test failed: ${(err as Error).message}`, "error");
       }
     },
   });

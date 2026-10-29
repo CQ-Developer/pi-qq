@@ -1,7 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
-import { setAllowedOpenid } from "./config";
 import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
 import {
@@ -14,9 +13,9 @@ import {
 import { formatFilePrompt, saveInboundFiles, type SavedFile } from "./files";
 
 /**
- * F2：QQ → pi 入站处理。
- * 链路：C2C 过滤 → 单人白名单（含首个用户自动绑定）→ QQ 侧命令拦截 → 文本注入 pi。
- * 注意：注入消息必须用 pi.sendUserMessage（ExtensionContext 上没有该 API）。
+ * F2: QQ → pi inbound handling.
+ * Chain: C2C filter → QR-bound user whitelist → QQ commands → text/image/file injection.
+ * Use pi.sendUserMessage (ExtensionContext has no such API).
  */
 
 export interface InboundDeps {
@@ -43,15 +42,9 @@ export function createInboundHandler(deps: InboundDeps) {
     if (msg.kind !== "c2c") return;
 
     const allowed = deps.getAllowedOpenid();
-    if (allowed && msg.senderId !== allowed) return;
+    if (!allowed || msg.senderId !== allowed) return;
 
-    // 未绑定 → 首个私聊用户自动绑定（features.md F1 方式 A 说明）
-    if (!allowed) {
-      setAllowedOpenid(msg.senderId);
-      deps.ctx.ui.notify(`pi-qq：已自动绑定首个私聊用户（${msg.senderId.slice(0, 8)}…）`, "info");
-    }
-
-    // 记录被动回复目标与新鲜度起点（供 outbound 发牌）
+    // Record passive reply target/freshness for outbound budget.
     deps.budget.observeInbound(msg.senderId, msg.messageId);
 
     const channel: ReplyChannel = {
