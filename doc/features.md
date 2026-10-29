@@ -91,13 +91,14 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **行为**
 
-- 数据源：入站 C2C 消息的 `attachments`（`content_type` / `url` / `filename`）。
-- 扩展下载图片 → 校验类型（jpg / png / webp / gif）与大小 → 转 `ImageContent`（base64 + mimeType）→ 与消息文本一起 `pi.sendUserMessage()`（接口原生支持 `TextContent | ImageContent[]` 混合）。
-- 一条消息多张图片时按顺序全部注入。
-- 约束与降级：
-  - 下载超时 / 超限（默认上限 10MB，可配置）/ 类型不支持 → QQ 回一条失败提示，不注入 pi。
-  - 当前模型无视觉能力时，QQ 提示"当前模型不支持图片输入"。
-- 已确认：pi 不向 QQ 发送图片——LLM 只能输出纯文本，无图片生成场景（原 pi → QQ 的 `qq_send_image` 方案移除）。
+- 数据源：入站 C2C 消息的 `attachments`（`content_type` / `url` / `filename` / `size`）。
+- 扩展下载图片 → 校验类型（jpg / jpeg / png / webp / gif）与大小 → 转 `ImageContent`（base64 + mimeType）→ 与消息文本一起 `pi.sendUserMessage()`。
+- 类型判断：`content_type` 优先（兼容 `image/jpg`），非图片类型时按文件名扩展名兜底；明确声明为不支持的 `image/*`（如 svg）直接拒绝。
+- 下载约束：单张超时 15s；`imageMaxSize` 默认 10MB；先看附件元数据，再在流式读取时二次限制实际字节数。
+- 一条消息多张图片时按原顺序处理；部分失败时成功的图片仍注入，并回一条失败清单。
+- 全部失败且没有文字 → 不注入 pi，只回失败提示；有文字 → 文字仍注入并提示图片失败。
+- 当前模型无视觉能力（`ctx.model.input` 不含 `image`）时，QQ 提示“当前模型不支持图片输入”；有文字则只发送文字。
+- 已确认：pi 不向 QQ 发送图片——LLM 只能输出纯文本，无图片生成场景。
 
 ### F4 回传 assistant 消息
 
@@ -254,4 +255,4 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | M1 | F1 登录接入（配置直连 + 扫码登录）+ 凭据持久化 + 连接启动 | 配置直连或扫码后 `/qq-status` 显示在线 |
 | M2 | F2 单人聊天 + F4 assistant 回传（先非流式） | QQ 发消息得到 pi 回复 |
 | M3 | F5/F6 用量摘要（本次 run 输入/缓存命中率/输出/上下文） | 严格三行摘要正确呈现 |
-| M4 | F4 流式模式 + F3 QQ 图片消息 + 降级策略打磨 | 长回复流式、图片可进入 pi 会话 |
+| M4 | F3 QQ 图片消息 + markdownSupport + 打磨 | 图片可进入 pi 会话；无视觉模型有提示 |

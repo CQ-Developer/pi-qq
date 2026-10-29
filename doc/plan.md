@@ -32,6 +32,7 @@ pi-qq/
     ├── login.ts           # F1：方式 A 直连判定 / 方式 B 扫码（connector + TUI 二维码弹窗）
     ├── bot.ts             # QQBot 实例生命周期：start/stop、中间件装配、重连/致命关闭码上报
     ├── inbound.ts         # F2/F3：白名单 → QQ 命令拦截 → 图片下载转 ImageContent → sendUserMessage
+    ├── images.ts          # F3：附件类型/大小校验、15s 超时下载、ImageContent 组装
     ├── outbound.ts        # F4：markdown→纯文本转换、流式(openStream)/降级(sendText)、分块
     ├── reply-budget.ts    # §3：被动回复预算（msgId 5min 窗口、4条/h、降级主动发送）
     └── usage.ts           # F5/F6：本次 run 用量汇总（agent_end messages）、严格三行摘要
@@ -93,11 +94,11 @@ pi-qq/
 
 ### M4 — 图片与打磨（F3 + markdownSupport 透传）
 
-1. 流式：`message_update` 接 `openStream`（基于入站 `msgId`，无流上下文自动降级 `sendText`），`message_end` `complete()`；遵守 ≥300ms 节流。
-2. `inbound.ts` 图片：`attachments` 下载（超时/`imageMaxSize`/类型校验）→ `ImageContent[]` 与文本一起注入；失败 QQ 提示；模型无视觉能力时提示。
-3. 打磨：`/compact` 命令、typing 指示、错误路径（下载失败/ApiError/流中断）全覆盖。
+1. [x] F3 图片：`images.ts` 类型/大小校验、15s 超时下载、流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示。
+2. [ ] `markdownSupport: true`：assistant 非流式路径需要走 `sendMarkdown`（当前 `sendReply` 仍固定 `sendText`）。
+3. [ ] QQ 侧 `/new`、长代码块转文件附件、多气泡 + 摘要下的被动额度实测、`debug` 超时日志。
 
-**验收**：长回复在 QQ 中逐步增长；QQ 发图后 pi 能描述图片内容；额度全程不超限。
+**验收**：QQ 发图后 pi 能描述图片内容；无视觉模型有明确提示；额度全程不超限。
 
 ## 4. 验证策略
 
@@ -169,12 +170,16 @@ pi-qq/
 - [x] 严格三行摘要：输入（总输入）+ 缓存命中率、输出、上下文占比；`tokens===null` 显示重建中
 - [x] 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送
 - [ ] 验收（待 QQ 实测）：摘要数字与本次 run 实际用量一致
-  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组（当前全量 76 项断言通过）。
+  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组/图片类型与大小校验（当前全量 98 项断言通过）。
 
-### M4 — 流式、图片与打磨
+### M4 — 图片与打磨
 
-- [ ] `openStream` 流式接线（`message_update` + 300ms 节流 + 无流上下文降级）
-- [ ] F3 图片：`attachments` 下载/校验/`ImageContent` 注入 + `imageMaxSize` + 失败提示
-- [ ] `/compact` 命令、typing 指示（C2C）
-- [ ] 错误路径打磨（下载失败/ApiError/流中断/致命关闭码）
-- [ ] 验收：长回复流式；图片进入 pi 会话；全程额度不超限
+- [x] F3 图片：`images.ts` 类型/大小校验 + 15s 超时 + 流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示
+- [x] 流式接线（M2.5 已完成，`AppendStream` + 文本/活动分泡）
+- [x] `/compact` 命令、typing 指示（C2C）
+- [ ] `markdownSupport: true` 时 assistant 非流式路径走 `sendMarkdown`（当前 `sendReply` 固定 `sendText`）
+- [ ] QQ 侧 `/new` 支持
+- [ ] 长代码块转文件附件
+- [ ] 多气泡 + 摘要下的被动额度实测
+- [ ] `debug` 抓超时日志并收尾错误路径
+- [ ] 验收（待 QQ 实测）：QQ 发图后 pi 能描述图片内容；无视觉模型有提示；全程额度不超限

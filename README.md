@@ -12,7 +12,7 @@
 - **完整回复**：assistant 消息实时回传（流式追加 / 降级分块），Markdown 转手机可读纯文本
 - **长任务反馈**："正在输入"保鲜 + 每 10s 汇总工具调用 + 节流心跳（`⏱ 已运行 25 分钟 · [86] 🔧 bash · [12] 🔧 read`），数十分钟级任务不再黑盒等待
 - **用量摘要**：每次 QQ 任务后回传本次 run 的输入（含缓存命中率）、输出与上下文占比，严格三行
-- **发送图片**：QQ 端发图 → 自动下载注入 pi 作为视觉输入
+- **发送图片**：QQ 端发图 → 自动下载注入 pi 作为视觉输入（jpg/png/webp/gif，默认 10MB 上限）
 - **诊断命令**：`/qq-md`、`/qq-stream-test` 快速验证平台能力
 
 架构与决策记录见 [doc/features.md](./doc/features.md)，实施计划与验收见 [doc/plan.md](./doc/plan.md)。
@@ -96,13 +96,13 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 
 ```bash
 npm run typecheck      # 类型检查（npx tsc，无需本地安装）
-npx -y jiti test/run.ts  # 单元测试（76 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要）
+npx -y jiti test/run.ts  # 单元测试（98 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要/图片校验）
 ```
 
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
 `config`（配置读写）/ `login`（扫码）/ `bot`（生命周期）/ `inbound`（QQ→pi）/
 `outbound`（pi→QQ 文本）/ `reply-budget`（被动回复额度）/ `run-feedback`（长任务反馈）/
-`append-stream`（追加模式流式发送器）/ `usage`（token 累计与用量摘要）。
+`append-stream`（追加模式流式发送器）/ `usage`（token 累计与用量摘要）/ `images`（QQ 图片下载与校验）。
 
 ## 已知平台限制（实测）
 

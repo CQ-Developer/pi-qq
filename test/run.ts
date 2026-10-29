@@ -6,6 +6,13 @@ import assert from "node:assert/strict";
 import { markdownToPlain, chunkText, TEXT_CHUNK_LIMIT } from "../src/outbound.ts";
 import { ReplyBudget } from "../src/reply-budget.ts";
 import { getSettings } from "../src/config.ts";
+import {
+  buildImageMessageContent,
+  formatBytes,
+  formatImageFailures,
+  resolveImageMime,
+  resolveInboundImages,
+} from "../src/images.ts";
 import { formatTokenCount, formatUsageSummary, sumUsageMessages } from "../src/usage.ts";
 
 let passed = 0;
@@ -357,6 +364,86 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
     "活动 2 严格按事件顺序显示 read → thinking → bash",
   );
   eq(bubbles[3], "最终回复", "最终回复为纯文本气泡");
+}
+
+// ———— images：F3 ————
+
+eq(resolveImageMime("image/jpeg", "a.jpg"), "image/jpeg", "图片 mime：jpeg");
+eq(resolveImageMime("image/jpg", "a.jpg"), "image/jpeg", "图片 mime：image/jpg 归一化");
+eq(resolveImageMime("image/png; charset=binary", "a"), "image/png", "图片 mime：忽略参数");
+eq(resolveImageMime("application/octet-stream", "b.PNG"), "image/png", "图片 mime：按扩展名兜底");
+eq(resolveImageMime("image/svg+xml", "evil.png"), null, "图片 mime：明确 image/* 不支持时拒绝");
+eq(resolveImageMime("text/plain", "noext"), null, "图片 mime：未知类型拒绝");
+eq(formatBytes(10 * 1024 * 1024), "10.0MB", "图片大小格式化：MB");
+
+eq(buildImageMessageContent("hi", []), "hi", "图片消息：无图片时保持字符串");
+const sampleImage = { type: "image" as const, data: "AAA", mimeType: "image/png" };
+eq(buildImageMessageContent("", [sampleImage]), [sampleImage], "图片消息：仅图片");
+eq(
+  buildImageMessageContent("hi", [sampleImage]),
+  [{ type: "text", text: "hi" }, sampleImage],
+  "图片消息：文本 + 图片保持顺序",
+);
+eq(
+  formatImageFailures([{ filename: "a.png", reason: "过大" }], 0),
+  "⚠️ 图片处理失败：\n• a.png：过大",
+  "图片失败提示：全部失败",
+);
+eq(
+  formatImageFailures([{ filename: "a.png", reason: "过大" }], 1),
+  "⚠️ 有 1 张图片未处理（成功 1 张）：\n• a.png：过大",
+  "图片失败提示：部分成功",
+);
+
+{
+  const png = Uint8Array.from([137, 80, 78, 71]);
+  const result = await resolveInboundImages(
+    [{ content_type: "image/png", url: "https://example.com/a.png", filename: "a.png" }],
+    1024,
+    async () =>
+      new Response(png, {
+        headers: { "content-type": "image/png", "content-length": String(png.length) },
+      }),
+  );
+  eq(result.failures, [], "图片下载：成功无失败");
+  eq(result.images.length, 1, "图片下载：数量正确");
+  eq(result.images[0]?.mimeType, "image/png", "图片下载：mime 正确");
+  eq(result.images[0]?.data, Buffer.from(png).toString("base64"), "图片下载：base64 正确");
+}
+
+{
+  let fetched = false;
+  const result = await resolveInboundImages(
+    [{ content_type: "image/png", url: "https://example.com/a.png", filename: "a.png", size: 99_999 }],
+    1024,
+    async () => {
+      fetched = true;
+      return new Response();
+    },
+  );
+  eq(result.images.length, 0, "图片下载：元数据超限不注入");
+  ok(!fetched && (result.failures[0]?.reason.includes("图片过大") ?? false), "图片下载：超限在下载前拒绝");
+}
+
+{
+  const big = new Uint8Array(32);
+  const result = await resolveInboundImages(
+    [{ content_type: "image/png", url: "https://example.com/a.png", filename: "a.png" }],
+    10,
+    async () => new Response(big, { headers: { "content-type": "image/png" } }),
+  );
+  eq(result.images.length, 0, "图片下载：实际内容超限不注入");
+  ok(result.failures[0]?.reason.includes("图片过大") ?? false, "图片下载：流式读取时限制大小");
+}
+
+{
+  const result = await resolveInboundImages(
+    [{ content_type: "image/svg+xml", url: "https://example.com/a.svg", filename: "a.svg" }],
+    1024,
+    async () => new Response(),
+  );
+  eq(result.images.length, 0, "图片下载：不支持类型不注入");
+  ok(result.failures[0]?.reason.includes("不支持的附件类型") ?? false, "图片下载：不支持类型有明确原因");
 }
 
 // ———— usage：F5/F6 ————

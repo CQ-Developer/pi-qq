@@ -3,6 +3,12 @@ import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { setAllowedOpenid } from "./config";
 import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
+import {
+  buildImageMessageContent,
+  formatImageFailures,
+  resolveInboundImages,
+  type ImageContentLike,
+} from "./images";
 
 /**
  * F2：QQ → pi 入站处理。
@@ -19,6 +25,7 @@ export interface InboundDeps {
   getAllowedOpenid: () => string | undefined;
   getBoundOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
+  getImageMaxSize: () => number;
   getStatusLines: () => string[];
   onWarn: (msg: string) => void;
   /** F7：标记接下来的 run 由 QQ 触发（供 RunFeedback 建立确认/心跳/typing） */
@@ -53,15 +60,33 @@ export function createInboundHandler(deps: InboundDeps) {
       await handleCommand(text, reply, deps);
       return;
     }
-    if (!text) {
-      // F3 图片消息在 M4 接入
-      await reply("图片消息将在后续版本支持，当前请配合文字发送");
+
+    const attachments = msg.attachments ?? [];
+    if (!text && attachments.length === 0) {
+      await reply("暂不支持该消息类型");
       return;
+    }
+
+    // F3：QQ 图片 → pi ImageContent（先校验模型视觉能力，避免无谓下载）
+    let images: ImageContentLike[] = [];
+    if (attachments.length > 0) {
+      const supportsImages = deps.ctx.model?.input.includes("image") ?? false;
+      if (!supportsImages) {
+        await reply(text ? "当前模型不支持图片输入，已只发送文字" : "当前模型不支持图片输入");
+        if (!text) return;
+      } else {
+        const result = await resolveInboundImages(attachments, deps.getImageMaxSize());
+        images = result.images;
+        if (result.failures.length > 0) {
+          await reply(formatImageFailures(result.failures, images.length));
+        }
+        if (!text && images.length === 0) return;
+      }
     }
 
     // F7：标记 QQ 触发的 run（RunFeedback 据此建立 typing/时间线），不发送开始确认
     deps.markQQTrigger(msg.senderId, msg.messageId);
-    deps.pi.sendUserMessage(text, { deliverAs: deps.getDeliverAs() });
+    deps.pi.sendUserMessage(buildImageMessageContent(text, images), { deliverAs: deps.getDeliverAs() });
   };
 }
 
