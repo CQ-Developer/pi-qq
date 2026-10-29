@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { markdownToPlain, chunkText, TEXT_CHUNK_LIMIT } from "../src/outbound.ts";
 import { ReplyBudget } from "../src/reply-budget.ts";
+import { getSettings } from "../src/config.ts";
 
 let passed = 0;
 function ok(cond: boolean, msg: string): void {
@@ -25,6 +26,11 @@ function eq(actual: unknown, expected: unknown, msg: string): void {
   passed += 1;
   console.log(`ok: ${msg}`);
 }
+
+// ———— getSettings ————
+
+eq(getSettings({}).streamFlushMs, 10_000, "汇总帧默认 10s");
+eq(getSettings({ streamFlushMs: 3000 }).streamFlushMs, 3000, "streamFlushMs 可显式覆盖");
 
 // ———— markdownToPlain ————
 

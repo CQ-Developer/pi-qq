@@ -11,7 +11,7 @@ import type { ReplyBudget } from "./reply-budget";
  * 气泡切分规则：**每条带文本的 assistant 消息一个气泡**（文本 + 其后跟随的工具执行）。
  * 文本消息的首个增量到达时，若当前气泡已有内容（包括仅有思考/工具行组），先封口
  * 旧气泡，再以该文本开新气泡；同一消息的后续增量继续追加；纯思考/工具的回合并入
- * 当前气泡；最终回复独立成泡。气泡内按 `streamFlushMs`（默认 3000ms）固定频率发送
+ * 当前气泡；最终回复独立成泡。气泡内按 `streamFlushMs`（默认 10000ms）固定频率发送
  * 窗口汇总帧：
  *
  *   💭 思考中...        ← 惰性行：本条消息出现 thinking 才有（内容不回传，决策 #2）
@@ -156,10 +156,12 @@ export class RunFeedback {
     };
     this.run = run;
 
-    // typing 保鲜：run 期间持续"正在输入"，0 额度
-    run.typingTimer = setInterval(() => {
+    // typing 保鲜：run 开始立即亮起"正在输入"，之后每 50s 续期（0 额度）
+    const keepTyping = () => {
       void bot.sendTyping({ scope: "c2c", targetId: run.openid }, 60).catch(() => {});
-    }, TYPING_INTERVAL_MS);
+    };
+    keepTyping();
+    run.typingTimer = setInterval(keepTyping, TYPING_INTERVAL_MS);
 
     // 固定频率汇总帧（间隔可配，毫秒）
     run.flushTimer = setInterval(() => {

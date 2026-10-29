@@ -27,7 +27,7 @@ export interface PiQQSettings {
   heartbeatMinutes?: number;
   /** F7：每 run 消息心跳上限（流式心跳不受限） */
   heartbeatMaxMessages?: number;
-  /** F7：流式汇总帧间隔（毫秒，最小 300）；帧内容为窗口内思考/工具计数/文本增量 */
+  /** F7：流式汇总帧间隔（毫秒，最小 300，默认 10s）；帧内容为窗口内思考/工具计数/文本增量 */
   streamFlushMs?: number;
   /** 诊断模式：SDK 内部日志打到终端 + 文本帧也带时间戳（定位超时/限流用） */
   debug?: boolean;
@@ -128,7 +128,7 @@ export function getSettings(config: PiQQConfig): ResolvedSettings {
     imageMaxSize: config.imageMaxSize ?? 10 * 1024 * 1024,
     heartbeatMinutes: config.heartbeatMinutes ?? 10,
     heartbeatMaxMessages: config.heartbeatMaxMessages ?? 3,
-    streamFlushMs: config.streamFlushMs ?? 3000,
+    streamFlushMs: config.streamFlushMs ?? 10_000,
     debug: config.debug ?? false,
     // append 语义已实测可用（含节流与限流退避）；失败自动降级消息路径，默认开启
     streamRelay: config.streamRelay ?? true,

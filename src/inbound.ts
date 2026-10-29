@@ -59,12 +59,7 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F7 开始确认：被动额度内必达；随后标记 QQ 触发，供 RunFeedback 建立心跳/typing
-    await reply(
-      deps.ctx.isIdle()
-        ? "✅ 已收到，开始处理；长任务预计较久，完成后自动回传"
-        : "✅ 已收到，并入当前任务处理",
-    );
+    // F7：标记 QQ 触发的 run（RunFeedback 据此建立 typing/时间线），不发送开始确认
     deps.markQQTrigger(msg.senderId, msg.messageId);
     deps.pi.sendUserMessage(text, { deliverAs: deps.getDeliverAs() });
   };

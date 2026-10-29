@@ -77,11 +77,11 @@ pi-qq/
 
 1. `src/run-feedback.ts`：run 级状态机 —— QQ 触发标记（pending）、工具名×次数计数（`tool_execution_end`）、流会话（`openStream` 惰性开启：首次心跳或首次文本时尝试，失败标 dead）、typing keepalive 定时器（50s）、节流心跳定时器（默认 10min）、消息心跳保险丝（每 run ≤3）、`agent_end` 收尾（complete/cancel/清 timer）。
 2. 载体优先级：流式心跳（一条消息持续刷新，0 额度）→ 消息心跳（≤3 条）→ 静默；结果文本在流存活时直接续写同一条流，`message_end` 被流接管时跳过 sendReply（避免双发）。
-3. `inbound.ts`：开始确认（idle=开始处理 / busy=并入当前任务）+ `markQQTrigger`。
+3. `inbound.ts`：不发送开始确认（节省被动额度），仅 `markQQTrigger`。
 4. `index.ts`：接线 `agent_start` / `agent_end` / `tool_execution_end` / `message_update`。
 5. `config.ts`：`heartbeatMinutes`（默认 10）、`heartbeatMaxMessages`（默认 3）。
 
-**验收**：QQ 发任务 → 立即收确认 → typing 持续 → 心跳按期到达（流或消息）→ 结果回传不双发。
+**验收**：QQ 发任务 → 不发送确认 → 10s 内收到首个汇总帧 → typing 持续 → 心跳按期到达（流或消息）→ 结果回传不双发。
 
 ### M3 — 用量摘要（F5 + F6）
 
@@ -145,10 +145,10 @@ pi-qq/
 
 - [x] `src/run-feedback.ts`：run 级状态机（QQ 触发标记、工具计数、流会话惰性开启、typing/心跳定时器、消息心跳保险丝）+ `formatHeartbeat`
 - [x] `config.ts`：`heartbeatMinutes` / `heartbeatMaxMessages`
-- [x] `inbound.ts`：开始确认 + `markQQTrigger`
+- [x] `inbound.ts`：`markQQTrigger`（不发送开始确认，2026-10-29 调整）
 - [x] `index.ts`：`agent_start`/`agent_end`/`tool_execution_end`/`message_update` 接线；`message_end` 流接管判定
 - [x] 单测：`formatHeartbeat`（test/run.ts 共 33 项断言）
-- [x] 验收：QQ 发任务 → 立即确认 → typing 持续 → 心跳按期 → 结果回传不双发（用户实测通过）
+- [x] 验收：QQ 发任务 → 不发送确认 → 10s 内收到汇总帧 → typing 持续 → 心跳按期 → 结果回传不双发（用户实测通过）
   - 首轮实测（2026-10-28）：确认/typing 正常；SDK 内置流式 replace 语义被平台拒绝（"已经提交的消息内容不可修改"，首帧可渲染、第二帧报错）；C2C markdown 渲染正常（`/qq-md` ✓）。
   - 修复：自实现 `src/append-stream.ts`（input_mode="append"，追加语义），RunFeedback 改为增量追加，`/qq-stream-test` 改测 append 模式。
   - 复验（2026-10-28）：append 两帧 + DONE 全部渲染 ✓，流式链路打通。后续任务：心跳/结果追加需开启 `streamRelay: true`。
@@ -158,6 +158,7 @@ pi-qq/
   - 二轮实测（2026-10-28，jsonl 事件时间线 vs 气泡时间戳）：3s 汇总节奏准确（事件→帧延迟 0~3s）、无重复、91s 静默区活性行准时（60s 阈值）、markdown 渲染正常。M2.5 全部验收通过。首轮长任务实测三问题：① flushWindow 丢失 resultSentLen 推进导致累计文本重复重发（已修，帧内推进基准）；② 心跳/汇总行补回 💭/🔧 图标；③ 帧节奏实为 3s，观感问题由①导致。
   - 三轮实测（2026-10-29，用户 QQ 截图 + 会话日志）：最终回复被追加 3 份，且最后一个气泡一直停留在“生成中”。根因是 `f806065` 重构丢失两处关键逻辑：① 成功追加文本后未推进 `resultSentLen`，每 3s 汇总帧重发全文；② `sealBubble` 在 `flushWindow` 前捕获旧 `cur`，切泡后新气泡收不到 DONE。修复：追加成功即推进基准；气泡边界仅在上一条文本消息定稿后触发（同消息的流式增量不再切泡）；`sealBubble` 在 flush 后重读 `cur`；错误路径先封口再走消息链路。新增重复/单气泡/双气泡/错误 DONE 回归断言。
   - 四轮实测（2026-10-29，`log/pi.jsonl` + `log/qq.png`）：首条中间文本（工具活动之后的 assistant 消息）被并入活动气泡，未独立成泡。根因：切泡条件要求旧气泡已含文本，而首条文本之前只有思考/工具行组。修复：文本消息首个增量到达时，只要当前气泡已有内容就封口（含仅行组）；工具计数行格式改为 `[n] 🔧 name`（心跳同步），新增活动气泡→文本气泡回归断言。
+  - 五轮调整（2026-10-29，用户要求）：删除 t=0 的"✅ 已收到"开始确认（含忙碌合并提示），节省被动额度；汇总帧默认间隔 3000ms → 10000ms，工具调用每 10s 汇总一次（`streamFlushMs` 仍可配置）。
 
 ### M3 — 用量摘要
 
