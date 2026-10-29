@@ -1,4 +1,4 @@
-# pi-qq — features.md
+# pi-qq — features-v1.md
 
 > pi 扩展：通过 QQ 机器人把 pi 接入 QQ 单人私聊（C2C）。
 > 手机 QQ 上发消息（含图片/文件）→ pi 在机器上干活 → 完整回复（Markdown → 纯文本）回传到 QQ；上下文占比可通过 `/status` 查看。

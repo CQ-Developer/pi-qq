@@ -94,7 +94,7 @@ function formatToolCount(name: string, count: number): string {
   return `[🔧] [${count}] ${name}`;
 }
 
-/** Heartbeat text: tool totals and elapsed time only (features.md decision #3). */
+/** Heartbeat text: tool totals and elapsed time only (features-v1.md decision #3). */
 export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>): string {
   const minutes = Math.floor(elapsedMs / 60_000);
   const elapsedText = minutes < 1 ? "不到 1 分钟" : `${minutes} 分钟`;

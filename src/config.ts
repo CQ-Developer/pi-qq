@@ -9,7 +9,7 @@ import { join } from "node:path";
  * process memory, so restarting pi requires scanning a new QR code.
  */
 
-/** Runtime settings (features.md §4). */
+/** Runtime settings (features-v1.md §4). */
 export interface PiQQSettings {
   /** F4: stream assistant replies */
   streamAssistant?: boolean;
@@ -61,7 +61,7 @@ export function readConfig(): { config: PiQQConfig; error?: string } {
 
 export interface ResolvedSettings extends Required<PiQQSettings> {}
 
-/** Settings with defaults applied (features.md §4). */
+/** Settings with defaults applied (features-v1.md §4). */
 export function getSettings(config: PiQQConfig): ResolvedSettings {
   return {
     streamAssistant: config.streamAssistant ?? true,

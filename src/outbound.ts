@@ -10,7 +10,7 @@ import { ReplyBudget } from "./reply-budget";
 export const TEXT_CHUNK_LIMIT = 4500;
 
 /**
- * Markdown → plain text (features.md F4: no Markdown permission by default).
+ * Markdown → plain text (features-v1.md F4: no Markdown permission by default).
  * Keep mobile readability; preserve fenced code content and drop only the fences.
  */
 export function markdownToPlain(md: string): string {

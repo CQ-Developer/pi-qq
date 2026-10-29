@@ -1,7 +1,7 @@
 import { ReplyLimiter } from "@tencent-connect/qqbot-nodejs/protocol";
 
 /**
- * Passive reply budget (features.md §3).
+ * Passive reply budget (features-v1.md §3).
  *
  * QQ allows about 4 passive replies per inbound message (SDK ReplyLimiter default
  * 4/1h); a msgId is usable for about 5 minutes after arrival. Over-limit or stale
