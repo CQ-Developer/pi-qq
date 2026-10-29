@@ -14,7 +14,7 @@ import type { ReplyBudget } from "./reply-budget";
  * 新行组进新的活动气泡；最终回复独立成文本气泡。气泡内按 `streamFlushMs`
  * （默认 10000ms）固定频率发送窗口汇总帧：
  *
- *   活动气泡：💭 思考中... / [2] 🔧 bash（行组外层带 [HH:MM:SS] 时间戳）
+ *   活动气泡：💭 思考中... / [2] 🔧 bash（行组按事件顺序、外层带 [HH:MM:SS] 时间戳）
  *   文本气泡：消息原文（流式增量，按 markdown 渲染）
  *
  * 任何一帧失败即弃气泡：未发出的结果文本自动转消息路径补发；下一个文本消息重试新气泡。
@@ -51,18 +51,20 @@ interface Bubble {
   kind: "activity" | "text";
 }
 
+type WindowLine =
+  | { kind: "thinking" }
+  | { kind: "tool"; name: string; count: number };
+
 interface RunState {
   startedAt: number;
   openid: string;
   msgId?: string;
   /** 工具总计（心跳 ⏱ 行用） */
   tools: Map<string, ToolStat2>;
-  /** 本窗口出现思考（flush 后复位） */
-  winThinking: boolean;
+  /** 本窗口行组，按事件实际发生顺序记录（flush 后清空） */
+  winLines: WindowLine[];
   /** 本消息已打过思考标记（逐消息复位，避免长思考刷屏） */
   thinkingMarked: boolean;
-  /** 本窗口工具计数（flush 后清空） */
-  winTools: Map<string, number>;
   /** 当前流式文本快照（message_update 更新） */
   snapshotText: string;
   /** 已定稿 assistant 消息累计文本 */
@@ -141,9 +143,8 @@ export class RunFeedback {
       openid: pending.openid,
       msgId: pending.msgId,
       tools: new Map(),
-      winThinking: false,
+      winLines: [],
       thinkingMarked: false,
-      winTools: new Map(),
       snapshotText: "",
       finalizedText: "",
       resultSentLen: 0,
@@ -174,11 +175,16 @@ export class RunFeedback {
     }
   }
 
-  /** 工具开始：窗口计数 +1（汇总帧里以 `[n] 🔧 name` 呈现；不立即外发，避免与汇总帧双份） */
+  /** 工具开始：按事件顺序记录；连续同名工具合并计数 */
   onToolStart(toolName: string): void {
     const run = this.run;
     if (!run) return;
-    run.winTools.set(toolName, (run.winTools.get(toolName) ?? 0) + 1);
+    const last = run.winLines.at(-1);
+    if (last?.kind === "tool" && last.name === toolName) {
+      last.count += 1;
+    } else {
+      run.winLines.push({ kind: "tool", name: toolName, count: 1 });
+    }
   }
 
   /** 工具结束：总计计数（心跳 ⏱ 行用） */
@@ -197,7 +203,7 @@ export class RunFeedback {
     if (!run) return;
     if (snapshotThinking && !run.thinkingMarked) {
       run.thinkingMarked = true;
-      run.winThinking = true;
+      run.winLines.push({ kind: "thinking" });
     }
     run.snapshotText = snapshotText;
   }
@@ -311,19 +317,15 @@ export class RunFeedback {
     }
 
     // 重置窗口
-    r.winThinking = false;
-    r.winTools.clear();
+    r.winLines = [];
     return true;
   }
 
-  /** 收集本窗口的思考/工具行组（无行返回空串） */
+  /** 收集本窗口行组：严格按事件发生顺序（连续同名工具已合并计数） */
   private collectWindowLines(r: RunState): string[] {
-    const lines: string[] = [];
-    if (r.winThinking) lines.push("💭 思考中...");
-    for (const [name, n] of r.winTools) {
-      if (n > 0) lines.push(formatToolCount(name, n));
-    }
-    return lines;
+    return r.winLines.map((line) =>
+      line.kind === "thinking" ? "💭 思考中..." : formatToolCount(line.name, line.count),
+    );
   }
 
   /** 追加行组：只进活动气泡；首行带时间戳；行与行相邻不空行，跨帧直接续行 */

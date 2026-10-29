@@ -331,7 +331,7 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
   rf.onAssistantDelta("文件已写好", "思考 2");
   await rf.onAssistantFinal("文件已写好", false);
   rf.onToolStart("read");
-  await rf.flushWindow();
+  // 不立即 flush：模拟 read 与下一条消息 thinking 落在同一个 10s 窗口
   // 消息 3：thinking + bash（无文本）
   rf.onAssistantDelta("", "思考 3");
   await rf.onAssistantFinal("", false);
@@ -349,11 +349,12 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
     "活动 1 含两条消息的思考标记与 write",
   );
   eq(bubbles[1], "文件已写好", "中间文本仍为纯文本气泡");
+  const readAt = bubbles[2].indexOf("[1] 🔧 read");
+  const thinkingAt = bubbles[2].indexOf("💭 思考中...");
+  const bashAt = bubbles[2].indexOf("[1] 🔧 bash");
   ok(
-    bubbles[2].includes("[1] 🔧 read") &&
-      bubbles[2].includes("思考中") &&
-      bubbles[2].includes("[1] 🔧 bash"),
-    "活动 2 含 read、后续 thinking 与 bash",
+    readAt >= 0 && thinkingAt > readAt && bashAt > thinkingAt,
+    "活动 2 严格按事件顺序显示 read → thinking → bash",
   );
   eq(bubbles[3], "最终回复", "最终回复为纯文本气泡");
 }
