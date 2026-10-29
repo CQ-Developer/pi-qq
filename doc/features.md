@@ -124,12 +124,13 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **行为**
 
-- 每次 agent run 结束（`agent_end`）发送一条用量摘要：
+- 每次 **QQ 触发且成功完成**的 agent run 结束（`agent_end`）发送一条用量摘要（本地终端 run、错误/中止的 run 不发，避免消耗主动额度或重试刷屏）：
   `📊 tokens — 输入 12.3k（缓存命中 11.8k）· 输出 1.2k · 成本 $0.04 · 本轮 2.1k`
-- 成本（`usage.cost.total`）随摘要一并回传（已确认）；模型无定价数据时省略成本字段。
+- 摘要中的「输入 / 缓存命中 / 输出 / 成本」为**会话累计**；「本轮」为最后一条 assistant 的 `usage.totalTokens`（该次模型请求的增量）。
+- 成本（`usage.cost.total`）随摘要一并回传（已确认）；模型无定价数据（成本为 0）时省略成本字段。
 - 三层数字：
-  - **本轮**：`turn_end` 中最后一条 assistant 消息的 `usage`（该次模型请求的增量）。
-  - **会话累计**：扩展内累计（`session_start` 时从 `sessionManager.getBranch()` 的 assistant 条目重建，`/new` 后清零）。
+  - **本轮**：`turn_end` 中最后一条 assistant 消息的 `usage.totalTokens`（该次模型请求的增量）。
+  - **会话累计**：扩展内累计（`session_start` 时从 `sessionManager.getBranch()` 重建，`/new` 后清零；口径对齐 pi：assistant / usage / compaction / toolResult 嵌套 usage 均计入）。
 - 与 F6 合并为一条消息发送，避免刷屏。
 
 ### F6 回传上下文窗口占比

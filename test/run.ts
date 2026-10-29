@@ -1,11 +1,18 @@
 /**
- * M2 单元测试：markdownToPlain / chunkText / ReplyBudget。
+ * 单测：markdownToPlain / chunkText / ReplyBudget / AppendStream / RunFeedback / Usage。
  * 运行：npx -y jiti test/run.ts（零测试框架依赖；后续可迁移 vitest）。
  */
 import assert from "node:assert/strict";
 import { markdownToPlain, chunkText, TEXT_CHUNK_LIMIT } from "../src/outbound.ts";
 import { ReplyBudget } from "../src/reply-budget.ts";
 import { getSettings } from "../src/config.ts";
+import {
+  UsageTracker,
+  collectUsageFromEntries,
+  formatCost,
+  formatTokenCount,
+  formatUsageSummary,
+} from "../src/usage.ts";
 
 let passed = 0;
 function ok(cond: boolean, msg: string): void {
@@ -316,5 +323,97 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
   const bubbles = collectBubbles(calls);
   eq(bubbles, ["先行后补"], "同一条消息定稿时的残余增量不切泡");
 }
+
+// ———— usage：F5/F6 ————
+
+function makeUsage(input: number, output: number, cacheRead: number, cost: number, totalTokens?: number) {
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite: 0,
+    totalTokens: totalTokens ?? input + output + cacheRead,
+    cost: { total: cost },
+  };
+}
+
+eq(formatTokenCount(999), "999", "token 格式化：小于 1k");
+eq(formatTokenCount(1000), "1k", "token 格式化：整千省略 .0");
+eq(formatTokenCount(12_345), "12.3k", "token 格式化：一位小数");
+eq(formatTokenCount(200_000), "200k", "token 格式化：200k");
+eq(formatCost(0.04), "$0.04", "成本格式化：小额保留 4 位内有效数字");
+
+const sessionUsage = { input: 12_345, output: 1_200, cacheRead: 11_800, cacheWrite: 0, cost: 0.04 };
+eq(
+  formatUsageSummary({
+    session: sessionUsage,
+    turn: makeUsage(2_000, 100, 0, 0.01, 2_100),
+    context: { tokens: 46_500, contextWindow: 200_000, percent: 23 },
+    contextWarnPercent: 80,
+  }),
+  "📊 tokens — 输入 12.3k（缓存命中 11.8k）· 输出 1.2k · 成本 $0.04 · 本轮 2.1k | 上下文 46.5k/200k（23%）",
+  "用量摘要：完整格式",
+);
+
+eq(
+  formatUsageSummary({
+    session: { input: 500, output: 20, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    turn: null,
+    contextWarnPercent: 80,
+  }),
+  "📊 tokens — 输入 500 · 输出 20",
+  "用量摘要：无缓存/成本/本轮/上下文时省略对应字段",
+);
+
+eq(
+  formatUsageSummary({
+    session: { input: 500, output: 20, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    turn: null,
+    context: { tokens: null, contextWindow: 200_000, percent: null },
+    contextWarnPercent: 80,
+  }),
+  "📊 tokens — 输入 500 · 输出 20 | 上下文 重建中",
+  "用量摘要：压缩后 tokens 未知显示重建中",
+);
+
+eq(
+  formatUsageSummary({
+    session: { input: 500, output: 20, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    turn: null,
+    context: { tokens: 170_000, contextWindow: 200_000, percent: 85 },
+    contextWarnPercent: 80,
+  }),
+  "📊 tokens — 输入 500 · 输出 20 | 上下文 170k/200k（85%）· 建议 /compact",
+  "用量摘要：达到阈值追加 compact 建议",
+);
+
+const usageEntries = [
+  { type: "message", message: { role: "assistant", usage: makeUsage(100, 10, 20, 1, 130) } },
+  { type: "usage", usage: makeUsage(5, 1, 0, 2, 6) },
+  { type: "compaction", usage: makeUsage(7, 2, 0, 3, 9) },
+  { type: "message", message: { role: "toolResult", usage: makeUsage(3, 4, 0, 4, 7) } },
+  { type: "message", message: { role: "user" } },
+];
+const rebuilt = collectUsageFromEntries(usageEntries as never);
+eq(
+  rebuilt,
+  { input: 115, output: 17, cacheRead: 20, cacheWrite: 0, cost: 10 },
+  "会话累计：assistant/usage/compaction/toolResult 全部计入",
+);
+
+const tracker = new UsageTracker();
+tracker.rebuild(usageEntries as never);
+eq(tracker.getTotals(), rebuilt, "UsageTracker：session_start 重建累计");
+tracker.startRun();
+eq(tracker.getLastTurn(), null, "UsageTracker：agent_start 清空本轮");
+tracker.noteTurn(makeUsage(50, 5, 10, 0.5, 65));
+eq(tracker.getLastTurn()?.totalTokens, 65, "UsageTracker：记录最后一轮");
+eq(tracker.getTotals().input, 165, "UsageTracker：turn_end 累加进会话累计");
+tracker.refresh(usageEntries as never);
+eq(tracker.getTotals(), rebuilt, "UsageTracker：agent_end 刷新分支累计");
+eq(tracker.getLastTurn()?.totalTokens, 65, "UsageTracker：刷新累计不清空本轮");
+tracker.rebuild([]);
+eq(tracker.getTotals(), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, "UsageTracker：/new 空分支清零");
+eq(tracker.getLastTurn(), null, "UsageTracker：/new 清空本轮");
 
 console.log(`\nALL PASS (${passed} assertions)`);

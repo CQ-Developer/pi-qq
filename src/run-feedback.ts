@@ -123,6 +123,11 @@ export class RunFeedback {
     this.pending = { openid, msgId, at: Date.now() };
   }
 
+  /** 当前 run 是否由 QQ 触发（用量摘要只对 QQ 会话发送） */
+  isQQTriggeredRun(): boolean {
+    return this.run !== null;
+  }
+
   onAgentStart(): void {
     const pending = this.pending;
     this.pending = null;

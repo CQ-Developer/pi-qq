@@ -163,10 +163,11 @@ pi-qq/
 
 ### M3 — 用量摘要
 
-- [ ] `src/usage.ts`：`session_start` 从 `getBranch()` 重建累计；`/new` 清零
-- [ ] `agent_end` 摘要：本轮 usage + 累计 + 成本 + `ctx.getContextUsage()`（`tokens===null` 显示重建中、阈值告警）
-- [ ] 摘要经 reply-budget 发送
-- [ ] 验收：摘要数字与 pi 会话 UI 一致；`/new` 后清零
+- [x] `src/usage.ts`：`session_start` 从 `getBranch()` 重建累计；`/new` 清零；累计口径对齐 pi（assistant/usage/compaction/toolResult）
+- [x] `agent_end` 摘要：本轮 usage + 累计 + 成本 + `ctx.getContextUsage()`（`tokens===null` 显示重建中、阈值告警）；仅 QQ 触发且成功完成的 run 发送
+- [x] 摘要经 reply-budget 发送；成本为 0 时省略
+- [ ] 验收（待 QQ 实测）：摘要数字与 pi 会话 UI 一致；`/new` 后清零
+  - 2026-10-29：单测覆盖完整格式/短格式/重建中/80% 告警/累计口径/Tracker 状态（当前全量 80 项断言通过）。
 
 ### M4 — 流式、图片与打磨
 
