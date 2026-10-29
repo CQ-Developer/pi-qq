@@ -51,11 +51,7 @@ eq(markdownToPlain("地址 [https://x.cn](https://x.cn)"), "地址 https://x.cn"
 eq(markdownToPlain("![架构图](https://x.cn/i.png)"), "架构图", "图片保留 alt");
 eq(markdownToPlain("- 项目一\n- 项目二\n1. 甲"), "• 项目一\n• 项目二\n1. 甲", "无序列表转 •、有序保留");
 eq(markdownToPlain("> 引用内容"), "引用内容", "引用去 >");
-eq(
-  markdownToPlain("| a | b |\n|---|---|\n| 1 | 2 |"),
-  "a | b\n1 | 2",
-  "表格逐行退化（分隔行丢弃）",
-);
+eq(markdownToPlain("| a | b |\n|---|---|\n| 1 | 2 |"), "a | b\n1 | 2", "表格逐行退化（分隔行丢弃）");
 eq(markdownToPlain("```\ncode **keep**\n```"), "code **keep**", "围栏内容原样保留");
 eq(markdownToPlain("上文\n---\n下文"), "上文\n\n下文", "水平线转空行");
 eq(markdownToPlain("~~删除~~"), "删除", "删除线去除");
@@ -67,7 +63,10 @@ eq(markdownToPlain("a\n\n\n\nb"), "a\n\nb", "压缩多余空行");
 eq(chunkText("短文本"), ["短文本"], "短文本不分块");
 const lines = Array.from({ length: 100 }, (_, i) => `第 ${i} 行内容 padding padding padding`).join("\n");
 const chunks = chunkText(lines, 200);
-ok(chunks.every((c) => c.length <= 200), "分块均不超限");
+ok(
+  chunks.every((c) => c.length <= 200),
+  "分块均不超限",
+);
 eq(chunks.join(""), lines, "分块无损拼接");
 const noNewline = "x".repeat(1000);
 const hardChunks = chunkText(noNewline, 300);
@@ -360,10 +359,7 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
   const readAt = bubbles[2].indexOf("[1] 🔧 read");
   const thinkingAt = bubbles[2].indexOf("💭 思考中...");
   const bashAt = bubbles[2].indexOf("[1] 🔧 bash");
-  ok(
-    readAt >= 0 && thinkingAt > readAt && bashAt > thinkingAt,
-    "活动 2 严格按事件顺序显示 read → thinking → bash",
-  );
+  ok(readAt >= 0 && thinkingAt > readAt && bashAt > thinkingAt, "活动 2 严格按事件顺序显示 read → thinking → bash");
   eq(bubbles[3], "最终回复", "最终回复为纯文本气泡");
 }
 

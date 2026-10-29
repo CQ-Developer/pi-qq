@@ -37,11 +37,7 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
       {
         // 官方说明：返回数组当前恒为 1 个元素，按遍历处理以兼容未来多机器人
         onSuccess: ([first]) => {
-          finish(
-            first
-              ? { appId: first.appId, appSecret: first.appSecret, userOpenid: first.userOpenid }
-              : undefined,
-          );
+          finish(first ? { appId: first.appId, appSecret: first.appSecret, userOpenid: first.userOpenid } : undefined);
           closeOverlay?.();
         },
         onFailure: (err) => {
@@ -73,30 +69,29 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
       return;
     }
 
-    void ctx.ui.custom<void>((tui, theme, keybindings, done) => {
-      closeOverlay = done;
-      requestRender = () => tui.requestRender();
-      return {
-        render(width: number): string[] {
-          const lines = qr.lines.length > 0 ? qr.lines : ["（获取二维码中…）"];
-          return [
-            ...lines,
-            "",
-            qr.hint,
-            theme.fg("dim", "Esc 取消扫码"),
-          ].map((line) => (line.length > width ? line.slice(0, width) : line));
-        },
-        handleInput(data: string): void {
-          if (keybindings.matches(data, "tui.select.cancel") || data === "\x1b") {
-            ac.abort();
-            done();
-          }
-        },
-        invalidate(): void {},
-      };
-    }).then(() => {
-      // 弹窗因用户取消而关闭；成功/失败路径已先 finish
-      if (!settled) finish();
-    });
+    void ctx.ui
+      .custom<void>((tui, theme, keybindings, done) => {
+        closeOverlay = done;
+        requestRender = () => tui.requestRender();
+        return {
+          render(width: number): string[] {
+            const lines = qr.lines.length > 0 ? qr.lines : ["（获取二维码中…）"];
+            return [...lines, "", qr.hint, theme.fg("dim", "Esc 取消扫码")].map((line) =>
+              line.length > width ? line.slice(0, width) : line,
+            );
+          },
+          handleInput(data: string): void {
+            if (keybindings.matches(data, "tui.select.cancel") || data === "\x1b") {
+              ac.abort();
+              done();
+            }
+          },
+          invalidate(): void {},
+        };
+      })
+      .then(() => {
+        // 弹窗因用户取消而关闭；成功/失败路径已先 finish
+        if (!settled) finish();
+      });
   });
 }

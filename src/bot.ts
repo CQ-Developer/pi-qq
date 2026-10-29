@@ -1,4 +1,11 @@
-import { QQBot, GatewayErrorCode, accessPolicy, concurrencyGuard, contentSanitizer, messageFilter } from "@tencent-connect/qqbot-nodejs";
+import {
+  QQBot,
+  GatewayErrorCode,
+  accessPolicy,
+  concurrencyGuard,
+  contentSanitizer,
+  messageFilter,
+} from "@tencent-connect/qqbot-nodejs";
 import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import type { Credentials } from "./config";
 
@@ -48,13 +55,7 @@ export function startBot(opts: StartBotOptions): RunningBot {
   // 清洗 @marker / face tags 等协议标记，只留纯文本
   bot.use(contentSanitizer({ stripBotMention: true }));
   // 单人白名单：仅 C2C 生效；未绑定时放行（自动绑定逻辑在 inbound 层）
-  bot.use(
-    accessPolicy(
-      opts.allowedOpenid
-        ? { c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } }
-        : {},
-    ),
-  );
+  bot.use(accessPolicy(opts.allowedOpenid ? { c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } } : {}));
   // 同用户串行处理，避免流式与回复互相踩踏
   bot.use(concurrencyGuard());
 

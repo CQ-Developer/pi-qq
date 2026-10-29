@@ -74,8 +74,7 @@ function formatContextPercent(context: ContextUsage | undefined): string {
   if (context.tokens === null) return "重建中";
 
   const percent =
-    context.percent ??
-    (context.contextWindow > 0 ? (context.tokens / context.contextWindow) * 100 : null);
+    context.percent ?? (context.contextWindow > 0 ? (context.tokens / context.contextWindow) * 100 : null);
   return percent === null ? "未知" : formatPercent(percent);
 }
 

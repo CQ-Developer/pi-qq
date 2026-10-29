@@ -57,8 +57,7 @@ export default function (pi: ExtensionAPI) {
   const getBoundOpenid = getAllowedOpenid;
   const getDeliverAs = () => getSettings(readConfig().config).deliverAs;
 
-  const onWarn = (ctx: ExtensionContext) => (msg: string) =>
-    ctx.ui.notify(`pi-qq ${msg}`, "warning");
+  const onWarn = (ctx: ExtensionContext) => (msg: string) => ctx.ui.notify(`pi-qq ${msg}`, "warning");
 
   /** F5/F6：在 agent_end 时快照本次 run 用量，返回发送函数（等时间线封口后再调用） */
   const prepareUsageSummary = (ctx: ExtensionContext, usage: UsageTotals): (() => void) | null => {
@@ -176,14 +175,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", (event, ctx) => {
-    const lastAssistant = [...event.messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
+    const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
     // 错误/中止的 run 不发摘要：自动重试时避免每轮失败都刷一条消息
     const completed =
-      lastAssistant !== undefined &&
-      lastAssistant.stopReason !== "error" &&
-      lastAssistant.stopReason !== "aborted";
+      lastAssistant !== undefined && lastAssistant.stopReason !== "error" && lastAssistant.stopReason !== "aborted";
     const wasQQRun = runFeedback.isQQTriggeredRun();
     // 在异步封口时间线前快照本次 run 的用量，避免新 run 覆盖
     const runUsage = sumUsageMessages(event.messages);
@@ -281,7 +276,12 @@ export default function (pi: ExtensionAPI) {
       const creds = await runQrLogin(ctx);
       if (!creds) return; // 取消或失败，原因已提示
       saveCredentials(creds, { userOpenid: creds.userOpenid });
-      startWithCredentials(ctx, creds, { ...config, allowedOpenid: creds.userOpenid ?? config.allowedOpenid }, "扫码登录");
+      startWithCredentials(
+        ctx,
+        creds,
+        { ...config, allowedOpenid: creds.userOpenid ?? config.allowedOpenid },
+        "扫码登录",
+      );
     },
   });
 
@@ -344,9 +344,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("pi-qq：无可用发送目标（请先在 QQ 发一条消息，或配置 allowedOpenid）", "warning");
         return;
       }
-      const content =
-        args?.trim() ||
-        "**Markdown 测试**\n# 一级标题\n- 列表项一\n- 列表项二\n[链接](https://qq.com)";
+      const content = args?.trim() || "**Markdown 测试**\n# 一级标题\n- 列表项一\n- 列表项二\n[链接](https://qq.com)";
       try {
         await running.bot.sendMarkdown(target, content);
         ctx.ui.notify(
@@ -373,12 +371,7 @@ export default function (pi: ExtensionAPI) {
       }
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
-        const stream = new AppendStream(
-          running.bot.messageApi,
-          running.bot.getCredentials(),
-          last.openid,
-          last.msgId,
-        );
+        const stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
         await stream.append("思考中...\n[3] 🔧 bash\n[2] 🔧 read\n");
         await sleep(1200);
         await stream.append("\n**中间消息原文**：第一回合回复。\n");
@@ -392,10 +385,7 @@ export default function (pi: ExtensionAPI) {
         } catch (doneErr) {
           doneNote = `DONE 帧被拒：${(doneErr as Error).message}`;
         }
-        ctx.ui.notify(
-          `时间线流式测试：各帧成功、${doneNote}。请看 QQ：气泡应为 💭/🔧/消息文本 的时间线形态`,
-          "info",
-        );
+        ctx.ui.notify(`时间线流式测试：各帧成功、${doneNote}。请看 QQ：气泡应为 💭/🔧/消息文本 的时间线形态`, "info");
       } catch (err) {
         ctx.ui.notify(`汇总帧测试失败：${(err as Error).message}`, "error");
       }

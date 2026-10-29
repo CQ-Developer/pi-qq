@@ -95,9 +95,14 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 ## 开发
 
 ```bash
-npm run typecheck      # 类型检查（npx tsc，无需本地安装）
-npx -y jiti test/run.ts  # 单元测试（103 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要/图片校验/QQ /new）
+npm install              # 安装依赖（prettier / vitest 为 devDependencies）
+npm run typecheck        # 类型检查
+npm test                 # jiti 断言脚本（103 项）
+npm run format           # Prettier 格式化
+npm run format:check     # Prettier 校验
 ```
+
+当前单测仍使用 jiti + assert 脚本；vitest 已加入 devDependencies，供后续迁移使用。
 
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
 `config`（配置读写）/ `login`（扫码）/ `bot`（生命周期）/ `inbound`（QQ→pi）/

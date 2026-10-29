@@ -35,7 +35,10 @@ export function markdownToPlain(md: string): string {
       continue;
     }
     if (t.trimStart().startsWith("|") || t.trimEnd().endsWith("|")) {
-      t = t.replace(/^\s*\|/, "").replace(/\|\s*$/, "").trim();
+      t = t
+        .replace(/^\s*\|/, "")
+        .replace(/\|\s*$/, "")
+        .trim();
     }
 
     // 标题 / 引用 / 水平线
@@ -66,7 +69,10 @@ export function markdownToPlain(md: string): string {
     out.push(t);
   }
 
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return out
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -107,9 +113,7 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
     const { mode, openid, msgId } = ch.budget.acquire();
     const targetId = mode === "proactive" ? ch.boundOpenid : (openid ?? ch.boundOpenid);
     const replyTarget =
-      mode === "passive" && msgId
-        ? { scope: "c2c" as const, targetId, msgId }
-        : { scope: "c2c" as const, targetId };
+      mode === "passive" && msgId ? { scope: "c2c" as const, targetId, msgId } : { scope: "c2c" as const, targetId };
     try {
       await bot.sendText(replyTarget, chunk);
       if (mode === "passive" && msgId) ch.budget.commitPassive(msgId);

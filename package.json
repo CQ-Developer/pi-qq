@@ -6,11 +6,17 @@
   "type": "module",
   "scripts": {
     "typecheck": "npx -y -p typescript tsc --noEmit",
-    "test": "vitest run"
+    "test": "npx -y jiti test/run.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@tencent-connect/qqbot-connector": "^1.2.0",
     "@tencent-connect/qqbot-nodejs": "^1.0.5",
     "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "vitest": "^5.0.5"
   }
 }

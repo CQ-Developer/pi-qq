@@ -3,12 +3,7 @@ import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { setAllowedOpenid } from "./config";
 import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
-import {
-  buildImageMessageContent,
-  formatImageFailures,
-  resolveInboundImages,
-  type ImageContentLike,
-} from "./images";
+import { buildImageMessageContent, formatImageFailures, resolveInboundImages, type ImageContentLike } from "./images";
 
 /**
  * F2：QQ → pi 入站处理。
@@ -90,11 +85,7 @@ export function createInboundHandler(deps: InboundDeps) {
   };
 }
 
-async function handleCommand(
-  text: string,
-  reply: (t: string) => Promise<void>,
-  deps: InboundDeps,
-): Promise<void> {
+async function handleCommand(text: string, reply: (t: string) => Promise<void>, deps: InboundDeps): Promise<void> {
   const cmd = text.split(/\s+/)[0];
   switch (cmd) {
     case "/help":

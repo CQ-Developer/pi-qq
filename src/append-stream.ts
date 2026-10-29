@@ -1,5 +1,10 @@
 import { getNextMsgSeq, StreamContentType, StreamInputState } from "@tencent-connect/qqbot-nodejs/protocol";
-import type { Credentials, MessageApi, MessageResponse, StreamMessageRequest } from "@tencent-connect/qqbot-nodejs/protocol";
+import type {
+  Credentials,
+  MessageApi,
+  MessageResponse,
+  StreamMessageRequest,
+} from "@tencent-connect/qqbot-nodejs/protocol";
 
 /**
  * 追加模式（input_mode="append"）的最小流式发送器。

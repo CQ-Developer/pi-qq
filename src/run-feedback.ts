@@ -51,9 +51,7 @@ interface Bubble {
   kind: "activity" | "text";
 }
 
-type WindowLine =
-  | { kind: "thinking" }
-  | { kind: "tool"; name: string; count: number };
+type WindowLine = { kind: "thinking" } | { kind: "tool"; name: string; count: number };
 
 interface RunState {
   startedAt: number;
@@ -163,9 +161,12 @@ export class RunFeedback {
     run.typingTimer = setInterval(keepTyping, TYPING_INTERVAL_MS);
 
     // 固定频率汇总帧（间隔可配，毫秒）
-    run.flushTimer = setInterval(() => {
-      void this.flushWindow(run);
-    }, Math.max(this.deps.getStreamFlushMs(), 300));
+    run.flushTimer = setInterval(
+      () => {
+        void this.flushWindow(run);
+      },
+      Math.max(this.deps.getStreamFlushMs(), 300),
+    );
 
     // 心跳兜底（流式路径的活性由空窗口活性行覆盖）
     if (hbMinutes > 0) {
