@@ -111,7 +111,7 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
   - 始终剔除 `thinking` 块（已确认：不回传思考内容）。
   - **Markdown 转换**：
     - 默认（无 markdown 权限，`markdownSupport: false`）：轻量转纯文本——去掉 `**` / `*` / `` ` `` 等强调与行内代码标记、标题转为文本行、列表项转 `•`、链接转 `文字(url)`、表格等复杂结构逐行退化；保持手机端可读性。
-    - 机器人有 markdown 权限（`markdownSupport: true`）→ 透传原始 Markdown 由 QQ 客户端渲染。
+    - 机器人有 markdown 权限（`markdownSupport: true`）→ 透传原始 Markdown 由 QQ 客户端渲染。QQBot 构造时已传入 `markdownSupport`，SDK 的 `sendText` 会自动使用 msg_type=2，无需额外 `sendMarkdown`。
   - 超长文本按单条上限自动分块（SDK `TEXT_CHUNK_LIMIT = 5000`）。
 - **流式模式**（默认开启，C2C 专属）：
   - `message_update` 期间用 `bot.openStream({ target })` 持续 `update(全文)`（对累积全文实时做同样的转换）；`message_end` 时 `complete()`。

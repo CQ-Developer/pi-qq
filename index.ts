@@ -311,6 +311,18 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("qq-new", {
+    description: "pi-qq：重置当前会话（供 QQ 侧 /new 调用）",
+    handler: async (_args, ctx) => {
+      if (!ctx.isIdle()) {
+        ctx.ui.notify("任务运行中，无法重置会话；请先 /stop", "warning");
+        return;
+      }
+      const { cancelled } = await ctx.newSession();
+      if (cancelled) ctx.ui.notify("会话重置已取消", "warning");
+    },
+  });
+
   // —— 诊断命令（markdown / 流式能力实证）——
 
   const diagTarget = () => {

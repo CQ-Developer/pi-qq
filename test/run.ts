@@ -1,5 +1,5 @@
 /**
- * 单测：markdownToPlain / chunkText / ReplyBudget / AppendStream / RunFeedback / Usage。
+ * 单测：markdownToPlain / chunkText / ReplyBudget / AppendStream / RunFeedback / Usage / Images / Inbound。
  * 运行：npx -y jiti test/run.ts（零测试框架依赖；后续可迁移 vitest）。
  */
 import assert from "node:assert/strict";
@@ -14,6 +14,7 @@ import {
   resolveInboundImages,
 } from "../src/images.ts";
 import { formatTokenCount, formatUsageSummary, sumUsageMessages } from "../src/usage.ts";
+import { createInboundHandler } from "../src/inbound.ts";
 
 let passed = 0;
 function ok(cond: boolean, msg: string): void {
@@ -444,6 +445,75 @@ eq(
   );
   eq(result.images.length, 0, "图片下载：不支持类型不注入");
   ok(result.failures[0]?.reason.includes("不支持的附件类型") ?? false, "图片下载：不支持类型有明确原因");
+}
+
+// ———— inbound：/new 命令 ————
+
+function makeInboundHarness(isIdle: boolean) {
+  const sent: string[] = [];
+  const userMessages: Array<{ content: unknown; options: unknown }> = [];
+  let triggers = 0;
+  const bot = {
+    async sendText(_target: unknown, text: string) {
+      sent.push(text);
+      return {};
+    },
+  };
+  const ctx = {
+    isIdle: () => isIdle,
+    ui: { notify: () => {} },
+    model: { input: ["text"] },
+  };
+  const deps = {
+    pi: {
+      sendUserMessage(content: unknown, options: unknown) {
+        userMessages.push({ content, options });
+      },
+    },
+    ctx,
+    budget: new ReplyBudget(),
+    getAllowedOpenid: () => "openid-u",
+    getBoundOpenid: () => "openid-u",
+    getDeliverAs: () => "steer",
+    getImageMaxSize: () => 1024,
+    getStatusLines: () => [],
+    onWarn: () => {},
+    markQQTrigger: () => {
+      triggers += 1;
+    },
+  };
+  const handler = createInboundHandler(deps as never);
+  const run = () =>
+    handler(
+      bot as never,
+      {
+        kind: "c2c",
+        senderId: "openid-u",
+        messageId: "msg-new",
+        content: "/new",
+        attachments: [],
+      } as never,
+    );
+  return { run, sent, userMessages, triggers: () => triggers };
+}
+
+{
+  const h = makeInboundHarness(true);
+  await h.run();
+  eq(h.sent, ["正在重置会话…"], "QQ /new：idle 时回复正在重置");
+  eq(
+    h.userMessages,
+    [{ content: "/qq-new", options: { expandPromptTemplates: true } }],
+    "QQ /new：调用 qq-new 扩展命令",
+  );
+  eq(h.triggers(), 0, "QQ /new：不触发 agent run");
+}
+
+{
+  const h = makeInboundHarness(false);
+  await h.run();
+  eq(h.sent, ["任务运行中，请先 /stop 再重置会话"], "QQ /new：busy 时拒绝重置");
+  eq(h.userMessages, [], "QQ /new：busy 时不调用扩展命令");
 }
 
 // ———— usage：F5/F6 ————

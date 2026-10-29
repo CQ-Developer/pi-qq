@@ -104,7 +104,7 @@ async function handleCommand(
           "• /stop — 中止当前任务",
           "• /compact — 压缩上下文",
           "• /status — 查看状态",
-          "• /new — 重置会话（需在 pi 终端执行）",
+          "• /new — 重置会话",
           "• /help — 本帮助",
           "其他文字将直接发送给 pi",
         ].join("\n"),
@@ -130,7 +130,13 @@ async function handleCommand(
       await reply(deps.getStatusLines().join("\n"));
       break;
     case "/new":
-      await reply("QQ 侧暂不支持重置会话，请在 pi 终端执行 /new");
+      if (!deps.ctx.isIdle()) {
+        await reply("任务运行中，请先 /stop 再重置会话");
+      } else {
+        await reply("正在重置会话…");
+        // 内置 /new 仅在交互模式处理；这里通过扩展命令调用 ctx.newSession
+        deps.pi.sendUserMessage("/qq-new", { expandPromptTemplates: true });
+      }
       break;
     default:
       await reply(`未知命令 ${cmd}，发送 /help 查看支持命令`);

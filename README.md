@@ -75,7 +75,7 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 | pi 侧 | `/qq-logout` | 清除凭据并断开 |
 | pi 侧 | `/qq-md [text]` | 诊断：验证 C2C markdown 渲染能力 |
 | pi 侧 | `/qq-stream-test` | 诊断：追加模式流式全链路验证 |
-| QQ 侧 | `/stop` `/compact` `/status` `/help` | 会话控制（`/new` 需在 pi 终端执行） |
+| QQ 侧 | `/new` `/stop` `/compact` `/status` `/help` | 会话控制（`/new` 会通过扩展命令重置会话） |
 
 ## 一个回合的消息形态
 
@@ -96,7 +96,7 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 
 ```bash
 npm run typecheck      # 类型检查（npx tsc，无需本地安装）
-npx -y jiti test/run.ts  # 单元测试（98 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要/图片校验）
+npx -y jiti test/run.ts  # 单元测试（103 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要/图片校验/QQ /new）
 ```
 
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：

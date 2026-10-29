@@ -97,6 +97,10 @@ export interface ReplyChannel {
 /**
  * 发送一条回传（自动分块、逐块发牌）。
  * passive 发送失败时自动降级为 proactive 重试一次。
+ *
+ * QQBot 构造时 markdownSupport=true 的情况下，SDK 的 sendText 会自动使用
+ * msg_type=2（markdown），因此调用方只需决定 payload 是否保留 Markdown，
+ * 无需在这里区分 sendMarkdown。
  */
 export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Promise<void> {
   for (const chunk of chunkText(text)) {

@@ -66,7 +66,7 @@ pi-qq/
 
 ### M2 — 单人聊天与完整回复（F2 文本 + F4 非流式 + reply-budget.ts）
 
-1. `inbound.ts`：C2C 白名单过滤、QQ 命令拦截（`/stop`→`ctx.abort()`、`/new`→`sendUserMessage("/new", { expandPromptTemplates: true })` 或直接清理、`/status` 汇总、`/help`）、文本 → `sendUserMessage`；忙碌时 `deliverAs` 排队。
+1. `inbound.ts`：C2C 白名单过滤、QQ 命令拦截（`/stop`→`ctx.abort()`、`/new`→扩展命令 `qq-new`→`ctx.newSession()`、`/status` 汇总、`/help`）、文本 → `sendUserMessage`；忙碌时 `deliverAs` 排队。
 2. `outbound.ts` 非流式路径：markdown→纯文本转换函数（独立、可单测：强调/标题/列表/链接/表格退化）+ `TEXT_CHUNK_LIMIT` 分块。
 3. `reply-budget.ts`：按 `msgId` 记录被动回复次数与 5min 窗口；超限降级主动发送并提示。
 
@@ -95,8 +95,9 @@ pi-qq/
 ### M4 — 图片与打磨（F3 + markdownSupport 透传）
 
 1. [x] F3 图片：`images.ts` 类型/大小校验、15s 超时下载、流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示。
-2. [ ] `markdownSupport: true`：assistant 非流式路径需要走 `sendMarkdown`（当前 `sendReply` 仍固定 `sendText`）。
-3. [ ] QQ 侧 `/new`、长代码块转文件附件、多气泡 + 摘要下的被动额度实测、`debug` 超时日志。
+2. [x] `markdownSupport: true`：`QQBot` 构造时已传入该开关，SDK 的 `sendText` 自动使用 msg_type=2；调用方保留原始 Markdown 即可，无需额外 `sendMarkdown`。
+3. [x] QQ 侧 `/new`：inbound 调用隐藏扩展命令 `qq-new`，命令 handler 使用 `ctx.newSession()`；非 idle 时提示先 `/stop`。
+4. [ ] 长代码块转文件附件、多气泡 + 摘要下的被动额度实测、`debug` 超时日志。
 
 **验收**：QQ 发图后 pi 能描述图片内容；无视觉模型有明确提示；额度全程不超限。
 
@@ -170,15 +171,15 @@ pi-qq/
 - [x] 严格三行摘要：输入（总输入）+ 缓存命中率、输出、上下文占比；`tokens===null` 显示重建中
 - [x] 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送
 - [ ] 验收（待 QQ 实测）：摘要数字与本次 run 实际用量一致
-  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组/图片类型与大小校验（当前全量 98 项断言通过）。
+  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总/无文本消息行组/图片类型与大小校验/QQ /new 分发（当前全量 103 项断言通过）。
 
 ### M4 — 图片与打磨
 
 - [x] F3 图片：`images.ts` 类型/大小校验 + 15s 超时 + 流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示
 - [x] 流式接线（M2.5 已完成，`AppendStream` + 文本/活动分泡）
 - [x] `/compact` 命令、typing 指示（C2C）
-- [ ] `markdownSupport: true` 时 assistant 非流式路径走 `sendMarkdown`（当前 `sendReply` 固定 `sendText`）
-- [ ] QQ 侧 `/new` 支持
+- [x] `markdownSupport: true`：SDK `sendText` 自动 msg_type=2（无需新增 sendMarkdown 路径）
+- [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
 - [ ] 长代码块转文件附件
 - [ ] 多气泡 + 摘要下的被动额度实测
 - [ ] `debug` 抓超时日志并收尾错误路径
