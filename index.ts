@@ -238,7 +238,12 @@ export default function (pi: ExtensionAPI) {
         .join("\n")
         .trim();
     }
-    if (!text) return;
+    if (!text) {
+      // 无文本的 assistant 消息同样结束本轮反馈状态：重置 thinking 标记/快照，
+      // 并把待发思考行刷入活动气泡，避免下一条消息的思考被吞掉。
+      await runFeedback.onAssistantFinal("", isError);
+      return;
+    }
 
     // F7 流接管：流式帧按 markdown 渲染（实测表格/代码块正常），传原始文本保证增量长度一致
     if (await runFeedback.onAssistantFinal(text, isError)) return;

@@ -318,6 +318,46 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
   eq(bubbles, ["先行后补"], "同一条消息定稿时的残余增量不切泡");
 }
 
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-textless");
+  rf.onAgentStart();
+  // 消息 1：thinking + write（无文本）
+  rf.onAssistantDelta("", "思考 1");
+  await rf.onAssistantFinal("", false);
+  rf.onToolStart("write");
+  await rf.flushWindow();
+  // 消息 2：thinking + 文本 + read
+  rf.onAssistantDelta("文件已写好", "思考 2");
+  await rf.onAssistantFinal("文件已写好", false);
+  rf.onToolStart("read");
+  await rf.flushWindow();
+  // 消息 3：thinking + bash（无文本）
+  rf.onAssistantDelta("", "思考 3");
+  await rf.onAssistantFinal("", false);
+  rf.onToolStart("bash");
+  await rf.flushWindow();
+  // 消息 4：最终文本
+  rf.onAssistantDelta("最终回复", "");
+  await rf.onAssistantFinal("最终回复", false);
+  await rf.onAgentEnd();
+
+  const bubbles = collectBubbles(calls);
+  eq(bubbles.length, 4, "无文本 assistant 消息不会吞掉后续行组");
+  ok(
+    (bubbles[0].match(/思考中/g) ?? []).length === 2 && bubbles[0].includes("[1] 🔧 write"),
+    "活动 1 含两条消息的思考标记与 write",
+  );
+  eq(bubbles[1], "文件已写好", "中间文本仍为纯文本气泡");
+  ok(
+    bubbles[2].includes("[1] 🔧 read") &&
+      bubbles[2].includes("思考中") &&
+      bubbles[2].includes("[1] 🔧 bash"),
+    "活动 2 含 read、后续 thinking 与 bash",
+  );
+  eq(bubbles[3], "最终回复", "最终回复为纯文本气泡");
+}
+
 // ———— usage：F5/F6 ————
 
 function makeUsage(input: number, output: number, cacheRead: number) {
