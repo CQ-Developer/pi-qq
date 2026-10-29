@@ -97,7 +97,7 @@ pi-qq/
 1. [x] F3 图片：`images.ts` 类型/大小校验、15s 超时下载、流式限流；`inbound.ts` 注入 `ImageContent[]`；部分失败/无视觉模型提示。
 2. [x] `markdownSupport: true`：`QQBot` 构造时已传入该开关，SDK 的 `sendText` 自动使用 msg_type=2；调用方保留原始 Markdown 即可，无需额外 `sendMarkdown`。
 3. [x] QQ 侧 `/new`：inbound 调用隐藏扩展命令 `qq-new`，命令 handler 使用 `ctx.newSession()`；非 idle 时提示先 `/stop`。
-4. [ ] 长代码块转文件附件、多气泡 + 摘要下的被动额度实测、`debug` 超时日志。
+4. [ ] 长代码块转文件附件；[ ] 多气泡 + 摘要额度实测（依赖 `/qq-budget` 流式气泡计数待办）。
 
 **验收**：QQ 发图后 pi 能描述图片内容；无视觉模型有明确提示；额度全程不超限。
 
@@ -181,9 +181,10 @@ pi-qq/
 - [x] `markdownSupport: true`：SDK `sendText` 自动 msg_type=2（无需新增 sendMarkdown 路径）
 - [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
 - [x] `/qq-budget` 诊断命令（剩余被动额度 / 最近 msgId 新鲜度 / 累计发送数）
+  - [ ] 待办：统计流式气泡（当前只统计 `sendReply`，多气泡额度实测依赖此项）
 - [x] 单元测试迁移到 vitest（`test/*.test.ts`，7 个文件 / 65 个测试；`npm test`）
 - [ ] 长代码块转文件附件
-- [ ] 多气泡 + 摘要下的被动额度实测（可用 `/qq-budget` 查看剩余额度/msgId 新鲜度）
-- [ ] `debug` 抓超时日志并收尾错误路径
+- [ ] 多气泡 + 摘要下的被动额度实测（依赖上面的流式气泡计数）
+- [x] `debug` 抓超时日志：AppendStream 限流重试/最终失败 + run start/end 日志
 - [ ] 验收（待 QQ 实测）：QQ 发图后 pi 能描述图片内容；无视觉模型有提示；全程额度不超限
   - 2026-10-29：图片+文字、纯图片（均被模型正确识别）、非图片附件拒绝（zip 提示“附件处理失败”）已实测通过；无视觉模型/额度待测。

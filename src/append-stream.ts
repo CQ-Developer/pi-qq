@@ -30,6 +30,8 @@ export interface AppendStreamOptions {
   retryBaseMs?: number;
   /** 后台节流 flush 失败回调（此时流已不可信，调用方应标记降级） */
   onError?: (err: Error) => void;
+  /** 诊断日志（debug 模式）：限流重试/最终失败 */
+  onDebug?: (message: string) => void;
 }
 
 export class AppendStream {
@@ -142,8 +144,16 @@ export class AppendStream {
       try {
         return await this.api.sendC2CStreamMessage(this.creds, this.openid, req);
       } catch (err) {
-        if (attempt >= MAX_RETRIES || !this.isRateLimitError(err)) throw err;
-        await new Promise((r) => setTimeout(r, base * 2 ** attempt));
+        const reason = err instanceof Error ? err.message : String(err);
+        if (attempt >= MAX_RETRIES || !this.isRateLimitError(err)) {
+          this.opts.onDebug?.(`frame index=${req.index} failed after ${attempt + 1} attempt(s): ${reason}`);
+          throw err;
+        }
+        const delay = base * 2 ** attempt;
+        this.opts.onDebug?.(
+          `frame index=${req.index} rate limited (attempt ${attempt + 1}), retry in ${delay}ms: ${reason}`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
       }
     }
   }

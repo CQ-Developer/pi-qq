@@ -41,14 +41,18 @@ describe("AppendStream", () => {
   it("限流退避后重试成功且不丢内容", async () => {
     const { api, calls } = makeFakeApi();
     api.failNext = 2;
+    const debug: string[] = [];
     const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", {
       throttleMs: 20,
       retryBaseMs: 5,
+      onDebug: (message) => debug.push(message),
     });
     await stream.append("限流重试片段");
     await stream.done();
 
     expect(calls.length).toBeGreaterThanOrEqual(2);
     expect(calls.map((call) => call.content_raw as string).join("")).toBe("限流重试片段");
+    expect(debug.length).toBeGreaterThanOrEqual(2);
+    expect(debug.join("\n")).toContain("rate limited");
   });
 });

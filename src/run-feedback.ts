@@ -118,6 +118,11 @@ export class RunFeedback {
     this.deps = deps;
   }
 
+  private debug(message: string): void {
+    if (!this.deps.getDebug()) return;
+    console.error(`[pi-qq debug ${nowStamp()}] ${message}`);
+  }
+
   /** inbound 在注入 pi 前调用：标记接下来的 run 由 QQ 触发 */
   markQQTrigger(openid: string, msgId: string): void {
     this.pending = { openid, msgId, at: Date.now() };
@@ -152,6 +157,7 @@ export class RunFeedback {
       messageHeartbeats: 0,
     };
     this.run = run;
+    this.debug(`run start msgId=${run.msgId?.slice(0, 8) ?? "?"}`);
 
     // typing 保鲜：run 开始立即亮起"正在输入"，之后每 50s 续期（0 额度）
     const keepTyping = () => {
@@ -257,6 +263,7 @@ export class RunFeedback {
     this.clearTimers();
     this.run = null;
     if (run) {
+      this.debug(`run end elapsed=${Math.round((Date.now() - run.startedAt) / 1000)}s`);
       // DONE 失败不补发——内容已随汇总帧展示（避免双发）
       try {
         await this.sealBubble(run);
@@ -379,6 +386,7 @@ export class RunFeedback {
         run.cur = {
           stream: new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
             onError: (err) => this.handleStreamError(run, err),
+            onDebug: (message) => this.debug(`stream msgId=${run.msgId?.slice(0, 8) ?? "?"} ${message}`),
           }),
           kind,
         };
@@ -396,6 +404,9 @@ export class RunFeedback {
   private handleStreamError(run: RunState, err: Error): void {
     const had = run.cur !== null;
     run.cur = null;
+    this.debug(
+      `stream error msgId=${run.msgId?.slice(0, 8) ?? "?"} elapsed=${Math.round((Date.now() - run.startedAt) / 1000)}s: ${err.message}`,
+    );
     if (had) this.deps.onWarn(`流式通道不可用，本回合已降级（${err.message}）`);
     const rest = run.finalizedText.slice(run.resultSentLen);
     if (rest) {
