@@ -196,7 +196,7 @@ export default function (pi: ExtensionAPI) {
 
     let text: string;
     if (isError) {
-      text = `⚠️ 模型调用失败：${msg.errorMessage ?? "未知错误"}`;
+      text = `⚠️ Model error: ${msg.errorMessage ?? "unknown error"}`;
     } else {
       text = msg.content
         .filter((b) => b.type === "text")

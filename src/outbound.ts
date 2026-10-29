@@ -122,14 +122,14 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
         // Passive failure (e.g. stale msgId) → retry once proactively.
         try {
           await bot.sendText({ scope: "c2c", targetId: ch.boundOpenid }, chunk);
-          ch.onWarn?.("被动回复失败，已降级主动发送");
+          ch.onWarn?.("Passive reply failed; falling back to proactive.");
           continue;
         } catch (retryErr) {
-          ch.onWarn?.(`主动发送也失败：${(retryErr as Error).message}`);
+          ch.onWarn?.(`Proactive send failed: ${(retryErr as Error).message}`);
           continue;
         }
       }
-      ch.onWarn?.(`发送失败：${(err as Error).message}`);
+      ch.onWarn?.(`Send failed: ${(err as Error).message}`);
     }
   }
 }

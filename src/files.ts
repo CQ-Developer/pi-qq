@@ -78,7 +78,7 @@ async function writeUnique(dir: string, filename: string, body: Buffer): Promise
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
   }
-  throw new Error("无法分配唯一文件名");
+  throw new Error("Could not allocate a unique filename");
 }
 
 /** Save non-image attachments in order; one failure does not stop the others. */
@@ -102,7 +102,7 @@ export async function saveInboundFiles(
     const fallback = `file-${index + 1}`;
     const filename = sanitizeFilename(attachment.filename, fallback);
     if (typeof attachment.size === "number" && attachment.size > limit) {
-      failures.push({ filename, reason: `文件过大（${formatBytes(attachment.size)} > ${formatBytes(limit)}）` });
+      failures.push({ filename, reason: `file too large (${formatBytes(attachment.size)} > ${formatBytes(limit)})` });
       continue;
     }
 
@@ -111,13 +111,13 @@ export async function saveInboundFiles(
         url: attachment.url,
         maxSize: limit,
         timeoutMs: DOWNLOAD_TIMEOUT_MS,
-        kind: "文件",
+        kind: "file",
         fetchImpl,
       });
       const path = await writeUnique(dir, filename, body);
       files.push({ path, originalName: filename, size: body.byteLength });
     } catch (err) {
-      failures.push({ filename, reason: err instanceof Error ? err.message : "下载失败" });
+      failures.push({ filename, reason: err instanceof Error ? err.message : "Download failed" });
     }
   }
 

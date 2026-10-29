@@ -97,12 +97,12 @@ function formatToolCount(name: string, count: number): string {
 /** Heartbeat text: tool totals and elapsed time only (features-v1.md decision #3). */
 export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>): string {
   const minutes = Math.floor(elapsedMs / 60_000);
-  const elapsedText = minutes < 1 ? "不到 1 分钟" : `${minutes} 分钟`;
-  if (tools.size === 0) return `⏱ 已运行 ${elapsedText}（尚未产生工具调用）`;
+  const elapsedText = minutes < 1 ? "less than 1 minute" : `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  if (tools.size === 0) return `⏱ Running for ${elapsedText} (no tool calls yet)`;
   const parts = [...tools.entries()].map(([name, s]) => formatToolCount(name, s.count));
   const errors = [...tools.values()].reduce((n, s) => n + s.errors, 0);
-  const suffix = errors > 0 ? ` · ${errors} 失败` : "";
-  return `⏱ 已运行 ${elapsedText} · ${parts.join(" · ")}${suffix}`;
+  const suffix = errors > 0 ? ` · ${errors} failed` : "";
+  return `⏱ Running for ${elapsedText} · ${parts.join(" · ")}${suffix}`;
 }
 
 const STREAM_LIVENESS_MS = 60_000; // Add a liveness row after this much silence
@@ -403,7 +403,7 @@ export class RunFeedback {
     this.debug(
       `stream error msgId=${run.msgId?.slice(0, 8) ?? "?"} elapsed=${Math.round((Date.now() - run.startedAt) / 1000)}s: ${err.message}`,
     );
-    if (had) this.deps.onWarn(`流式通道不可用，本回合已降级（${err.message}）`);
+    if (had) this.deps.onWarn(`Stream unavailable; falling back to text (${err.message}).`);
     const rest = run.finalizedText.slice(run.resultSentLen);
     if (rest) {
       const bound = this.deps.boundOpenid();

@@ -109,7 +109,7 @@ describe("saveInboundFiles", () => {
 
     expect(result.files).toHaveLength(0);
     expect(fetched).toBe(false);
-    expect(result.failures[0]?.reason).toContain("文件过大");
+    expect(result.failures[0]?.reason).toContain("file too large");
   });
 
   it("文件大小默认上限为 50MB", () => {

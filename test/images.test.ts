@@ -58,12 +58,14 @@ describe("buildImageMessageContent", () => {
 
 describe("formatImageFailures", () => {
   it("全部失败", () => {
-    expect(formatImageFailures([{ filename: "a.png", reason: "过大" }], 0)).toBe("⚠️ 附件处理失败：\n• a.png：过大");
+    expect(formatImageFailures([{ filename: "a.png", reason: "too large" }], 0)).toBe(
+      "⚠️ Attachment failed:\n• a.png: too large",
+    );
   });
 
   it("部分成功", () => {
-    expect(formatImageFailures([{ filename: "a.png", reason: "过大" }], 1)).toBe(
-      "⚠️ 有 1 个附件未处理（成功 1 个）：\n• a.png：过大",
+    expect(formatImageFailures([{ filename: "a.png", reason: "too large" }], 1)).toBe(
+      "⚠️ 1 attachment(s) failed (1 succeeded):\n• a.png: too large",
     );
   });
 });
@@ -97,7 +99,7 @@ describe("resolveInboundImages", () => {
     );
     expect(result.images).toHaveLength(0);
     expect(fetched).toBe(false);
-    expect(result.failures[0]?.reason).toContain("图片过大");
+    expect(result.failures[0]?.reason).toContain("image too large");
   });
 
   it("实际内容超限时流式拒绝", async () => {
@@ -108,7 +110,7 @@ describe("resolveInboundImages", () => {
       (async () => new Response(big, { headers: { "content-type": "image/png" } })) as typeof fetch,
     );
     expect(result.images).toHaveLength(0);
-    expect(result.failures[0]?.reason).toContain("图片过大");
+    expect(result.failures[0]?.reason).toContain("image too large");
   });
 
   it("不支持类型不注入", async () => {
@@ -118,6 +120,6 @@ describe("resolveInboundImages", () => {
       (async () => new Response()) as typeof fetch,
     );
     expect(result.images).toHaveLength(0);
-    expect(result.failures[0]?.reason).toContain("不支持的附件类型");
+    expect(result.failures[0]?.reason).toContain("Unsupported attachment type");
   });
 });

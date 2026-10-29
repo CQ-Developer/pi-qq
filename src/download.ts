@@ -21,7 +21,7 @@ async function readBodyLimited(response: Response, limit: number, kind: string):
   if (!response.body) {
     const body = Buffer.from(await response.arrayBuffer());
     if (body.byteLength > limit) {
-      throw new Error(`${kind}过大（${formatBytes(body.byteLength)} > ${formatBytes(limit)}）`);
+      throw new Error(`${kind} too large (${formatBytes(body.byteLength)} > ${formatBytes(limit)})`);
     }
     return body;
   }
@@ -37,14 +37,14 @@ async function readBodyLimited(response: Response, limit: number, kind: string):
       total += value.byteLength;
       if (total > limit) {
         await reader.cancel();
-        throw new Error(`${kind}过大（>${formatBytes(limit)}）`);
+        throw new Error(`${kind} too large (>${formatBytes(limit)})`);
       }
       chunks.push(value);
     }
   } finally {
     reader.releaseLock();
   }
-  if (total === 0) throw new Error(`${kind}内容为空`);
+  if (total === 0) throw new Error(`empty ${kind} content`);
   return Buffer.concat(chunks, total);
 }
 
@@ -55,10 +55,10 @@ export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
   try {
     parsed = new URL(opts.url);
   } catch {
-    throw new Error(`${opts.kind}地址无效`);
+    throw new Error(`invalid ${opts.kind} URL`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`不支持的${opts.kind}地址协议`);
+    throw new Error(`unsupported ${opts.kind} URL protocol`);
   }
 
   const controller = new AbortController();
@@ -67,19 +67,19 @@ export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
   try {
     const response = await fetchImpl(parsed.toString(), { signal: controller.signal, redirect: "follow" });
     if (!response.ok) {
-      throw new Error(`下载失败（HTTP ${response.status}）`);
+      throw new Error(`download failed (HTTP ${response.status})`);
     }
 
     const lengthHeader = response.headers.get("content-length");
     const contentLength = lengthHeader ? Number(lengthHeader) : NaN;
     if (Number.isFinite(contentLength) && contentLength > limit) {
       await response.body?.cancel();
-      throw new Error(`${opts.kind}过大（${formatBytes(contentLength)} > ${formatBytes(limit)}）`);
+      throw new Error(`${opts.kind} too large (${formatBytes(contentLength)} > ${formatBytes(limit)})`);
     }
     return await readBodyLimited(response, limit, opts.kind);
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new Error(`下载超时（${opts.timeoutMs / 1000}s）`);
+      throw new Error(`download timed out after ${opts.timeoutMs / 1000}s`);
     }
     throw err;
   } finally {

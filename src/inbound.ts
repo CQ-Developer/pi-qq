@@ -63,7 +63,7 @@ export function createInboundHandler(deps: InboundDeps) {
 
     const attachments = msg.attachments ?? [];
     if (!text && attachments.length === 0) {
-      await reply("暂不支持该消息类型");
+      await reply("Unsupported message type.");
       return;
     }
 
@@ -76,7 +76,7 @@ export function createInboundHandler(deps: InboundDeps) {
     if (imageAttachments.length > 0) {
       const supportsImages = deps.ctx.model?.input.includes("image") ?? false;
       if (!supportsImages) {
-        await reply(`当前模型不支持图片输入，已跳过 ${imageAttachments.length} 张图片`);
+        await reply(`Model does not support image input; skipped ${imageAttachments.length} image(s).`);
       } else {
         const result = await resolveInboundImages(imageAttachments, deps.getImageMaxSize());
         images = result.images;
@@ -113,30 +113,30 @@ async function handleCommand(text: string, reply: (t: string) => Promise<void>, 
     case "/help":
       await reply(
         [
-          "pi-qq 命令：",
-          "• /stop — 中止当前任务",
-          "• /compact — 压缩上下文",
-          "• /status — 查看状态",
-          "• /new — 重置会话",
-          "• /help — 本帮助",
-          "其他文字将直接发送给 pi",
+          "pi-qq commands:",
+          "• /stop — abort the current task",
+          "• /compact — compact the context",
+          "• /status — show status",
+          "• /new — reset the session",
+          "• /help — this help",
+          "Other text is sent to pi.",
         ].join("\n"),
       );
       break;
     case "/stop":
       if (deps.ctx.isIdle()) {
-        await reply("当前没有正在运行的任务");
+        await reply("No task is running.");
       } else {
         deps.ctx.abort();
-        await reply("已请求中止当前任务");
+        await reply("Abort requested.");
       }
       break;
     case "/compact":
       if (deps.ctx.isIdle()) {
         deps.ctx.compact();
-        await reply("已触发上下文压缩");
+        await reply("Context compaction triggered.");
       } else {
-        await reply("任务运行中，请先 /stop 再压缩");
+        await reply("Task is running; use /stop before /compact.");
       }
       break;
     case "/status":
@@ -144,14 +144,14 @@ async function handleCommand(text: string, reply: (t: string) => Promise<void>, 
       break;
     case "/new":
       if (!deps.ctx.isIdle()) {
-        await reply("任务运行中，请先 /stop 再重置会话");
+        await reply("Task is running; use /stop before resetting.");
       } else {
-        await reply("正在重置会话…");
+        await reply("Resetting the session…");
         // Built-in /new is interactive-only; dispatch the extension command instead.
         deps.pi.sendUserMessage("/qq-new", { expandPromptTemplates: true });
       }
       break;
     default:
-      await reply(`未知命令 ${cmd}，发送 /help 查看支持命令`);
+      await reply(`Unknown command ${cmd}; use /help.`);
   }
 }

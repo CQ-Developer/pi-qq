@@ -78,13 +78,15 @@ export function buildImageMessageContent(
 
 export function formatImageFailures(failures: readonly ImageFailure[], successCount: number): string {
   const title =
-    successCount > 0 ? `⚠️ 有 ${failures.length} 个附件未处理（成功 ${successCount} 个）：` : "⚠️ 附件处理失败：";
-  return [title, ...failures.map((failure) => `• ${failure.filename}：${failure.reason}`)].join("\n");
+    successCount > 0
+      ? `⚠️ ${failures.length} attachment(s) failed (${successCount} succeeded):`
+      : "⚠️ Attachment failed:";
+  return [title, ...failures.map((failure) => `• ${failure.filename}: ${failure.reason}`)].join("\n");
 }
 
 function attachmentLabel(filename: string | undefined, index: number): string {
   const name = filename?.trim();
-  return name || `图片 ${index + 1}`;
+  return name || `Image ${index + 1}`;
 }
 
 async function downloadOne(
@@ -96,10 +98,20 @@ async function downloadOne(
   const filename = attachmentLabel(attachment.filename, index);
   const mimeType = resolveImageMime(attachment.content_type, attachment.filename);
   if (!mimeType) {
-    return { failure: { filename, reason: `不支持的附件类型（${attachment.content_type || "未知"}）` } };
+    return {
+      failure: {
+        filename,
+        reason: `Unsupported attachment type (${attachment.content_type || "unknown"})`,
+      },
+    };
   }
   if (typeof attachment.size === "number" && attachment.size > maxSize) {
-    return { failure: { filename, reason: `图片过大（${formatBytes(attachment.size)} > ${formatBytes(maxSize)}）` } };
+    return {
+      failure: {
+        filename,
+        reason: `image too large (${formatBytes(attachment.size)} > ${formatBytes(maxSize)})`,
+      },
+    };
   }
 
   try {
@@ -107,12 +119,12 @@ async function downloadOne(
       url: attachment.url,
       maxSize,
       timeoutMs: DOWNLOAD_TIMEOUT_MS,
-      kind: "图片",
+      kind: "image",
       fetchImpl,
     });
     return { image: { type: "image", data: body.toString("base64"), mimeType } };
   } catch (err) {
-    return { failure: { filename, reason: err instanceof Error ? err.message : "下载失败" } };
+    return { failure: { filename, reason: err instanceof Error ? err.message : "Download failed" } };
   }
 }
 

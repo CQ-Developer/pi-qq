@@ -51,7 +51,7 @@ function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
 
 describe("formatHeartbeat", () => {
   it("无工具调用", () => {
-    expect(formatHeartbeat(30 * 1000, new Map())).toBe("⏱ 已运行 不到 1 分钟（尚未产生工具调用）");
+    expect(formatHeartbeat(30 * 1000, new Map())).toBe("⏱ Running for less than 1 minute (no tool calls yet)");
   });
 
   it("含失败数", () => {
@@ -59,7 +59,9 @@ describe("formatHeartbeat", () => {
       ["bash", { count: 86, errors: 3 }],
       ["read", { count: 12, errors: 0 }],
     ]);
-    expect(formatHeartbeat(25 * MIN, tools)).toBe("⏱ 已运行 25 分钟 · [🔧] [86] bash · [🔧] [12] read · 3 失败");
+    expect(formatHeartbeat(25 * MIN, tools)).toBe(
+      "⏱ Running for 25 minutes · [🔧] [86] bash · [🔧] [12] read · 3 failed",
+    );
   });
 
   it("无失败时省略失败段", () => {
@@ -67,7 +69,7 @@ describe("formatHeartbeat", () => {
       ["bash", { count: 86, errors: 0 }],
       ["read", { count: 12, errors: 0 }],
     ]);
-    expect(formatHeartbeat(65 * MIN, tools)).toBe("⏱ 已运行 65 分钟 · [🔧] [86] bash · [🔧] [12] read");
+    expect(formatHeartbeat(65 * MIN, tools)).toBe("⏱ Running for 65 minutes · [🔧] [86] bash · [🔧] [12] read");
   });
 });
 

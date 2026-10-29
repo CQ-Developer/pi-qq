@@ -109,7 +109,7 @@ describe("inbound /new", () => {
   it("idle 时回复并调用 qq-new 扩展命令，不触发 agent run", async () => {
     const harness = makeInboundHarness(true);
     await harness.run();
-    expect(harness.sent).toEqual(["正在重置会话…"]);
+    expect(harness.sent).toEqual(["Resetting the session…"]);
     expect(harness.userMessages).toEqual([{ content: "/qq-new", options: { expandPromptTemplates: true } }]);
     expect(harness.triggers()).toBe(0);
   });
@@ -117,7 +117,7 @@ describe("inbound /new", () => {
   it("busy 时拒绝重置", async () => {
     const harness = makeInboundHarness(false);
     await harness.run();
-    expect(harness.sent).toEqual(["任务运行中，请先 /stop 再重置会话"]);
+    expect(harness.sent).toEqual(["Task is running; use /stop before resetting."]);
     expect(harness.userMessages).toEqual([]);
   });
 });
