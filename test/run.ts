@@ -386,12 +386,12 @@ eq(
 );
 eq(
   formatImageFailures([{ filename: "a.png", reason: "过大" }], 0),
-  "⚠️ 图片处理失败：\n• a.png：过大",
+  "⚠️ 附件处理失败：\n• a.png：过大",
   "图片失败提示：全部失败",
 );
 eq(
   formatImageFailures([{ filename: "a.png", reason: "过大" }], 1),
-  "⚠️ 有 1 张图片未处理（成功 1 张）：\n• a.png：过大",
+  "⚠️ 有 1 个附件未处理（成功 1 个）：\n• a.png：过大",
   "图片失败提示：部分成功",
 );
 

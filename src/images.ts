@@ -80,8 +80,8 @@ export function buildImageMessageContent(
 export function formatImageFailures(failures: readonly ImageFailure[], successCount: number): string {
   const title =
     successCount > 0
-      ? `⚠️ 有 ${failures.length} 张图片未处理（成功 ${successCount} 张）：`
-      : "⚠️ 图片处理失败：";
+      ? `⚠️ 有 ${failures.length} 个附件未处理（成功 ${successCount} 个）：`
+      : "⚠️ 附件处理失败：";
   return [title, ...failures.map((failure) => `• ${failure.filename}：${failure.reason}`)].join("\n");
 }
 
