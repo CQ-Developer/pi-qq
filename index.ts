@@ -168,10 +168,7 @@ export default function (pi: ExtensionAPI) {
     if (login) {
       startWithCredentials(ctx, login.credentials, login.allowedOpenid);
     } else if (ctx.hasUI) {
-      ctx.ui.notify(
-        "pi-qq is not logged in. Run /qq-login and scan a QR code. Credentials are kept in memory only; restarting pi requires scanning again.",
-        "warning",
-      );
+      ctx.ui.notify("pi-qq: run /qq-login to scan a QR code.", "warning");
     }
   });
 
