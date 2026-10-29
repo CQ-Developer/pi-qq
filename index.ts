@@ -62,7 +62,7 @@ const fmtTokens = (n: number | null): string => (n === null ? "unknown" : format
 export default function (pi: ExtensionAPI) {
   const maskAppId = (appId: string) => `${appId.slice(0, 4)}****`;
 
-  // —— 实时配置读取器（绑定/设置变更即时生效）——
+  // Live settings reader (binding/settings changes apply immediately).
 
   const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getBoundOpenid = getAllowedOpenid;
@@ -152,7 +152,7 @@ export default function (pi: ExtensionAPI) {
     runFeedback.dispose();
   });
 
-  // —— F7 run 级反馈：agent 生命周期 / 工具计数 / 文本流式 ——
+  // F7 run feedback: agent lifecycle / tool counts / text streaming.
 
   pi.on("agent_start", () => {
     runFeedback.onAgentStart();
@@ -184,7 +184,7 @@ export default function (pi: ExtensionAPI) {
     void runFeedback.onAssistantDelta(snapshot, thinking);
   });
 
-  // —— pi → QQ：assistant 消息回传（非流式路径 + F7 流接管）——
+  // pi → QQ: assistant message relay (non-streaming path + F7 stream takeover).
 
   pi.on("message_end", async (event, ctx) => {
     const msg = event.message;
@@ -205,13 +205,13 @@ export default function (pi: ExtensionAPI) {
         .trim();
     }
     if (!text) {
-      // 无文本的 assistant 消息同样结束本轮反馈状态：重置 thinking 标记/快照，
-      // 并把待发思考行刷入活动气泡，避免下一条消息的思考被吞掉。
+      // Textless assistant messages also end the feedback turn: reset thinking state
+      // and flush pending thinking rows so the next message does not swallow them.
       await runFeedback.onAssistantFinal("", isError);
       return;
     }
 
-    // F7 流接管：流式帧按 markdown 渲染（实测表格/代码块正常），传原始文本保证增量长度一致
+    // F7 stream takeover: stream frames render Markdown; send raw text so lengths match.
     if (await runFeedback.onAssistantFinal(text, isError)) return;
 
     const payload = settings.markdownSupport ? text : markdownToPlain(text);
@@ -333,11 +333,11 @@ export default function (pi: ExtensionAPI) {
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
         const stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
-        await stream.append("Thinking...\n[3] 🔧 bash\n[2] 🔧 read\n");
+        await stream.append("[💭] Thinking...\n[🔧] [3] bash\n[🔧] [2] read\n");
         await sleep(1200);
         await stream.append("\n**Intermediate message**: first-turn reply.\n");
         await sleep(1200);
-        await stream.append("[1] 🔧 edit\n");
+        await stream.append("[🔧] [1] edit\n");
         await sleep(800);
         await stream.append("\n**Final reply** (streamed append)");
         let doneNote = "DONE succeeded";

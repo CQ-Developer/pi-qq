@@ -1,4 +1,4 @@
-/** QQ 非图片附件 → 当前工作空间保存，并在提示词中给出路径供 pi 使用。 */
+/** Save QQ non-image attachments in the workspace and reference them in the prompt. */
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { downloadLimited, type InboundAttachmentLike } from "./download";
@@ -20,9 +20,9 @@ export interface FileFailure {
 
 export interface SaveFilesOptions {
   maxSize: number;
-  /** 测试可覆盖；默认 <cwd>/.pi/pi-qq */
+  /** Test override; defaults to <cwd>/.pi/pi-qq. */
   baseDir?: string;
-  /** 用于隔离同一消息的文件目录（通常传 msgId） */
+  /** Directory key for one message (usually msgId). */
   dirKey?: string;
   now?: Date;
   fetchImpl?: typeof fetch;
@@ -47,7 +47,7 @@ function withSuffix(filename: string, suffix: number): string {
   return `${stem}-${suffix}${ext}`;
 }
 
-/** 只保留安全文件名（去掉路径、控制符和 Windows 非法字符），超长时截断 stem。 */
+/** Keep only a safe basename (no paths/control/Windows-invalid chars); truncate long stems. */
 export function sanitizeFilename(filename: string | undefined, fallback: string): string {
   const raw = basename((filename ?? "").trim());
   const cleaned = raw
@@ -81,7 +81,7 @@ async function writeUnique(dir: string, filename: string, body: Buffer): Promise
   throw new Error("无法分配唯一文件名");
 }
 
-/** 将非图片附件按原顺序保存到本地，单文件失败不影响其他文件。 */
+/** Save non-image attachments in order; one failure does not stop the others. */
 export async function saveInboundFiles(
   attachments: readonly InboundAttachmentLike[],
   options: SaveFilesOptions,
@@ -124,7 +124,7 @@ export async function saveInboundFiles(
   return { files, failures };
 }
 
-/** 将保存路径与用户原消息组合成 pi 提示词。 */
+/** Combine saved paths and the original user message into the pi prompt. */
 export function formatFilePrompt(files: readonly SavedFile[], userText: string): string {
   if (files.length === 0) return userText;
 

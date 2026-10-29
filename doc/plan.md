@@ -172,7 +172,7 @@ pi-qq/
 
 - [x] 按用户要求移除每轮用量摘要；上下文占比改用 `/status` / `/qq-status`
 - [x] 删除 `src/usage.ts`、`usageRelay` 配置及对应测试
-  - 当前全量：8 个测试文件 / 76 个测试通过。
+  - 当前全量：8 个测试文件 / 77 个测试通过。
 
 ### M4 — 图片与打磨
 
@@ -182,7 +182,7 @@ pi-qq/
 - [x] `markdownSupport: true`：SDK `sendText` 自动 msg_type=2（无需新增 sendMarkdown 路径）
 - [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
 - [x] `/qq-budget` 诊断命令（普通被动剩余 / 流式气泡数 / 估算剩余 / 最近 msgId 新鲜度）
-- [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 76 个测试；`npm test`）
+- [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 77 个测试；`npm test`）
 - [ ] 长代码块转文件附件（backlog，暂缓）
 - [x] 多气泡流式额度实测（2026-10-29：当时包含 1 条摘要；摘要后来已移除，仅作历史记录）
 - [x] `debug` 抓超时日志：AppendStream 限流重试/最终失败 + run start/end 日志

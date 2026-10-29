@@ -7,16 +7,17 @@ import type {
 } from "@tencent-connect/qqbot-nodejs/protocol";
 
 /**
- * 追加模式（input_mode="append"）的最小流式发送器。
+ * Minimal append-mode (input_mode="append") stream sender.
  *
- * SDK 内置 StreamSession 硬编码 input_mode="replace"，2026-10 实测平台返回
- * 「已经提交的消息内容不可修改」拒绝 replace。追加语义下每帧 content_raw
- * 为**新增文本**，与平台"已提交内容不可变"规则一致。
+ * The SDK StreamSession hardcodes input_mode="replace"; in 2026-10 the platform
+ * rejected it with "submitted message content cannot be modified". In append mode
+ * each content_raw frame carries only the **new** text, matching the platform rule
+ * that already-submitted content is immutable.
  *
- * 内建两项保护（对齐 SDK StreamSession 的最佳实践）：
- * 1. 节流：token 级增量先入缓冲，按节流窗口（默认 500ms，最小 300ms）合并成帧，
- *    避免高频 message_update 打爆 API。
- * 2. 限流退避：429 / err_code 50002 按指数退避重试（1s→2s→4s，最多 3 次）。
+ * Two built-in safeguards (aligned with SDK StreamSession best practices):
+ * 1. Throttle: token increments are buffered and merged into frames per throttle
+ *    window (default 500ms, minimum 300ms) to avoid flooding the API.
+ * 2. Rate-limit backoff: 429 / err_code 50002 retry exponentially (1s→2s→4s, max 3).
  */
 
 const MIN_INTERVAL_MS = 300;
@@ -24,13 +25,13 @@ const RATE_LIMIT_BASE_MS = 1000;
 const MAX_RETRIES = 3;
 
 export interface AppendStreamOptions {
-  /** 两帧之间的最小间隔；期间增量合并为一帧 */
+  /** Minimum interval between frames; increments are merged during the window. */
   throttleMs?: number;
-  /** 限流退避基数（ms），测试用 */
+  /** Rate-limit backoff base in ms (for tests). */
   retryBaseMs?: number;
-  /** 后台节流 flush 失败回调（此时流已不可信，调用方应标记降级） */
+  /** Background throttle flush failure (stream is no longer trusted). */
   onError?: (err: Error) => void;
-  /** 诊断日志（debug 模式）：限流重试/最终失败 */
+  /** Diagnostic log (debug mode): rate-limit retries/final failures. */
   onDebug?: (message: string) => void;
 }
 
@@ -56,12 +57,12 @@ export class AppendStream {
     return Math.max(this.opts.throttleMs ?? 500, MIN_INTERVAL_MS);
   }
 
-  /** 追加增量文本；内部按节流窗口合并成帧，立即返回（后台发送） */
+  /** Append text; frames are merged by throttle window and sent in the background. */
   async append(delta: string): Promise<void> {
     if (this.doneSent || !delta) return;
     this.buffer += delta;
     const elapsed = Date.now() - this.lastFlushAt;
-    if (this.flushing) return; // 在途 flush 的 trailing 逻辑会接手缓冲
+    if (this.flushing) return; // The in-flight flush trailing logic will pick up the buffer.
     if (elapsed >= this.throttleMs()) {
       await this.doFlush("generating");
       return;
@@ -74,7 +75,7 @@ export class AppendStream {
     }
   }
 
-  /** 发送剩余增量并收尾（DONE 帧）。错误向上抛给调用方。 */
+  /** Flush remaining text and send DONE. Errors propagate to the caller. */
   async done(): Promise<void> {
     if (this.doneSent) return;
     if (this.flushTimer) {
@@ -85,11 +86,11 @@ export class AppendStream {
       await new Promise((r) => setTimeout(r, 20));
     }
     if (this.buffer) await this.doFlush("generating");
-    await this.doFlush("done"); // DONE 帧 content_raw 为空（已实测接受）
+    await this.doFlush("done"); // DONE frames carry empty content_raw (verified).
     this.doneSent = true;
   }
 
-  /** 仅停止后台定时器（不发送 DONE；用于会话关闭等异常路径） */
+  /** Stop background timers only; no DONE (for shutdown/error paths). */
   dispose(): void {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
@@ -101,13 +102,13 @@ export class AppendStream {
   private async doFlush(state: "generating" | "done"): Promise<void> {
     if (this.flushing) return;
     const content = state === "done" ? "" : this.buffer;
-    // DONE 帧允许空内容（表示生成结束），generating 无内容则无需发送
+    // DONE frames may be empty (generation finished); empty generating frames are skipped.
     if (!content && state === "generating") return;
     this.flushing = true;
     let failed = false;
     try {
       if (this.msgSeq === null) this.msgSeq = getNextMsgSeq(this.msgId);
-      // input_mode 超出 SDK 类型定义（仅 replace），运行时值由平台语义决定
+      // input_mode is outside the SDK type (replace only); the platform defines its runtime meaning.
       const req = {
         input_mode: "append",
         input_state: state === "done" ? StreamInputState.DONE : StreamInputState.GENERATING,
@@ -128,7 +129,7 @@ export class AppendStream {
       throw err;
     } finally {
       this.flushing = false;
-      // trailing：flush 期间又有新增量 → 排下一帧
+      // Trailing: new data arrived during flush; schedule the next frame.
       if (!failed && state === "generating" && this.buffer && !this.doneSent && !this.flushTimer) {
         this.flushTimer = setTimeout(() => {
           this.flushTimer = null;

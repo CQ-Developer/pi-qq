@@ -10,36 +10,36 @@ import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import type { Credentials } from "./config";
 
 /**
- * QQBot 实例的会话级生命周期管理：
- * 创建、中间件装配、连接状态跟踪、终态错误上报。
- * start() 阻塞至 stop()/abort，因此在后台运行（void 不等待）。
+ * Session-level QQBot lifecycle: creation, middleware, connection state,
+ * and fatal-error reporting. start() blocks until stop()/abort, so it runs
+ * in the background (void, not awaited).
  */
 
 export type BotState =
-  | "stopped" // 未运行 / 已停止
-  | "starting" // 已发起连接，等待 READY
-  | "connected" // 在线（READY / RESUMED）
-  | "reconnecting" // 断线，SDK 自动重连中
-  | "blocked"; // 致命关闭（4914 下线 / 4915 封禁），需人工介入
+  | "stopped" // Not running/stopped
+  | "starting" // Connecting, waiting for READY
+  | "connected" // Online (READY/RESUMED)
+  | "reconnecting" // Disconnected; the SDK is reconnecting
+  | "blocked"; // Fatal close (4914 offline / 4915 banned); manual action required
 
 export interface StartBotOptions {
   credentials: Credentials;
   /** F2: QR-bound single user; production always provides it */
   allowedOpenid?: string;
   markdownSupport?: boolean;
-  /** 诊断模式：SDK 内部日志（超时/限流/重连等）打到终端 */
+  /** Debug mode: print SDK logs (timeouts/rate limits/reconnects) to the terminal. */
   debug?: boolean;
-  /** 入站消息接线点（M2 起；M1 为空） */
+  /** Inbound message handler. */
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;
-  /** 连接状态变化（UI 通知由调用方决定） */
+  /** Connection state changes; the caller decides how to notify the UI. */
   onStateChange?: (state: BotState, detail?: string) => void;
-  /** 可恢复错误（SDK 自动重连，不打扰用户） */
+  /** Recoverable errors; the SDK reconnects automatically. */
   onRecoverableError?: (err: Error) => void;
 }
 
 export interface RunningBot {
   bot: QQBot;
-  /** 幂等停止 */
+  /** Idempotent stop. */
   stop: () => void;
 }
 
@@ -50,13 +50,13 @@ export function startBot(opts: StartBotOptions): RunningBot {
     markdownSupport: opts.markdownSupport ?? false,
   });
 
-  // 回声过滤 + 消息去重（SDK 默认 5s 窗口）
+  // Echo filtering + message deduplication (SDK default 5s window).
   bot.use(messageFilter({ skipSelfEcho: true }));
-  // 清洗 @marker / face tags 等协议标记，只留纯文本
+  // Strip protocol markers such as @mentions and face tags.
   bot.use(contentSanitizer({ stripBotMention: true }));
   // Single-user allowlist for C2C; inbound also rejects when no QR login is active.
   bot.use(accessPolicy(opts.allowedOpenid ? { c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } } : {}));
-  // 同用户串行处理，避免流式与回复互相踩踏
+  // Serialize per user so streams and replies do not race.
   bot.use(concurrencyGuard());
 
   const report = (state: BotState, detail?: string) => opts.onStateChange?.(state, detail);

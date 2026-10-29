@@ -2,23 +2,23 @@ import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { ReplyBudget } from "./reply-budget";
 
 /**
- * pi → QQ 的文本回传（F4 非流式路径）：
- * markdown → 纯文本轻量转换、超长分块、按被动回复预算发牌与降级。
+ * pi → QQ text relay (F4 non-streaming path): lightweight Markdown-to-plain
+ * conversion, long-text chunking, and passive-reply budget with fallback.
  */
 
-/** 单条文本上限。SDK 内部按 ~5000 字符切分，这里留出协议余量。 */
+/** Single-text limit; SDK splits around 5000 chars, leaving protocol headroom. */
 export const TEXT_CHUNK_LIMIT = 4500;
 
 /**
- * Markdown → 纯文本（features.md F4：默认机器人无 markdown 权限，
- * 轻量转换保持手机端可读性；代码围栏内容原样保留，仅去掉围栏标记）。
+ * Markdown → plain text (features.md F4: no Markdown permission by default).
+ * Keep mobile readability; preserve fenced code content and drop only the fences.
  */
 export function markdownToPlain(md: string): string {
   const out: string[] = [];
   let inFence = false;
 
   for (const raw of md.split("\n")) {
-    // 代码围栏：翻转状态，标记行不输出，内容行原样保留
+    // Code fences: toggle state; drop fence lines, keep content as-is.
     if (/^\s*(```|~~~)/.test(raw)) {
       inFence = !inFence;
       continue;
@@ -30,7 +30,7 @@ export function markdownToPlain(md: string): string {
 
     let t = raw;
 
-    // 表格：分隔行丢弃，数据行去掉首尾竖线并收紧边缘空格（逐行退化）
+    // Tables: drop separator rows; strip edge pipes and trim data rows.
     if (/^\s*\|?[\s:|-]+\|?\s*$/.test(t) && t.includes("-") && t.includes("|")) {
       continue;
     }
@@ -41,7 +41,7 @@ export function markdownToPlain(md: string): string {
         .trim();
     }
 
-    // 标题 / 引用 / 水平线
+    // Headings / quotes / horizontal rules
     t = t.replace(/^\s{0,3}#{1,6}\s+/, "");
     t = t.replace(/^\s{0,3}>\s?/, "");
     if (/^\s{0,3}([-*_]\s*){3,}$/.test(t)) {
@@ -49,13 +49,13 @@ export function markdownToPlain(md: string): string {
       continue;
     }
 
-    // 图片：保留 alt 文本
+    // Images: keep alt text
     t = t.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
-    // 链接：文字（url）；文字与 url 相同则只留 url
+    // Links: text (url); keep only url when text equals url
     t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text: string, url: string) =>
       text === url ? url : `${text}（${url}）`,
     );
-    // 强调 / 行内代码 / 删除线
+    // Emphasis / inline code / strikethrough
     t = t.replace(/\*\*([^*]+)\*\*/g, "$1");
     t = t.replace(/__([^_]+)__/g, "$1");
     t = t.replace(/`([^`]+)`/g, "$1");
@@ -63,7 +63,7 @@ export function markdownToPlain(md: string): string {
     t = t.replace(/\*([^*\n]+)\*/g, "$1");
     t = t.replace(/(?<![A-Za-z0-9_])_([^_\n]+)_(?![A-Za-z0-9_])/g, "$1");
 
-    // 无序列表 → •；有序列表保持原样
+    // Unordered lists → •; ordered lists unchanged
     t = t.replace(/^(\s*)[-*+]\s+/, "$1• ");
 
     out.push(t);
@@ -76,7 +76,7 @@ export function markdownToPlain(md: string): string {
 }
 
 /**
- * 超长文本分块：优先在换行处断开，避免切断整行；无换行时硬切。
+ * Chunk long text at newlines when possible; hard-cut when there is no newline.
  */
 export function chunkText(text: string, limit = TEXT_CHUNK_LIMIT): string[] {
   if (text.length <= limit) return [text];
@@ -84,7 +84,7 @@ export function chunkText(text: string, limit = TEXT_CHUNK_LIMIT): string[] {
   let rest = text;
   while (rest.length > limit) {
     let cut = rest.lastIndexOf("\n", limit);
-    cut = cut <= 0 ? limit : cut + 1; // +1 把换行符留在当前块末尾
+    cut = cut <= 0 ? limit : cut + 1; // +1 keeps the newline at the end of the chunk
     chunks.push(rest.slice(0, cut));
     rest = rest.slice(cut);
   }
@@ -92,21 +92,21 @@ export function chunkText(text: string, limit = TEXT_CHUNK_LIMIT): string[] {
   return chunks;
 }
 
-/** 发送通道依赖：预算 + 兜底收件人 + 告警出口。 */
+/** Send-channel dependencies: budget, fallback recipient, warning sink. */
 export interface ReplyChannel {
   budget: ReplyBudget;
-  /** 绑定用户 openid：proactive 模式与无入站记录时的兜底收件人 */
+  /** Bound user openid: fallback recipient for proactive sends. */
   boundOpenid: string;
   onWarn?: (msg: string) => void;
 }
 
 /**
- * 发送一条回传（自动分块、逐块发牌）。
- * passive 发送失败时自动降级为 proactive 重试一次。
+ * Send one reply (auto-chunked, one budget ticket per chunk).
+ * A failed passive send retries once as proactive.
  *
- * QQBot 构造时 markdownSupport=true 的情况下，SDK 的 sendText 会自动使用
- * msg_type=2（markdown），因此调用方只需决定 payload 是否保留 Markdown，
- * 无需在这里区分 sendMarkdown。
+ * When QQBot is constructed with markdownSupport=true, the SDK's sendText
+ * automatically uses msg_type=2 (markdown); callers only decide whether the
+ * payload keeps Markdown, with no separate sendMarkdown path needed here.
  */
 export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Promise<void> {
   for (const chunk of chunkText(text)) {
@@ -119,7 +119,7 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
       if (mode === "passive" && msgId) ch.budget.commitPassive(msgId);
     } catch (err) {
       if (mode === "passive") {
-        // msgId 失效等被动失败 → 主动重试一次
+        // Passive failure (e.g. stale msgId) → retry once proactively.
         try {
           await bot.sendText({ scope: "c2c", targetId: ch.boundOpenid }, chunk);
           ch.onWarn?.("被动回复失败，已降级主动发送");

@@ -1,6 +1,6 @@
 import { formatBytes } from "./format";
 
-/** QQ 入站附件的最小结构（图片与文件共用）。 */
+/** Minimal QQ inbound attachment shape shared by images and files. */
 export interface InboundAttachmentLike {
   content_type: string;
   url: string;
@@ -12,7 +12,7 @@ export interface DownloadOptions {
   url: string;
   maxSize: number;
   timeoutMs: number;
-  /** 错误文案中的类型名，如“图片”/“文件” */
+  /** Kind label used in errors, e.g. "image" or "file". */
   kind: string;
   fetchImpl?: typeof fetch;
 }
@@ -48,7 +48,7 @@ async function readBodyLimited(response: Response, limit: number, kind: string):
   return Buffer.concat(chunks, total);
 }
 
-/** 带超时与流式大小上限的附件下载。 */
+/** Download an attachment with a timeout and streaming size cap. */
 export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
   const limit = Math.max(1, opts.maxSize);
   let parsed: URL;

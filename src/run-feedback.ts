@@ -4,20 +4,21 @@ import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
 
 /**
- * F7 长任务反馈：run 级状态机（汇总帧 + 文本气泡切分版）。
+ * F7 long-task feedback: run-level state machine (summary frames + text bubbles).
  *
- * 场景：user_input → thinking+tools（10~60 分钟）→ assistant message，n 轮循环。
+ * Scenario: user_input → thinking/tools (10–60 minutes) → assistant message, n turns.
  *
- * 气泡切分规则：**assistant 文本消息与思考/工具汇总使用独立气泡**。
- * 文本消息（同一 assistant 消息的流式增量）独占一个文本气泡；思考/工具行组进入
- * 活动气泡。文本首个增量到达时封口当前活动气泡；工具/思考出现时封口当前文本气泡，
- * 新行组进新的活动气泡；最终回复独立成文本气泡。气泡内按 `streamFlushMs`
- * （默认 10000ms）固定频率发送窗口汇总帧：
+ * Bubble rules: **assistant text and thinking/tool summaries use separate bubbles.**
+ * Each text message (streaming increments of one assistant message) owns a text
+ * bubble; thinking/tool line groups go to an activity bubble. The first text delta
+ * closes the current activity bubble; a line group closes the current text bubble.
+ * The final reply is its own text bubble. Frames are sent every `streamFlushMs`
+ * (default 10000ms):
  *
- *   活动气泡：💭 思考中... / [2] 🔧 bash（行组按事件顺序、外层带 [HH:MM:SS] 时间戳）
- *   文本气泡：消息原文（流式增量，按 markdown 渲染）
+ *   Activity: [💭] Thinking... / [🔧] [2] bash (event order; timestamps only in debug)
+ *   Text: message text (streamed increments, rendered as Markdown)
  *
- * 任何一帧失败即弃气泡：未发出的结果文本自动转消息路径补发；下一个文本消息重试新气泡。
+ * Any failed frame discards the bubble; unsent text falls back to the message path.
  */
 
 export interface ToolStat {
@@ -31,10 +32,10 @@ export interface RunFeedbackDeps {
   boundOpenid: () => string | undefined;
   getHeartbeatMinutes: () => number;
   getHeartbeatMaxMessages: () => number;
-  /** 流式汇总帧间隔（毫秒，最小 300） */
+  /** Stream summary frame interval in ms (minimum 300). */
   getStreamFlushMs: () => number;
   getStreamRelay: () => boolean;
-  /** 诊断模式：SDK 日志转终端 + 文本帧也带时间戳 */
+  /** Debug mode: SDK logs plus timestamps on stream frames. */
   getDebug: () => boolean;
   makeChannel: () => ReplyChannel;
   onWarn: (msg: string) => void;
@@ -45,7 +46,7 @@ interface ToolStat2 {
   errors: number;
 }
 
-/** 当前气泡：一条独立流式消息；kind 决定它只接收文本还是思考/工具行组 */
+/** Current bubble: one stream message; kind selects text or activity rows. */
 interface Bubble {
   stream: AppendStream;
   kind: "activity" | "text";
@@ -57,23 +58,23 @@ interface RunState {
   startedAt: number;
   openid: string;
   msgId?: string;
-  /** 工具总计（心跳 ⏱ 行用） */
+  /** Total tool counts (for the heartbeat line). */
   tools: Map<string, ToolStat2>;
-  /** 本窗口行组，按事件实际发生顺序记录（flush 后清空） */
+  /** Line groups in this window, in event order (cleared after flush). */
   winLines: WindowLine[];
-  /** 本消息已打过思考标记（逐消息复位，避免长思考刷屏） */
+  /** Thinking marker for the current message (reset per message). */
   thinkingMarked: boolean;
-  /** 当前流式文本快照（message_update 更新） */
+  /** Current streaming text snapshot (updated by message_update). */
   snapshotText: string;
-  /** 已定稿 assistant 消息累计文本 */
+  /** Accumulated finalized assistant text. */
   finalizedText: string;
-  /** 已追加到流的结果文本长度（增量计算基准，跨气泡累计） */
+  /** Length of result text already sent (delta baseline across bubbles). */
   resultSentLen: number;
-  /** 上一条文本消息已定稿：下一条文本消息首个增量到达时封口当前文本气泡 */
+  /** Previous text message finalized: close the current text bubble on the next text delta. */
   startNewBubble: boolean;
-  /** 当前气泡（null = 待惰性创建） */
+  /** Current bubble (null = create lazily). */
   cur: Bubble | null;
-  /** 最近一次成功追加的时间戳（空窗口活性线用） */
+  /** Timestamp of the last successful append (for liveness). */
   lastAppendAt: number;
   typingTimer?: ReturnType<typeof setInterval>;
   flushTimer?: ReturnType<typeof setInterval>;
@@ -81,19 +82,19 @@ interface RunState {
   messageHeartbeats: number;
 }
 
-/** 本地时间 HH:MM:SS，用于汇总帧首行的时间戳 */
+/** Local HH:MM:SS timestamp for debug frames. */
 function nowStamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** 工具计数：`[n] 🔧 name`（行组帧外层再加一次 [HH:MM:SS] 时间戳） */
+/** Tool count line: `[🔧] [n] name`; debug mode prefixes [HH:MM:SS]. */
 function formatToolCount(name: string, count: number): string {
-  return `[${count}] 🔧 ${name}`;
+  return `[🔧] [${count}] ${name}`;
 }
 
-/** 心跳文案：仅工具名×总次数与时长，无参数无响应（features.md 决策 #3） */
+/** Heartbeat text: tool totals and elapsed time only (features.md decision #3). */
 export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>): string {
   const minutes = Math.floor(elapsedMs / 60_000);
   const elapsedText = minutes < 1 ? "不到 1 分钟" : `${minutes} 分钟`;
@@ -104,9 +105,9 @@ export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>
   return `⏱ 已运行 ${elapsedText} · ${parts.join(" · ")}${suffix}`;
 }
 
-const STREAM_LIVENESS_MS = 60_000; // 空窗口静默超过该时长时补活性心跳行
-const TYPING_INTERVAL_MS = 50_000; // 平台 typing 窗口 ~60s，提前续期
-const PENDING_TTL_MS = 15_000; // QQ 触发标记的有效期（超过视为本地 run）
+const STREAM_LIVENESS_MS = 60_000; // Add a liveness row after this much silence
+const TYPING_INTERVAL_MS = 50_000; // Platform typing window ~60s; renew early
+const PENDING_TTL_MS = 15_000; // QQ trigger TTL (older means a local run)
 
 export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
@@ -123,7 +124,7 @@ export class RunFeedback {
     console.error(`[pi-qq debug ${nowStamp()}] ${message}`);
   }
 
-  /** inbound 在注入 pi 前调用：标记接下来的 run 由 QQ 触发 */
+  /** Called by inbound before injecting: mark the next run as QQ-triggered. */
   markQQTrigger(openid: string, msgId: string): void {
     this.pending = { openid, msgId, at: Date.now() };
   }
@@ -131,7 +132,7 @@ export class RunFeedback {
   onAgentStart(): void {
     const pending = this.pending;
     this.pending = null;
-    if (!pending || Date.now() - pending.at > PENDING_TTL_MS) return; // 非 QQ 触发
+    if (!pending || Date.now() - pending.at > PENDING_TTL_MS) return; // Not QQ-triggered
     const bot = this.deps.bot();
     if (!bot) return;
 
@@ -154,14 +155,14 @@ export class RunFeedback {
     this.run = run;
     this.debug(`run start msgId=${run.msgId?.slice(0, 8) ?? "?"}`);
 
-    // typing 保鲜：run 开始立即亮起"正在输入"，之后每 50s 续期（0 额度）
+    // Typing keepalive: start immediately, renew every 50s (zero quota).
     const keepTyping = () => {
       void bot.sendTyping({ scope: "c2c", targetId: run.openid }, 60).catch(() => {});
     };
     keepTyping();
     run.typingTimer = setInterval(keepTyping, TYPING_INTERVAL_MS);
 
-    // 固定频率汇总帧（间隔可配，毫秒）
+    // Fixed-interval summary frames (configurable in ms).
     run.flushTimer = setInterval(
       () => {
         void this.flushWindow(run);
@@ -169,7 +170,7 @@ export class RunFeedback {
       Math.max(this.deps.getStreamFlushMs(), 300),
     );
 
-    // 心跳兜底（流式路径的活性由空窗口活性行覆盖）
+    // Heartbeat fallback (liveness is covered by empty-window rows).
     if (hbMinutes > 0) {
       run.heartbeatTimer = setInterval(() => {
         void this.beat();
@@ -177,7 +178,7 @@ export class RunFeedback {
     }
   }
 
-  /** 工具开始：按事件顺序记录；连续同名工具合并计数 */
+  /** Tool start: record in event order; merge consecutive same-tool calls. */
   onToolStart(toolName: string): void {
     const run = this.run;
     if (!run) return;
@@ -189,7 +190,7 @@ export class RunFeedback {
     }
   }
 
-  /** 工具结束：总计计数（心跳 ⏱ 行用） */
+  /** Tool end: update totals for the heartbeat line. */
   onToolEnd(toolName: string, isError: boolean): void {
     const run = this.run;
     if (!run) return;
@@ -199,7 +200,7 @@ export class RunFeedback {
     run.tools.set(toolName, stat);
   }
 
-  /** assistant 流式快照（message_update）：只更新窗口，汇总帧统一发送 */
+  /** Assistant snapshot: update the window; frames are sent by flush. */
   async onAssistantDelta(snapshotText: string, snapshotThinking: string): Promise<void> {
     const run = this.run;
     if (!run) return;
@@ -211,38 +212,39 @@ export class RunFeedback {
   }
 
   /**
-   * assistant 消息定稿（message_end）。
-   * 返回 true 表示流接管（调用方跳过 sendReply）；默认/流失败返回 false 走消息路径。
+   * Finalize an assistant message (message_end).
+   * Returns true when the stream took over (caller skips sendReply); false falls
+   * back to the message path.
    */
   async onAssistantFinal(text: string, isError: boolean): Promise<boolean> {
     const run = this.run;
     if (!run) return false;
 
     if (isError) {
-      // 出错也先封口当前气泡（结束 QQ 的生成态），错误摘要交回调用方走消息链路
+      // Seal the current bubble even on error; the caller sends the error message.
       await this.closeBubble(run);
       return false;
     }
 
     run.finalizedText = [run.finalizedText, text].filter((s) => s.trim()).join("\n\n");
     run.snapshotText = "";
-    run.thinkingMarked = false; // 下一条 assistant 消息重新计时思考标记
+    run.thinkingMarked = false; // Reset the thinking marker for the next message
     if (!this.deps.getStreamRelay()) return false;
 
-    // 先把本条消息剩余的快照补发完，再把边界标记留给下一条文本消息
-    // （若在 flush 前置位，本条消息的残余增量会被误判为新消息而切泡）
+    // Flush remaining text first, then set the boundary for the next text message.
+    // Setting it earlier would misclassify leftover deltas as a new message.
     const handled = await this.flushWindow(run);
     run.startNewBubble = true;
     return handled;
   }
 
-  /** 封口当前气泡：补发剩余窗口 + DONE。flush 可能因切泡换掉 cur，需重新读取。 */
+  /** Seal the current bubble: flush the window + DONE; re-read cur after flush. */
   private async sealBubble(run: RunState): Promise<void> {
     await this.flushWindow(run);
     await this.closeBubble(run);
   }
 
-  /** 关闭当前气泡并发送 DONE；DONE 失败也视为已关闭（追加模式无撤销语义）。 */
+  /** Close the current bubble and send DONE; DONE failure still counts as closed. */
   private async closeBubble(run: RunState): Promise<void> {
     const cur = run.cur;
     if (!cur) return;
@@ -252,25 +254,25 @@ export class RunFeedback {
     } catch {}
   }
 
-  /** run 结束：封口最后一个气泡（补帧 + DONE），清定时器 */
+  /** Run end: seal the last bubble (flush + DONE) and clear timers. */
   async onAgentEnd(): Promise<void> {
     const run = this.run;
     this.clearTimers();
     this.run = null;
     if (run) {
       this.debug(`run end elapsed=${Math.round((Date.now() - run.startedAt) / 1000)}s`);
-      // DONE 失败不补发——内容已随汇总帧展示（避免双发）
+      // Do not resend on DONE failure; content was already shown.
       try {
         await this.sealBubble(run);
       } catch {}
     }
   }
 
-  /** session_shutdown 等异常路径的清理 */
+  /** Cleanup for session_shutdown and other error paths. */
   dispose(): void {
     this.clearTimers();
     this.run?.cur?.stream.dispose();
-    this.run = null; // 未发 DONE 的气泡会停留在生成态（追加模式无撤销语义，可接受）
+    this.run = null; // A bubble without DONE may stay generating (append mode cannot undo).
   }
 
   private clearTimers(): void {
@@ -285,9 +287,10 @@ export class RunFeedback {
   }
 
   /**
-   * 把窗口增量写入对应气泡：思考/工具行组进活动气泡，文本进文本气泡。
-   * 文本消息首个增量或行组到达时切换气泡；同一消息的后续增量不切泡。
-   * 通过 promise 链串行化：限流重试期间（最长 7s）定时器再次触发也不会产生交错帧。
+   * Write window increments to bubbles: activity rows to activity bubbles, text
+   * to text bubbles. A new text message or line group switches bubbles; later
+   * deltas of the same message do not. A promise chain serializes flushes so
+   * retries cannot interleave frames.
    */
   flushWindow(run?: RunState): Promise<boolean> {
     const p = this.flushQueue.then(() => this.doFlushWindow(run));
@@ -304,51 +307,51 @@ export class RunFeedback {
     const textDelta = full.slice(r.resultSentLen);
     const textVisible = textDelta.trim().length > 0;
 
-    // 行组（思考/工具计数）——无文本的窗口也照常汇总
+    // Line groups (thinking/tool counts) are summarized even without text.
     const okLines = await this.appendLineGroups(r);
     if (!okLines) return false;
 
-    // 文本消息独立成泡（空白增量只推进基准，不追加）
+    // Text gets its own bubble (whitespace-only deltas only advance the baseline).
     if (textVisible) {
       const okText = await this.appendText(r, textDelta);
       if (!okText) return false;
-      // 关键：推进已发送基准，否则下一帧会把同一段全文再追加一次
+      // Advance the sent baseline or the next frame will append the same text again.
       r.resultSentLen = full.length;
       r.startNewBubble = false;
     } else if (textDelta) {
       r.resultSentLen = full.length;
     }
 
-    // 重置窗口
+    // Reset the window
     r.winLines = [];
     return true;
   }
 
-  /** 收集本窗口行组：严格按事件发生顺序（连续同名工具已合并计数） */
+  /** Collect window rows in event order (consecutive same tools merged). */
   private collectWindowLines(r: RunState): string[] {
     return r.winLines.map((line) =>
-      line.kind === "thinking" ? "💭 思考中..." : formatToolCount(line.name, line.count),
+      line.kind === "thinking" ? "[💭] Thinking..." : formatToolCount(line.name, line.count),
     );
   }
 
-  /** 追加行组：只进活动气泡；首行带时间戳；行与行相邻不空行，跨帧直接续行 */
+  /** Append activity rows; debug mode prefixes timestamps; rows continue across frames. */
   private async appendLineGroups(r: RunState, lines?: string[]): Promise<boolean> {
     const group = lines ?? this.collectWindowLines(r);
     if (group.length === 0) return true;
-    const stamp = `[${nowStamp()}] `;
+    const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
     const frame = stamp + group.join(`\n${stamp}`) + "\n";
     return this.pushAppend(r, frame, "activity");
   }
 
-  /** 追加文本：文本消息独占气泡，同一消息续写直接拼接；诊断模式带内联时间戳 */
+  /** Append text: text messages own bubbles; debug mode adds inline timestamps. */
   private async appendText(r: RunState, text: string): Promise<boolean> {
-    // 上一条文本消息已定稿 → 封口旧文本气泡，本条消息另起一泡
+    // Previous text message finalized: seal it and start a new bubble.
     if (r.startNewBubble) await this.closeBubble(r);
     const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
     return this.pushAppend(r, stamp + text, "text");
   }
 
-  /** 心跳兜底：流式路径的活性由空窗口活性行覆盖；流不可用时发消息心跳（保险丝 ≤N 条） */
+  /** Heartbeat fallback when streaming is unavailable (max N messages per run). */
   private async beat(): Promise<void> {
     const run = this.run;
     if (!run) return;
@@ -360,14 +363,11 @@ export class RunFeedback {
     const bot = this.deps.bot();
     if (!bot) return;
     run.messageHeartbeats += 1;
-    await sendReply(
-      bot,
-      `[${nowStamp()}] ${formatHeartbeat(Date.now() - run.startedAt, run.tools)}`,
-      this.deps.makeChannel(),
-    );
+    const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
+    await sendReply(bot, `${stamp}${formatHeartbeat(Date.now() - run.startedAt, run.tools)}`, this.deps.makeChannel());
   }
 
-  /** 追加一帧（惰性建气泡；内容类型变化时先封口旧气泡）；失败弃气泡并返回 false */
+  /** Append a frame (lazy bubble; close on kind change); discard on failure. */
   private async pushAppend(run: RunState, delta: string, kind: "activity" | "text"): Promise<boolean> {
     if (!delta) return true;
     const bot = this.deps.bot();
@@ -396,7 +396,7 @@ export class RunFeedback {
     }
   }
 
-  /** 流不可信：丢弃当前气泡，并把尚未追加到流的结果文本用消息路径补发（避免结果丢失） */
+  /** Stream is untrusted: discard the bubble and resend unsent text via messages. */
   private handleStreamError(run: RunState, err: Error): void {
     const had = run.cur !== null;
     run.cur = null;

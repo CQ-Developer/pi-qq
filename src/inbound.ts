@@ -20,20 +20,20 @@ import { formatFilePrompt, saveInboundFiles, type SavedFile } from "./files";
 
 export interface InboundDeps {
   pi: ExtensionAPI;
-  /** session_start 时捕获的会话上下文：ui/isIdle/abort/compact/getContextUsage */
+  /** Session context captured at session_start: ui/isIdle/abort/compact/getContextUsage. */
   ctx: ExtensionContext;
   budget: ReplyBudget;
-  /** 均实时读配置，绑定关系变更即时生效 */
+  /** Read settings live so changes apply immediately. */
   getAllowedOpenid: () => string | undefined;
   getBoundOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
   getImageMaxSize: () => number;
   getFileMaxSize: () => number;
-  /** 测试可注入；默认 saveInboundFiles */
+  /** Test override; defaults to saveInboundFiles. */
   saveFiles?: typeof saveInboundFiles;
   getStatusLines: () => string[];
   onWarn: (msg: string) => void;
-  /** F7：标记接下来的 run 由 QQ 触发（供 RunFeedback 建立确认/心跳/typing） */
+  /** F7: mark the next run as QQ-triggered (for typing/heartbeat/timeline). */
   markQQTrigger: (openid: string, msgId: string) => void;
 }
 
@@ -67,7 +67,7 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F3：图片转 ImageContent，非图片附件保存到本地并在提示词中给出路径
+    // F3: images become ImageContent; other attachments are saved and referenced by path.
     const imageAttachments = attachments.filter(isImageAttachment);
     const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
     const failures: Array<{ filename: string; reason: string }> = [];
@@ -100,7 +100,7 @@ export function createInboundHandler(deps: InboundDeps) {
     }
     if (!text && images.length === 0 && files.length === 0) return;
 
-    // F7：标记 QQ 触发的 run（RunFeedback 据此建立 typing/时间线），不发送开始确认
+    // F7: mark a QQ-triggered run; do not send a start confirmation.
     deps.markQQTrigger(msg.senderId, msg.messageId);
     const promptText = formatFilePrompt(files, text);
     deps.pi.sendUserMessage(buildImageMessageContent(promptText, images), { deliverAs: deps.getDeliverAs() });
@@ -147,7 +147,7 @@ async function handleCommand(text: string, reply: (t: string) => Promise<void>, 
         await reply("任务运行中，请先 /stop 再重置会话");
       } else {
         await reply("正在重置会话…");
-        // 内置 /new 仅在交互模式处理；这里通过扩展命令调用 ctx.newSession
+        // Built-in /new is interactive-only; dispatch the extension command instead.
         deps.pi.sendUserMessage("/qq-new", { expandPromptTemplates: true });
       }
       break;

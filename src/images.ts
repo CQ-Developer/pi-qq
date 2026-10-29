@@ -1,4 +1,4 @@
-/** QQ 图片附件 → pi ImageContent：类型/大小校验、带超时的受限下载。 */
+/** QQ image attachments to pi ImageContent: validation and timeout-limited download. */
 import { downloadLimited, type InboundAttachmentLike } from "./download";
 import { formatBytes } from "./format";
 
@@ -44,12 +44,12 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   gif: "image/gif",
 };
 
-/** 按 content_type 优先、文件名扩展名兜底，返回可注入的 mime；不支持返回 null。 */
+/** Prefer content_type, fall back to extension; return injectable mime or null. */
 export function resolveImageMime(contentType: string | undefined, filename: string | undefined): string | null {
   const type = (contentType ?? "").split(";")[0].trim().toLowerCase();
   if (type) {
     if (MIME_BY_CONTENT_TYPE[type]) return MIME_BY_CONTENT_TYPE[type];
-    // 明确声明为 image/* 但不支持（如 svg）时拒绝，避免错误扩展名绕过校验
+    // Reject unsupported image/* types (e.g. svg) so a wrong extension cannot bypass validation.
     if (type.startsWith("image/")) return null;
   }
 
@@ -57,14 +57,14 @@ export function resolveImageMime(contentType: string | undefined, filename: stri
   return ext ? (MIME_BY_EXTENSION[ext] ?? null) : null;
 }
 
-/** 是否为图片附件（含不支持的 image/*，由图片流程给出失败提示）。 */
+/** Whether the attachment is an image (unsupported image/* is handled by the image path). */
 export function isImageAttachment(attachment: InboundAttachmentLike): boolean {
   const type = (attachment.content_type ?? "").toLowerCase();
   if (type.startsWith("image/")) return true;
   return resolveImageMime(attachment.content_type, attachment.filename) !== null;
 }
 
-/** 文本 + 图片组合为 pi.sendUserMessage 的内容；无图片时保持纯字符串。 */
+/** Build pi.sendUserMessage content; keep a plain string when there are no images. */
 export function buildImageMessageContent(
   text: string,
   images: readonly ImageContentLike[],
@@ -116,7 +116,7 @@ async function downloadOne(
   }
 }
 
-/** 按原顺序下载所有图片；单张失败不影响其他图片。 */
+/** Download images in order; one failure does not stop the others. */
 export async function resolveInboundImages(
   attachments: readonly InboundAttachmentLike[],
   maxSize: number,

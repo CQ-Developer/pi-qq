@@ -5,7 +5,7 @@ import { ReplyBudget } from "../src/reply-budget";
 const DONE_STATE = 10;
 const MIN = 60_000;
 
-function makeRunHarness() {
+function makeRunHarness(debug = false) {
   const calls: Array<Record<string, unknown>> = [];
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
@@ -27,14 +27,14 @@ function makeRunHarness() {
     getHeartbeatMaxMessages: () => 3,
     getStreamFlushMs: () => 300,
     getStreamRelay: () => true,
-    getDebug: () => false,
+    getDebug: () => debug,
     makeChannel: () => ({ budget: new ReplyBudget(), boundOpenid: "openid-u" }),
     onWarn: () => {},
   };
   return { rf: new RunFeedback(deps as never), calls, budget };
 }
 
-/** 按 DONE 帧切分气泡，返回每个气泡的累计内容 */
+/** Split bubbles on DONE frames and return each bubble's accumulated content. */
 function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
   const bubbles: string[] = [];
   let current = "";
@@ -59,7 +59,7 @@ describe("formatHeartbeat", () => {
       ["bash", { count: 86, errors: 3 }],
       ["read", { count: 12, errors: 0 }],
     ]);
-    expect(formatHeartbeat(25 * MIN, tools)).toBe("⏱ 已运行 25 分钟 · [86] 🔧 bash · [12] 🔧 read · 3 失败");
+    expect(formatHeartbeat(25 * MIN, tools)).toBe("⏱ 已运行 25 分钟 · [🔧] [86] bash · [🔧] [12] read · 3 失败");
   });
 
   it("无失败时省略失败段", () => {
@@ -67,7 +67,7 @@ describe("formatHeartbeat", () => {
       ["bash", { count: 86, errors: 0 }],
       ["read", { count: 12, errors: 0 }],
     ]);
-    expect(formatHeartbeat(65 * MIN, tools)).toBe("⏱ 已运行 65 分钟 · [86] 🔧 bash · [12] 🔧 read");
+    expect(formatHeartbeat(65 * MIN, tools)).toBe("⏱ 已运行 65 分钟 · [🔧] [86] bash · [🔧] [12] read");
   });
 });
 
@@ -121,9 +121,9 @@ describe("RunFeedback 气泡切分", () => {
 
     const bubbles = collectBubbles(calls);
     expect(bubbles).toHaveLength(3);
-    expect(bubbles[0]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 bash$/);
+    expect(bubbles[0]).toBe("[🔧] [1] bash");
     expect(bubbles[1]).toBe("中间消息");
-    expect(bubbles[2]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 write$/);
+    expect(bubbles[2]).toBe("[🔧] [1] write");
   });
 
   it("活动→文本交错时每个文本与每段活动各成独立气泡", async () => {
@@ -152,9 +152,9 @@ describe("RunFeedback 气泡切分", () => {
     expect(bubbles[1]).toBe("消息一");
     expect(bubbles[3]).toBe("消息二");
     expect(bubbles[5]).toBe("最终回复");
-    expect(bubbles[0]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 write$/);
-    expect(bubbles[2]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 read$/);
-    expect(bubbles[4]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 bash$/);
+    expect(bubbles[0]).toBe("[🔧] [1] write");
+    expect(bubbles[2]).toBe("[🔧] [1] read");
+    expect(bubbles[4]).toBe("[🔧] [1] bash");
   });
 
   it("错误消息不走流接管，但会封口气泡", async () => {
@@ -183,34 +183,35 @@ describe("RunFeedback 气泡切分", () => {
     const { rf, calls } = makeRunHarness();
     rf.markQQTrigger("openid-u", "msg-textless");
     rf.onAgentStart();
-    // 消息 1：thinking + write（无文本）
+    // Message 1: thinking + write (no text)
     rf.onAssistantDelta("", "思考 1");
     await rf.onAssistantFinal("", false);
     rf.onToolStart("write");
     await rf.flushWindow();
-    // 消息 2：thinking + 文本 + read
+    // Message 2: thinking + text + read
     rf.onAssistantDelta("文件已写好", "思考 2");
     await rf.onAssistantFinal("文件已写好", false);
     rf.onToolStart("read");
-    // 不立即 flush：模拟 read 与下一条消息 thinking 落在同一个 10s 窗口
-    // 消息 3：thinking + bash（无文本）
+    // Do not flush yet: simulate read and the next message's thinking
+    // landing in the same 10s window.
+    // Message 3: thinking + bash (no text)
     rf.onAssistantDelta("", "思考 3");
     await rf.onAssistantFinal("", false);
     rf.onToolStart("bash");
     await rf.flushWindow();
-    // 消息 4：最终文本
+    // Message 4: final text
     rf.onAssistantDelta("最终回复", "");
     await rf.onAssistantFinal("最终回复", false);
     await rf.onAgentEnd();
 
     const bubbles = collectBubbles(calls);
     expect(bubbles).toHaveLength(4);
-    expect((bubbles[0].match(/思考中/g) ?? []).length).toBe(2);
-    expect(bubbles[0]).toContain("[1] 🔧 write");
+    expect((bubbles[0].match(/Thinking/g) ?? []).length).toBe(2);
+    expect(bubbles[0]).toContain("[🔧] [1] write");
     expect(bubbles[1]).toBe("文件已写好");
-    const readAt = bubbles[2].indexOf("[1] 🔧 read");
-    const thinkingAt = bubbles[2].indexOf("💭 思考中...");
-    const bashAt = bubbles[2].indexOf("[1] 🔧 bash");
+    const readAt = bubbles[2].indexOf("[🔧] [1] read");
+    const thinkingAt = bubbles[2].indexOf("[💭] Thinking...");
+    const bashAt = bubbles[2].indexOf("[🔧] [1] bash");
     expect(readAt).toBeGreaterThanOrEqual(0);
     expect(thinkingAt).toBeGreaterThan(readAt);
     expect(bashAt).toBeGreaterThan(thinkingAt);
@@ -234,5 +235,16 @@ describe("RunFeedback 气泡切分", () => {
     const snapshot = budget.snapshot();
     expect(snapshot.streamBubbles).toBe(3);
     expect(snapshot.streamBubblesTotal).toBe(3);
+  });
+
+  it("debug 模式行组带时间戳", async () => {
+    const { rf, calls } = makeRunHarness(true);
+    rf.markQQTrigger("openid-u", "msg-debug");
+    rf.onAgentStart();
+    rf.onToolStart("bash");
+    await rf.flushWindow();
+    await rf.onAgentEnd();
+
+    expect(collectBubbles(calls)[0]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[🔧\] \[1\] bash$/);
   });
 });
