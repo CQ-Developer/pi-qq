@@ -317,11 +317,11 @@ export default function (pi: ExtensionAPI) {
           last.openid,
           last.msgId,
         );
-        await stream.append("思考中...\nbash * 3\nread * 2\n");
+        await stream.append("思考中...\n[3] 🔧 bash\n[2] 🔧 read\n");
         await sleep(1200);
         await stream.append("\n**中间消息原文**：第一回合回复。\n");
         await sleep(1200);
-        await stream.append("edit * 1\n");
+        await stream.append("[1] 🔧 edit\n");
         await sleep(800);
         await stream.append("\n**最终回复原文**（流式追加）");
         let doneNote = "DONE 成功";

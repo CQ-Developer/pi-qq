@@ -99,9 +99,9 @@ const tools = new Map<string, { count: number; errors: number }>([
   ["bash", { count: 86, errors: 3 }],
   ["read", { count: 12, errors: 0 }],
 ]);
-eq(formatHeartbeat(25 * MIN, tools), "⏱ 已运行 25 分钟 · 🔧 bash * 86 · 🔧 read * 12 · 3 失败", "心跳：含失败数");
+eq(formatHeartbeat(25 * MIN, tools), "⏱ 已运行 25 分钟 · [86] 🔧 bash · [12] 🔧 read · 3 失败", "心跳：含失败数");
 tools.get("bash")!.errors = 0;
-eq(formatHeartbeat(65 * MIN, tools), "⏱ 已运行 65 分钟 · 🔧 bash * 86 · 🔧 read * 12", "心跳：无失败时省略失败段");
+eq(formatHeartbeat(65 * MIN, tools), "⏱ 已运行 65 分钟 · [86] 🔧 bash · [12] 🔧 read", "心跳：无失败时省略失败段");
 
 // ———— AppendStream：节流 / 无损 / DONE / 限流重试 ————
 
@@ -185,6 +185,21 @@ function makeRunHarness() {
 
 const DONE_STATE = 10; // StreamInputState.DONE
 
+/** 按 DONE 帧切分气泡，返回每个气泡的累计内容 */
+function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
+  const bubbles: string[] = [];
+  let current = "";
+  for (const c of calls) {
+    if (c.input_state === DONE_STATE) {
+      bubbles.push(current.trim());
+      current = "";
+    } else {
+      current += c.content_raw as string;
+    }
+  }
+  return bubbles;
+}
+
 {
   const { rf, calls } = makeRunHarness();
   rf.markQQTrigger("openid-u", "msg-1");
@@ -215,18 +230,29 @@ const DONE_STATE = 10; // StreamInputState.DONE
   await rf.onAssistantFinal("第二条", false);
   await rf.onAgentEnd();
 
-  const bubbles: string[] = [];
-  let current = "";
-  for (const c of calls) {
-    if (c.input_state === DONE_STATE) {
-      bubbles.push(current.trim());
-      current = "";
-    } else {
-      current += c.content_raw as string;
-    }
-  }
+  const bubbles = collectBubbles(calls);
   eq(bubbles, ["第一条", "第二条"], "两条文本消息各成一个气泡，内容不重复");
   eq(calls.at(-1)?.input_state, DONE_STATE, "多气泡 run 结束时最后气泡收到 DONE");
+}
+
+{
+  const { rf, calls } = makeRunHarness();
+  rf.markQQTrigger("openid-u", "msg-before-text");
+  rf.onAgentStart();
+  rf.onToolStart("bash");
+  await rf.flushWindow(); // 先形成纯工具活动气泡
+  rf.onAssistantDelta("中间消息", "");
+  await rf.flushWindow(); // 文本首个增量 → 封口活动气泡，文本单独成泡
+  await rf.onAssistantFinal("中间消息", false);
+  rf.onToolStart("write");
+  await rf.flushWindow(); // 文本定稿后的工具并入文本气泡
+  await rf.onAgentEnd();
+
+  const bubbles = collectBubbles(calls);
+  eq(bubbles.length, 2, "工具活动后的首条文本消息单独成泡");
+  ok(/^\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 bash$/.test(bubbles[0]), "活动气泡的工具行使用 [n] 🔧 name 格式");
+  ok(bubbles[1].startsWith("中间消息"), "文本进入新气泡而不是并入活动气泡");
+  ok(/\[\d{2}:\d{2}:\d{2}\] \[1\] 🔧 write/.test(bubbles[1]), "文本之后的工具并入文本气泡");
 }
 
 {
@@ -250,16 +276,7 @@ const DONE_STATE = 10; // StreamInputState.DONE
   await rf.onAssistantFinal("先行后补", false);
   await rf.onAgentEnd();
 
-  const bubbles: string[] = [];
-  let current = "";
-  for (const c of calls) {
-    if (c.input_state === DONE_STATE) {
-      bubbles.push(current.trim());
-      current = "";
-    } else {
-      current += c.content_raw as string;
-    }
-  }
+  const bubbles = collectBubbles(calls);
   eq(bubbles, ["先行后补"], "同一条消息定稿时的残余增量不切泡");
 }
 

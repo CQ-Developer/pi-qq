@@ -8,13 +8,15 @@ import type { ReplyBudget } from "./reply-budget";
  *
  * 场景：user_input → thinking+tools（10~60 分钟）→ assistant message，n 轮循环。
  *
- * 气泡切分规则：**每条带文本的 assistant 消息一个气泡**（文本 + 其后跟随的工具执行）；
- * 无文本的回合（仅思考/工具）并入当前气泡；最终回复独立成泡。气泡内按
- * `streamFlushMs`（默认 3000ms）固定频率发送窗口汇总帧：
+ * 气泡切分规则：**每条带文本的 assistant 消息一个气泡**（文本 + 其后跟随的工具执行）。
+ * 文本消息的首个增量到达时，若当前气泡已有内容（包括仅有思考/工具行组），先封口
+ * 旧气泡，再以该文本开新气泡；同一消息的后续增量继续追加；纯思考/工具的回合并入
+ * 当前气泡；最终回复独立成泡。气泡内按 `streamFlushMs`（默认 3000ms）固定频率发送
+ * 窗口汇总帧：
  *
  *   💭 思考中...        ← 惰性行：本条消息出现 thinking 才有（内容不回传，决策 #2）
  *   （消息原文，流式增量，按 markdown 渲染）
- *   🔧 bash * 2         ← 其后跟随的工具执行计数
+ *   [2] 🔧 bash         ← 其后跟随的工具执行计数（行组外层带 [HH:MM:SS] 时间戳）
  *
  * 帧内顺序：行组（思考/工具）→ 空行 → 文本增量（用户确认：文本先发完，工具汇总在后）。
  * 任何一帧失败即弃气泡：未发出的结果文本自动转消息路径补发；下一个文本消息重试新气泡。
@@ -93,12 +95,17 @@ function nowStamp(): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/** 工具计数：`[n] 🔧 name`（行组帧外层再加一次 [HH:MM:SS] 时间戳） */
+function formatToolCount(name: string, count: number): string {
+  return `[${count}] 🔧 ${name}`;
+}
+
 /** 心跳文案：仅工具名×总次数与时长，无参数无响应（features.md 决策 #3） */
 export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>): string {
   const minutes = Math.floor(elapsedMs / 60_000);
   const elapsedText = minutes < 1 ? "不到 1 分钟" : `${minutes} 分钟`;
   if (tools.size === 0) return `⏱ 已运行 ${elapsedText}（尚未产生工具调用）`;
-  const parts = [...tools.entries()].map(([name, s]) => `🔧 ${name} * ${s.count}`);
+  const parts = [...tools.entries()].map(([name, s]) => formatToolCount(name, s.count));
   const errors = [...tools.values()].reduce((n, s) => n + s.errors, 0);
   const suffix = errors > 0 ? ` · ${errors} 失败` : "";
   return `⏱ 已运行 ${elapsedText} · ${parts.join(" · ")}${suffix}`;
@@ -167,7 +174,7 @@ export class RunFeedback {
     }
   }
 
-  /** 工具开始：窗口计数 +1（汇总帧里以 `🔧 name * n` 呈现；不立即外发，避免与汇总帧双份） */
+  /** 工具开始：窗口计数 +1（汇总帧里以 `[n] 🔧 name` 呈现；不立即外发，避免与汇总帧双份） */
   onToolStart(toolName: string): void {
     const run = this.run;
     if (!run) return;
@@ -272,8 +279,8 @@ export class RunFeedback {
   /**
    * 把窗口增量合成一帧。帧内顺序：思考/工具行组 → 空行 → 文本增量
    * （用户确认：任何消息原文先推送、发完之后才推工具汇总）。
-   * 气泡边界：**仅当上一条文本消息已定稿**、新文本到达且当前气泡已含文本时
-   * 才封口开新气泡；同一条消息的流式增量继续追加，不切泡。
+   * 气泡边界：**每条文本消息的首个增量**到达时，只要当前气泡已有内容（含仅有思考/工具
+   * 行组）就封口旧气泡，文本起新气泡；同一条消息的后续增量继续追加，不切泡。
    * 通过 promise 链串行化：限流重试期间（最长 7s）定时器再次触发也不会产生交错帧。
    */
   flushWindow(run?: RunState): Promise<boolean> {
@@ -291,8 +298,10 @@ export class RunFeedback {
     const textDelta = full.slice(r.resultSentLen);
     const textVisible = textDelta.trim().length > 0;
 
-    // 气泡边界：新的一条文本消息到达且当前气泡已有文本 → 行组落旧气泡 + DONE，文本进新气泡
-    if (textVisible && r.startNewBubble && r.cur?.hasText) {
+    // 气泡边界：新一条文本消息的首个增量到达，且当前气泡已有内容
+    // （包括只有思考/工具行组的情况）→ 行组落旧气泡 + DONE，文本进新气泡
+    const startsNewTextMessage = r.startNewBubble || !r.cur?.hasText;
+    if (textVisible && startsNewTextMessage && r.cur?.hasContent) {
       const sealed = await this.appendLinesAndSeal(r);
       if (!sealed) return false;
       r.winThinking = false;
@@ -337,7 +346,7 @@ export class RunFeedback {
     const lines: string[] = [];
     if (r.winThinking) lines.push("💭 思考中...");
     for (const [name, n] of r.winTools) {
-      if (n > 0) lines.push(`🔧 ${name} * ${n}`);
+      if (n > 0) lines.push(formatToolCount(name, n));
     }
     return lines;
   }
@@ -347,8 +356,8 @@ export class RunFeedback {
     const group = lines ?? this.collectWindowLines(r);
     if (group.length === 0) return true;
     const prefix = !r.cur || r.cur.lastKind !== "text" ? "" : "\n";
-    const stamp = r.cur?.hasContent ? `[${nowStamp()}] ` : `[${nowStamp()}] `;
-    const frame = prefix + stamp + group.join(`\n[${nowStamp()}] `) + "\n";
+    const stamp = `[${nowStamp()}] `;
+    const frame = prefix + stamp + group.join(`\n${stamp}`) + "\n";
     return this.pushAppend(r, frame, "line");
   }
 
