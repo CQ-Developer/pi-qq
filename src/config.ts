@@ -15,12 +15,10 @@ export interface PiQQSettings {
   streamAssistant?: boolean;
   /** F4：机器人是否有 markdown 权限；true 时回传透传 Markdown */
   markdownSupport?: boolean;
-  /** F5/F6：用量摘要（token+成本+上下文占比）开关 */
+  /** F5/F6：用量摘要（本次 run token/缓存命中率/上下文占比）开关 */
   usageRelay?: boolean;
   /** F2：agent 忙碌时新消息的处理方式 */
   deliverAs?: "steer" | "followUp";
-  /** F6：上下文占比告警阈值（百分比） */
-  contextWarnPercent?: number;
   /** F3：QQ 图片下载上限（字节） */
   imageMaxSize?: number;
   /** F7：节流心跳间隔（分钟），0 关闭 */
@@ -124,7 +122,6 @@ export function getSettings(config: PiQQConfig): ResolvedSettings {
     markdownSupport: config.markdownSupport ?? false,
     usageRelay: config.usageRelay ?? true,
     deliverAs: config.deliverAs ?? "steer",
-    contextWarnPercent: config.contextWarnPercent ?? 80,
     imageMaxSize: config.imageMaxSize ?? 10 * 1024 * 1024,
     heartbeatMinutes: config.heartbeatMinutes ?? 10,
     heartbeatMaxMessages: config.heartbeatMaxMessages ?? 3,

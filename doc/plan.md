@@ -34,7 +34,7 @@ pi-qq/
     ├── inbound.ts         # F2/F3：白名单 → QQ 命令拦截 → 图片下载转 ImageContent → sendUserMessage
     ├── outbound.ts        # F4：markdown→纯文本转换、流式(openStream)/降级(sendText)、分块
     ├── reply-budget.ts    # §3：被动回复预算（msgId 5min 窗口、4条/h、降级主动发送）
-    └── usage.ts           # F5/F6：会话累计（getBranch 重建）、agent_end 用量摘要（token+成本+上下文占比）
+    └── usage.ts           # F5/F6：本次 run 用量汇总（agent_end messages）、严格三行摘要
 ```
 
 职责边界：`index.ts` 只做装配与订阅，不含业务逻辑；每个模块可独立测试；模块间只经 `index.ts` 传递的共享状态对象（bot 实例、当前 target/msgId、配置）通信。
@@ -46,9 +46,9 @@ pi-qq/
 | QQ → pi | `bot.on("message")`（kind=c2c） | 白名单 → QQ 命令（`/new` `/stop` `/compact` `/status` `/help`）→ 文本+图片 → `pi.sendUserMessage()` |
 | pi → QQ | `message_update`（assistant） | 流式：`openStream().update(转换后全文)`，节流 ≥300ms |
 | pi → QQ | `message_end`（assistant） | `stream.complete()`；无流上下文时 `sendText`；`stopReason==="error"` 回错误摘要 |
-| pi → QQ | `agent_end` | 用量摘要一条（F5 token+成本 + F6 上下文占比） |
+| pi → QQ | `agent_end` | 用量摘要一条（F5 本次 run token/缓存命中率 + F6 上下文占比） |
 | 状态 | `session_start` / `session_shutdown` | 读配置启动 bot（A→B 判定）/ 幂等停止 |
-| 记录 | `session_start` 重建累计用量；`/new` 清零 | `sessionManager.getBranch()` |
+| 汇总 | `agent_end` | 从 `event.messages` 汇总本次 run 的 assistant/toolResult usage |
 
 ## 3. 里程碑
 
@@ -85,11 +85,11 @@ pi-qq/
 
 ### M3 — 用量摘要（F5 + F6）
 
-1. `usage.ts`：`session_start` 从 `getBranch()` 重建会话累计；`agent_end` 取最后一条 assistant `usage`（本轮）+ 累计 + `ctx.getContextUsage()`（`tokens===null` 显示"重建中"）。
-2. 格式：`📊 tokens — 输入 12.3k（缓存命中 11.8k）· 输出 1.2k · 成本 $0.04 · 本轮 2.1k | 上下文 46.5k/200k（23%）`；成本缺失时省略；占比 ≥`contextWarnPercent` 追加"建议 /compact"。
-3. 经 reply-budget 发送。
+1. `usage.ts`：`agent_end` 从 `event.messages` 汇总本次 run 的 assistant + toolResult usage；上下文取 `ctx.getContextUsage()`（`tokens===null` 显示"重建中"）。
+2. 严格三行格式：`📊 用量摘要` / `• 输入：4.1k (99.9%)` / `• 输出：2.3k` / `• 上下文：0.4%`；输入为总输入（含 cacheRead/cacheWrite），括号为缓存命中率。
+3. 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送。
 
-**验收**：每轮对话后 QQ 收到一条摘要，数字与 pi 会话 UI 一致；`/new` 后累计清零。
+**验收**：每轮对话后 QQ 收到一条三行摘要，数字与本次 run 实际用量一致。
 
 ### M4 — 图片与打磨（F3 + markdownSupport 透传）
 
@@ -163,11 +163,11 @@ pi-qq/
 
 ### M3 — 用量摘要
 
-- [x] `src/usage.ts`：`session_start` 从 `getBranch()` 重建累计；`/new` 清零；累计口径对齐 pi（assistant/usage/compaction/toolResult）
-- [x] `agent_end` 摘要：本轮 usage + 累计 + 成本 + `ctx.getContextUsage()`（`tokens===null` 显示重建中、阈值告警）；仅 QQ 触发且成功完成的 run 发送
-- [x] 摘要经 reply-budget 发送；成本为 0 时省略
-- [ ] 验收（待 QQ 实测）：摘要数字与 pi 会话 UI 一致；`/new` 后清零
-  - 2026-10-29：单测覆盖完整格式/短格式/重建中/80% 告警/累计口径/Tracker 状态（当前全量 80 项断言通过）。
+- [x] `src/usage.ts`：`agent_end` 从 `event.messages` 汇总本次 run（assistant + toolResult 嵌套 usage）
+- [x] 严格三行摘要：输入（总输入）+ 缓存命中率、输出、上下文占比；`tokens===null` 显示重建中
+- [x] 仅 QQ 触发且成功完成的 run 发送；经 reply-budget 发送
+- [ ] 验收（待 QQ 实测）：摘要数字与本次 run 实际用量一致
+  - 2026-10-29：单测覆盖严格三行/命中率/无缓存/重建中/上下文计算/本次 run 汇总（当前全量 71 项断言通过）。
 
 ### M4 — 流式、图片与打磨
 

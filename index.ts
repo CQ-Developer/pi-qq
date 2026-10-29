@@ -15,7 +15,7 @@ import { markdownToPlain, sendReply } from "./src/outbound";
 import { ReplyBudget } from "./src/reply-budget";
 import { RunFeedback } from "./src/run-feedback";
 import { AppendStream } from "./src/append-stream";
-import { UsageTracker, formatTokenCount, formatUsageSummary } from "./src/usage";
+import { formatTokenCount, formatUsageSummary, sumUsageMessages, type UsageTotals } from "./src/usage";
 
 /**
  * pi-qq 扩展入口：
@@ -29,7 +29,6 @@ let lastState: BotState = "stopped";
 let stateDetail: string | undefined;
 let sessionCtx: ExtensionContext | undefined;
 const budget = new ReplyBudget();
-const usageTracker = new UsageTracker();
 const runFeedback = new RunFeedback({
   bot: () => running?.bot,
   budget,
@@ -61,27 +60,22 @@ export default function (pi: ExtensionAPI) {
   const onWarn = (ctx: ExtensionContext) => (msg: string) =>
     ctx.ui.notify(`pi-qq ${msg}`, "warning");
 
-  /** F5/F6：在 agent_end 时快照用量摘要，返回发送函数（等时间线封口后再调用） */
-  const prepareUsageSummary = (ctx: ExtensionContext): (() => void) | null => {
+  /** F5/F6：在 agent_end 时快照本次 run 用量，返回发送函数（等时间线封口后再调用） */
+  const prepareUsageSummary = (ctx: ExtensionContext, usage: UsageTotals): (() => void) | null => {
     const { config } = readConfig();
     const settings = getSettings(config);
     if (!settings.usageRelay) return null;
 
-    // agent_end 时消息已持久化，用分支刷新累计可覆盖本轮的嵌套 usage/compaction
-    usageTracker.refresh(ctx.sessionManager.getBranch());
-
     const bound = config.allowedOpenid;
     const bot = running?.bot;
-    const turn = usageTracker.getLastTurn();
-    if (!bound || !bot || !turn) return null;
+    const hasUsage = usage.input + usage.output + usage.cacheRead + usage.cacheWrite > 0;
+    if (!bound || !bot || !hasUsage) return null;
 
     const summary = formatUsageSummary({
-      session: usageTracker.getTotals(),
-      turn,
+      usage,
       context: ctx.getContextUsage(),
-      contextWarnPercent: settings.contextWarnPercent,
     });
-    // 快照文本，避免等待时间线封口期间新 run 的 agent_start 清掉本轮数据
+    // 快照文本，避免等待时间线封口期间新 run 覆盖本次数据
     return () => {
       if (running?.bot !== bot) return;
       void sendReply(bot, summary, {
@@ -151,10 +145,7 @@ export default function (pi: ExtensionAPI) {
 
   // —— 生命周期 ——
 
-  pi.on("session_start", (event, ctx) => {
-    // /new 从空分支开始；其余（startup/reload/resume/fork）按当前分支重建
-    usageTracker.rebuild(event.reason === "new" ? [] : ctx.sessionManager.getBranch());
-
+  pi.on("session_start", (_event, ctx) => {
     const { config, error } = readConfig();
     if (error) {
       ctx.ui.notify(`pi-qq ${error}`, "error");
@@ -180,7 +171,6 @@ export default function (pi: ExtensionAPI) {
   // —— F7 run 级反馈：agent 生命周期 / 工具计数 / 文本流式 ——
 
   pi.on("agent_start", () => {
-    usageTracker.startRun();
     runFeedback.onAgentStart();
   });
 
@@ -194,8 +184,9 @@ export default function (pi: ExtensionAPI) {
       lastAssistant.stopReason !== "error" &&
       lastAssistant.stopReason !== "aborted";
     const wasQQRun = runFeedback.isQQTriggeredRun();
-    // 在异步封口时间线前快照摘要，避免新 run 的 agent_start 清掉本轮数据
-    const sendSummary = wasQQRun && completed ? prepareUsageSummary(ctx) : null;
+    // 在异步封口时间线前快照本次 run 的用量，避免新 run 覆盖
+    const runUsage = sumUsageMessages(event.messages);
+    const sendSummary = wasQQRun && completed ? prepareUsageSummary(ctx, runUsage) : null;
     // 先封口时间线气泡，再发用量摘要（保证 QQ 消息顺序）
     void runFeedback
       .onAgentEnd()
@@ -203,12 +194,6 @@ export default function (pi: ExtensionAPI) {
         sendSummary?.();
       })
       .catch(() => {});
-  });
-
-  pi.on("turn_end", (event) => {
-    if (event.message.role === "assistant") {
-      usageTracker.noteTurn(event.message.usage);
-    }
   });
 
   pi.on("tool_execution_start", (event) => {

@@ -118,19 +118,25 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 - **非流式/降级**：`sendText` 一次性发送。
 - `stopReason === "error"` 时回传错误摘要而非静默。
 
-### F5 回传 token 详情（输入 / 缓存命中 / 输出）
+### F5 回传 token 详情（输入 / 输出 / 缓存命中率）
 
-**数据源**：assistant 消息的 `usage`：`input`、`cacheRead`、`output`（及可选 `cacheWrite`、`cost`）。
+**数据源**：本次 agent run 的 `event.messages` 中 assistant 与 toolResult 的 `usage`（`input`、`cacheRead`、`cacheWrite`、`output`）。
 
 **行为**
 
-- 每次 **QQ 触发且成功完成**的 agent run 结束（`agent_end`）发送一条用量摘要（本地终端 run、错误/中止的 run 不发，避免消耗主动额度或重试刷屏）：
-  `📊 tokens — 输入 12.3k（缓存命中 11.8k）· 输出 1.2k · 成本 $0.04 · 本轮 2.1k`
-- 摘要中的「输入 / 缓存命中 / 输出 / 成本」为**会话累计**；「本轮」为最后一条 assistant 的 `usage.totalTokens`（该次模型请求的增量）。
-- 成本（`usage.cost.total`）随摘要一并回传（已确认）；模型无定价数据（成本为 0）时省略成本字段。
-- 三层数字：
-  - **本轮**：`turn_end` 中最后一条 assistant 消息的 `usage.totalTokens`（该次模型请求的增量）。
-  - **会话累计**：扩展内累计（`session_start` 时从 `sessionManager.getBranch()` 重建，`/new` 后清零；口径对齐 pi：assistant / usage / compaction / toolResult 嵌套 usage 均计入）。
+- 每次 **QQ 触发且成功完成**的 agent run 结束（`agent_end`）发送一条严格三行摘要（本地终端 run、错误/中止的 run 不发，避免消耗主动额度或重试刷屏）：
+
+```
+📊 用量摘要
+• 输入：4.1k (99.9%)
+• 输出：2.3k
+• 上下文：0.4%
+```
+
+- **输入** = 本次 run 累计总输入（`input + cacheRead + cacheWrite`）。
+- **括号百分比** = 本次 run 累计缓存命中率（`cacheRead / 总输入`），保留一位小数；无缓存时显示 `0.0%`。
+- **输出** = 本次 run 累计输出。
+- 不展示成本、本轮、上下文绝对值；严格保持三行。
 - 与 F6 合并为一条消息发送，避免刷屏。
 
 ### F6 回传上下文窗口占比
@@ -139,9 +145,10 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **行为**
 
-- 与 F5 同条消息附带：`| 上下文 46.5k/200k（23%）`。
-- `tokens === null`（压缩后尚未产生新响应）时显示"重建中"，不发数字。
-- 达到阈值（默认 80%）时在摘要中追加提示"建议 /compact"。
+- 与 F5 同条消息的第三行：`• 上下文：0.4%`。
+- `tokens === null`（压缩后尚未产生新响应）时显示 `重建中`。
+- `percent` 缺失时按 `tokens / contextWindow` 计算。
+- 严格三行格式，不追加 `/compact` 文字提示（百分比已可见）。
 
 ### F7 长任务反馈（10~60 分钟级任务）
 
@@ -197,9 +204,8 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | `allowedOpenid` | 扫码自动写入；手动配置时可选（缺省首个私聊用户绑定） | 单人绑定的 openid |
 | `streamAssistant` | `true` | assistant 流式回传开关 |
 | `markdownSupport` | `false` | 机器人是否有 markdown 权限；`true` 时回传透传 Markdown |
-| `usageRelay` | `true` | token 详情 + 成本 + 上下文占比开关 |
+| `usageRelay` | `true` | 本次 run 的 token/缓存命中率/上下文占比摘要开关 |
 | `deliverAs` | `"steer"` | 忙碌时新消息的处理方式 |
-| `contextWarnPercent` | `80` | 上下文占比告警阈值 |
 | `imageMaxSize` | `10MB` | QQ 图片下载上限 |
 | `heartbeatMinutes` | `10`（0 关闭） | F7 节流心跳间隔 |
 | `heartbeatMaxMessages` | `3` | F7 每 run 消息心跳上限（流式心跳不受限） |
@@ -235,7 +241,7 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | 2 | thinking 内容 | 不回传具体内容（始终剔除，无配置开关）；F7 时间线中仅以"💭 思考中…"标记体现 |
 | 3 | tool 消息 | **完全不回传**（从功能范围移除；只回传 assistant 消息 + token usage + 上下文占比） |
 | 4 | 图片方向 | F3 为 QQ → pi（用户发图给 pi）；pi 不向 QQ 发图片（LLM 仅输出纯文本） |
-| 5 | 成本展示 | `usage.cost.total` 随用量摘要一并回传 |
+| 5 | 成本展示 | 不在 QQ 摘要中展示成本；摘要严格三行（输入/缓存命中率、输出、上下文） |
 | 6 | 回复格式 | 回复通常为 Markdown 格式的总结/提问文本（不在回复中写代码）；默认轻量转纯文本，有 markdown 权限可透传 |
 | 7 | 登录方式 | 双通道：`~/.pi/agent/pi-qq.json` 存在 `AppID`/`AppSecret` 即免扫码直连，否则扫码登录；凭据统一存该文件 |
 | 8 | 长任务反馈 | typing 保鲜 + 每 10s 汇总工具调用 + 节流心跳（默认 10 分钟/条，流式载体优先，每 run ≤3 条消息心跳保险丝）+ 机会性流式（平台拒绝即降级）；不发送开始确认 |
@@ -247,5 +253,5 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | --- | --- | --- |
 | M1 | F1 登录接入（配置直连 + 扫码登录）+ 凭据持久化 + 连接启动 | 配置直连或扫码后 `/qq-status` 显示在线 |
 | M2 | F2 单人聊天 + F4 assistant 回传（先非流式） | QQ 发消息得到 pi 回复 |
-| M3 | F5/F6 用量摘要（token + 成本 + 上下文占比） | 用量摘要消息正确呈现 |
+| M3 | F5/F6 用量摘要（本次 run 输入/缓存命中率/输出/上下文） | 严格三行摘要正确呈现 |
 | M4 | F4 流式模式 + F3 QQ 图片消息 + 降级策略打磨 | 长回复流式、图片可进入 pi 会话 |

@@ -11,7 +11,7 @@
 - **单人聊天**：绑定用户私聊消息直接进入 pi 会话（含图片），白名单外的消息完全隔离
 - **完整回复**：assistant 消息实时回传（流式追加 / 降级分块），Markdown 转手机可读纯文本
 - **长任务反馈**："正在输入"保鲜 + 每 10s 汇总工具调用 + 节流心跳（`⏱ 已运行 25 分钟 · [86] 🔧 bash · [12] 🔧 read`），数十分钟级任务不再黑盒等待
-- **用量摘要**：每轮 QQ 任务后回传会话累计 token/成本、本轮总量与上下文占比；≥80% 提示 `/compact`
+- **用量摘要**：每次 QQ 任务后回传本次 run 的输入（含缓存命中率）、输出与上下文占比，严格三行
 - **发送图片**：QQ 端发图 → 自动下载注入 pi 作为视觉输入
 - **诊断命令**：`/qq-md`、`/qq-stream-test` 快速验证平台能力
 
@@ -57,9 +57,8 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 | `allowedOpenid` | 扫码自动写入 | 单人绑定的 openid；手动配置时缺省则首个私聊用户自动绑定 |
 | `streamAssistant` | `true` | assistant 流式回传开关（关闭则整条回复完成后一次性发送） |
 | `markdownSupport` | `false` | 机器人是否有 markdown 权限；`true` 时回传透传原始 Markdown |
-| `usageRelay` | `true` | 用量摘要（token/成本/上下文占比）开关 |
+| `usageRelay` | `true` | 本次 run 的输入/缓存命中率/输出/上下文摘要开关 |
 | `deliverAs` | `"steer"` | agent 忙碌时新消息的处理方式：`steer` 并入当前任务 / `followUp` 排队 |
-| `contextWarnPercent` | `80` | 上下文占比告警阈值，达到后在摘要中提示压缩 |
 | `imageMaxSize` | `10485760` | QQ 图片下载上限（字节，默认 10MB） |
 | `heartbeatMinutes` | `10` | 长任务心跳间隔（分钟），`0` 关闭 |
 | `heartbeatMaxMessages` | `3` | 每 run 消息心跳上限（流式心跳不受限） |
@@ -80,22 +79,24 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 
 ## 一个回合的消息形态
 
-QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总严格分泡，摘要见 M3）：
+QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总严格分泡，末尾附用量摘要）：
 
 ```
 [活动气泡：💭思考/[n]🔧工具计数] ← streamRelay 开启时，每 10s 汇总
 [文本气泡：assistant 消息原文]   ← 每条文本消息独立成泡
 [活动气泡：后续工具汇总]
 [文本气泡：最终回复原文]
-📊 tokens — 输入 12.3k（缓存命中 11.8k）· 输出 1.2k · 成本 $0.04 · 本轮 2.1k
-| 上下文 46.5k/200k（23%）
+📊 用量摘要
+• 输入：4.1k (99.9%)
+• 输出：2.3k
+• 上下文：0.4%
 ```
 
 ## 开发
 
 ```bash
 npm run typecheck      # 类型检查（npx tsc，无需本地安装）
-npx -y jiti test/run.ts  # 单元测试（80 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要）
+npx -y jiti test/run.ts  # 单元测试（71 项断言：转换/分块/预算/心跳/流式节流重试/气泡切分/默认配置/用量摘要）
 ```
 
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
