@@ -1,7 +1,7 @@
 # pi-qq
 
 > pi 扩展：通过 QQ 机器人把 [pi](https://github.com/earendil-works/pi) 接入 QQ 单人私聊（C2C）。
-> 手机 QQ 上发消息（文字/图片）→ pi 在机器上干活 → 完整回复（Markdown → 纯文本）+ 用量摘要回传到 QQ。
+> 手机 QQ 上发消息（文字/图片/文件）→ pi 在机器上干活 → 完整回复（Markdown → 纯文本）+ 用量摘要回传到 QQ。
 
 基于腾讯官方 SDK [`@tencent-connect/qqbot-nodejs`](https://www.npmjs.com/package/@tencent-connect/qqbot-nodejs) 与 [`@tencent-connect/qqbot-connector`](https://www.npmjs.com/package/@tencent-connect/qqbot-connector)。
 
@@ -19,13 +19,23 @@
 
 ## 快速开始
 
-### 1. 安装依赖
+### 从 npm / Pi 市场安装（推荐）
+
+```bash
+pi install npm:@cq-developer/pi-qq
+```
+
+包内已声明 `pi-package` 关键字与 `pi.extensions`，发布后可在 [Pi package gallery](https://pi.dev/packages) 中搜索到。
+
+### 本地开发
+
+#### 1. 安装依赖
 
 ```bash
 npm install
 ```
 
-### 2. 登录机器人（二选一）
+#### 2. 登录机器人（二选一）
 
 **方式 A：配置直连（推荐）** — 写入 `~/.pi/agent/pi-qq.json` 后启动 pi 自动连接：
 
@@ -39,7 +49,7 @@ npm install
 **方式 B：扫码登录** — pi 中执行 `/qq-login`，用手机 QQ 扫码，凭据自动写回同一文件，
 扫码人的 openid 自动绑定为"单人"白名单。
 
-### 3. 加载扩展
+#### 3. 本地加载扩展
 
 ```bash
 pi --extension /path/to/pi-qq

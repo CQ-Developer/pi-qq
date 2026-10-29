@@ -1,9 +1,42 @@
 {
-  "name": "pi-qq",
-  "version": "0.1.0",
+  "name": "@cq-developer/pi-qq",
+  "version": "1.0.0",
   "description": "pi 扩展：通过 QQ 机器人把 pi 接入 QQ 单人私聊（C2C）",
-  "private": true,
+  "license": "MIT",
+  "author": "CQ-Developer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CQ-Developer/pi-qq.git"
+  },
+  "homepage": "https://github.com/CQ-Developer/pi-qq#readme",
+  "bugs": {
+    "url": "https://github.com/CQ-Developer/pi-qq/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "qq",
+    "qqbot",
+    "c2c",
+    "tencent"
+  ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "doc",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "npx -y -p typescript tsc --noEmit",
     "test": "vitest run",
@@ -14,6 +47,14 @@
     "@tencent-connect/qqbot-connector": "^1.2.0",
     "@tencent-connect/qqbot-nodejs": "^1.0.5",
     "qrcode-terminal": "^0.12.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "prettier": "^3.9.10",
