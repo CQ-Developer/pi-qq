@@ -27,12 +27,19 @@ export interface BudgetSnapshot {
   remaining: number;
   totalReplies: number;
   trackedMessages: number;
+  /** 当前 msgId 下已创建的流式气泡数（诊断用，不计入 acquire） */
+  streamBubbles: number;
+  /** 本进程累计流式气泡数 */
+  streamBubblesTotal: number;
 }
 
 export class ReplyBudget {
   private readonly limiter: ReplyLimiter;
   private readonly freshMs: number;
   private last: { openid: string; msgId: string; arrivedAt: number } | undefined;
+  private streamMsgId: string | undefined;
+  private streamBubbles = 0;
+  private streamBubblesTotal = 0;
 
   constructor(opts?: { limit?: number; freshMs?: number }) {
     this.limiter = new ReplyLimiter({ limit: opts?.limit ?? 4 });
@@ -41,6 +48,10 @@ export class ReplyBudget {
 
   /** 入站消息到达时调用：更新被动回复目标与其新鲜度起点 */
   observeInbound(openid: string, msgId: string, now = Date.now()): void {
+    if (this.last?.msgId !== msgId) {
+      this.streamMsgId = msgId;
+      this.streamBubbles = 0;
+    }
     this.last = { openid, msgId, arrivedAt: now };
   }
 
@@ -68,6 +79,16 @@ export class ReplyBudget {
     this.limiter.record(msgId);
   }
 
+  /** 诊断：记录新建的一条流式气泡（不参与被动额度判定） */
+  noteStreamBubble(msgId: string): void {
+    if (this.streamMsgId !== msgId) {
+      this.streamMsgId = msgId;
+      this.streamBubbles = 0;
+    }
+    this.streamBubbles += 1;
+    this.streamBubblesTotal += 1;
+  }
+
   /** 诊断快照：被动额度、最近目标新鲜度与累计发送数 */
   snapshot(now = Date.now()): BudgetSnapshot {
     const config = this.limiter.getConfig();
@@ -80,6 +101,8 @@ export class ReplyBudget {
         limit: config.limit,
         ttlHours: config.ttlHours,
         remaining: 0,
+        streamBubbles: 0,
+        streamBubblesTotal: this.streamBubblesTotal,
         ...stats,
       };
     }
@@ -92,6 +115,8 @@ export class ReplyBudget {
       limit: config.limit,
       ttlHours: config.ttlHours,
       remaining: this.limiter.checkLimit(this.last.msgId).remaining,
+      streamBubbles: this.streamMsgId === this.last.msgId ? this.streamBubbles : 0,
+      streamBubblesTotal: this.streamBubblesTotal,
       ...stats,
     };
   }

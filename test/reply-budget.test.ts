@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ReplyBudget } from "../src/reply-budget";
+import { ReplyBudget, type BudgetSnapshot } from "../src/reply-budget";
+import { formatBudgetStatus } from "../src/budget-status";
 
 const t0 = 1_700_000_000_000;
 
@@ -55,5 +56,74 @@ describe("ReplyBudget", () => {
     expect(after.remaining).toBe(3);
     expect(after.totalReplies).toBe(1);
     expect(budget.snapshot(t0 + 6 * 60_000).fresh).toBe(false);
+  });
+
+  it("流式气泡计数按 msgId 归属，总数跨 msgId 累计", () => {
+    const budget = new ReplyBudget();
+    budget.observeInbound("openid-U", "msg-stream", t0);
+    budget.noteStreamBubble("msg-stream");
+    budget.noteStreamBubble("msg-stream");
+    const current = budget.snapshot(t0);
+    expect(current.streamBubbles).toBe(2);
+    expect(current.streamBubblesTotal).toBe(2);
+
+    budget.observeInbound("openid-U", "msg-next", t0);
+    const next = budget.snapshot(t0);
+    expect(next.streamBubbles).toBe(0);
+    expect(next.streamBubblesTotal).toBe(2);
+  });
+});
+
+describe("formatBudgetStatus", () => {
+  const snapshot: BudgetSnapshot = {
+    hasTarget: true,
+    fresh: true,
+    ageMs: 12_000,
+    limit: 4,
+    ttlHours: 1,
+    remaining: 3,
+    totalReplies: 1,
+    trackedMessages: 1,
+    streamBubbles: 2,
+    streamBubblesTotal: 5,
+  };
+  const last = { openid: "openid-12345678", msgId: "msg-12345678", arrivedAt: t0 };
+
+  it("有目标时展示普通/流式/估算剩余", () => {
+    expect(formatBudgetStatus(snapshot, last, t0 + 12_000)).toEqual([
+      "pi-qq 被动回复预算",
+      "上限：4 条/msg（1h）",
+      "最近入站：openid-1… / msg-1234…，12s 前",
+      "普通被动剩余：3",
+      "流式气泡：2 条（当前 msgId）",
+      "估算剩余：1 条（仅诊断）",
+      "msgId 窗口：有效",
+      "已记录：普通 1 条 / 流式 5 条 / 跟踪 1 个 msgId",
+    ]);
+  });
+
+  it("无目标时显示占位符", () => {
+    const empty: BudgetSnapshot = {
+      hasTarget: false,
+      fresh: false,
+      ageMs: null,
+      limit: 4,
+      ttlHours: 1,
+      remaining: 0,
+      totalReplies: 0,
+      trackedMessages: 0,
+      streamBubbles: 0,
+      streamBubblesTotal: 0,
+    };
+    expect(formatBudgetStatus(empty, undefined, t0)).toEqual([
+      "pi-qq 被动回复预算",
+      "上限：4 条/msg（1h）",
+      "最近入站：无",
+      "普通被动剩余：—",
+      "流式气泡：0 条（当前 msgId）",
+      "估算剩余：— 条（仅诊断）",
+      "msgId 窗口：—",
+      "已记录：普通 0 条 / 流式 0 条 / 跟踪 0 个 msgId",
+    ]);
   });
 });

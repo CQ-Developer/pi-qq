@@ -390,6 +390,7 @@ export class RunFeedback {
           }),
           kind,
         };
+        this.deps.budget.noteStreamBubble(run.msgId);
       }
       await run.cur.stream.append(delta);
       run.lastAppendAt = Date.now();

@@ -72,7 +72,7 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 | --- | --- | --- |
 | pi 侧 | `/qq-login` | 扫码登录/换绑 |
 | pi 侧 | `/qq-status` | 登录态、连接状态、绑定用户 |
-| pi 侧 | `/qq-budget` | 诊断：被动回复额度、最近 msgId 与新鲜度 |
+| pi 侧 | `/qq-budget` | 诊断：被动额度、流式气泡数、最近 msgId 新鲜度 |
 | pi 侧 | `/qq-logout` | 清除凭据并断开 |
 | pi 侧 | `/qq-md [text]` | 诊断：验证 C2C markdown 渲染能力 |
 | pi 侧 | `/qq-stream-test` | 诊断：追加模式流式全链路验证 |
@@ -98,7 +98,7 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 ```bash
 npm install              # 安装依赖（prettier / vitest 为 devDependencies）
 npm run typecheck        # 类型检查
-npm test                 # vitest（7 个测试文件 / 65 个测试）
+npm test                 # vitest（7 个测试文件 / 69 个测试）
 npm run format           # Prettier 格式化
 npm run format:check     # Prettier 校验
 ```
@@ -107,7 +107,7 @@ npm run format:check     # Prettier 校验
 
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
 `config`（配置读写）/ `login`（扫码）/ `bot`（生命周期）/ `inbound`（QQ→pi）/
-`outbound`（pi→QQ 文本）/ `reply-budget`（被动回复额度）/ `run-feedback`（长任务反馈）/
+`outbound`（pi→QQ 文本）/ `reply-budget`（被动回复额度）/ `budget-status`（`/qq-budget` 格式化）/ `run-feedback`（长任务反馈）/
 `append-stream`（追加模式流式发送器）/ `usage`（token 累计与用量摘要）/ `images`（QQ 图片下载与校验）。
 
 ## 已知平台限制（实测）

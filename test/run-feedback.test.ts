@@ -18,9 +18,10 @@ function makeRunHarness() {
     getCredentials: () => ({}),
     sendTyping: async () => {},
   };
+  const budget = new ReplyBudget();
   const deps = {
     bot: () => bot,
-    budget: new ReplyBudget(),
+    budget,
     boundOpenid: () => "openid-u",
     getHeartbeatMinutes: () => 0,
     getHeartbeatMaxMessages: () => 3,
@@ -30,7 +31,7 @@ function makeRunHarness() {
     makeChannel: () => ({ budget: new ReplyBudget(), boundOpenid: "openid-u" }),
     onWarn: () => {},
   };
-  return { rf: new RunFeedback(deps as never), calls };
+  return { rf: new RunFeedback(deps as never), calls, budget };
 }
 
 /** 按 DONE 帧切分气泡，返回每个气泡的累计内容 */
@@ -214,5 +215,24 @@ describe("RunFeedback 气泡切分", () => {
     expect(thinkingAt).toBeGreaterThan(readAt);
     expect(bashAt).toBeGreaterThan(thinkingAt);
     expect(bubbles[3]).toBe("最终回复");
+  });
+
+  it("诊断：每个新建流式气泡只计数一次", async () => {
+    const { rf, budget } = makeRunHarness();
+    budget.observeInbound("openid-u", "msg-count");
+    rf.markQQTrigger("openid-u", "msg-count");
+    rf.onAgentStart();
+    rf.onToolStart("bash");
+    await rf.flushWindow();
+    rf.onAssistantDelta("hi", "");
+    await rf.flushWindow();
+    await rf.onAssistantFinal("hi", false);
+    rf.onToolStart("read");
+    await rf.flushWindow();
+    await rf.onAgentEnd();
+
+    const snapshot = budget.snapshot();
+    expect(snapshot.streamBubbles).toBe(3);
+    expect(snapshot.streamBubblesTotal).toBe(3);
   });
 });
