@@ -98,12 +98,12 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 ```bash
 npm install              # 安装依赖（prettier / vitest 为 devDependencies）
 npm run typecheck        # 类型检查
-npm test                 # jiti 断言脚本（108 项）
+npm test                 # vitest（7 个测试文件 / 65 个测试）
 npm run format           # Prettier 格式化
 npm run format:check     # Prettier 校验
 ```
 
-当前单测仍使用 jiti + assert 脚本；vitest 已加入 devDependencies，供后续迁移使用。
+单测位于 `test/*.test.ts`（vitest），`npm run typecheck` 同时检查测试代码。
 
 模块划分与事件接线见 [doc/plan.md](./doc/plan.md)；src/ 下每个模块单一职责：
 `config`（配置读写）/ `login`（扫码）/ `bot`（生命周期）/ `inbound`（QQ→pi）/

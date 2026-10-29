@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "npx -y -p typescript tsc --noEmit",
-    "test": "npx -y jiti test/run.ts",
+    "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
