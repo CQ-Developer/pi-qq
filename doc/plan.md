@@ -38,7 +38,7 @@ pi-qq/
     ├── format.ts          # 人类可读字节/ token 数格式化
     ├── outbound.ts        # F4：markdown→纯文本转换、流式(openStream)/降级(sendText)、分块
     ├── reply-budget.ts    # §3：被动回复预算（msgId 5min 窗口、4条/h、降级主动发送）
-    └── budget-status.ts   # /qq-budget 纯格式化（普通/流式/估算剩余）
+    └── budget-status.ts   # /qq-test-budget 纯格式化（普通/流式/估算剩余）
 ```
 
 职责边界：`index.ts` 只做装配与订阅，不含业务逻辑；每个模块可独立测试；模块间只经 `index.ts` 传递的共享状态对象（bot 实例、当前 target/msgId、配置）通信。
@@ -153,8 +153,8 @@ pi-qq/
 - [x] `index.ts`：`agent_start`/`agent_end`/`tool_execution_end`/`message_update` 接线；`message_end` 流接管判定
 - [x] 单测：`formatHeartbeat`（test/run.ts 共 33 项断言）
 - [x] 验收：QQ 发任务 → 不发送确认 → 10s 内收到汇总帧 → typing 持续 → 心跳按期 → 结果回传不双发（用户实测通过）
-  - 首轮实测（2026-10-28）：确认/typing 正常；SDK 内置流式 replace 语义被平台拒绝（"已经提交的消息内容不可修改"，首帧可渲染、第二帧报错）；C2C markdown 渲染正常（`/qq-md` ✓）。
-  - 修复：自实现 `src/append-stream.ts`（input_mode="append"，追加语义），RunFeedback 改为增量追加，`/qq-stream-test` 改测 append 模式。
+  - 首轮实测（2026-10-28）：确认/typing 正常；SDK 内置流式 replace 语义被平台拒绝（"已经提交的消息内容不可修改"，首帧可渲染、第二帧报错）；C2C markdown 渲染正常（`/qq-test-md` ✓）。
+  - 修复：自实现 `src/append-stream.ts`（input_mode="append"，追加语义），RunFeedback 改为增量追加，`/qq-test-stream` 改测 append 模式。
   - 复验（2026-10-28）：append 两帧 + DONE 全部渲染 ✓，流式链路打通。后续任务：心跳/结果追加需开启 `streamRelay: true`。
   - 时间线升级（用户构想）：流式气泡改为**回合活动时间线**——💭 思考中…（惰性标记，不回传内容）/ 🔧 工具名（tool_execution_start）/ 智能体消息原文（流式增量）依次追加，心跳与 DONE 照旧；帧失败自动降级消息路径并补发未发结果。
   - 汇总帧重构（用户构想）：逐事件追加改为**固定 3s 窗口汇总帧**——思考状态行 + 工具计数行（`[n] 🔧 name`）+ 消息文本增量，按设计稿分组排版；流式帧按 markdown 渲染（实测），故流内传原始文本。用户实测反馈：长思考/长工具期间静默——已加行组帧时间戳 + 空窗口 60s 活性行 + flush 队列串行化（防限流重试与定时器交错）。追加 debug 开关（SDK 日志转终端 + 文本帧时间戳）用于定位用户报告的「超时」现象。
@@ -180,7 +180,7 @@ pi-qq/
 - [x] `/compact` 命令、typing 指示（C2C）
 - [x] `markdownSupport: true`：SDK `sendText` 自动 msg_type=2（无需新增 sendMarkdown 路径）
 - [x] QQ 侧 `/new` 支持（`qq-new` 扩展命令 → `ctx.newSession()`）
-- [x] `/qq-budget` 诊断命令（普通被动剩余 / 流式气泡数 / 估算剩余 / 最近 msgId 新鲜度）
+- [x] `/qq-test-budget` 诊断命令（普通被动剩余 / 流式气泡数 / 估算剩余 / 最近 msgId 新鲜度）
 - [x] 单元测试迁移到 vitest（`test/*.test.ts`，8 个文件 / 77 个测试；`npm test`）
 - [x] 多气泡流式额度实测（2026-10-29：当时包含 1 条摘要；摘要后来已移除，仅作历史记录）
 - [x] `debug` 抓超时日志：AppendStream 限流重试/最终失败 + run start/end 日志

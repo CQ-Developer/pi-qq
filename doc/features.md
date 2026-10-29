@@ -53,7 +53,7 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **通用**
 
-- `/qq-status`、`/qq-login`、`/qq-logout`、`/qq-budget`、`/qq-md`、`/qq-stream-test`、`/qq-new` 的命令说明与 pi 终端输出均为英文。
+- `/qq-status`、`/qq-login`、`/qq-logout`、`/qq-test-budget`、`/qq-test-md`、`/qq-test-stream`、`/qq-new` 的命令说明与 pi 终端输出均为英文。
 - `/qq-status` 显示登录状态（in memory）、连接状态、模型、上下文与绑定用户；AppID 仅显示前 4 位 + `****`。
 - 配置文件 `~/.pi/agent/pi-qq.json` 只保存非敏感设置；旧的 `AppID` / `AppSecret` / `allowedOpenid` 键会被忽略，不再用于登录。
 - 白名单只接受扫码绑定的 openid；未登录时入站消息直接忽略。
@@ -199,11 +199,11 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | --- | --- | --- |
 | pi 侧 | `/qq-login` | 扫码登录并绑定（QR only） |
 | pi 侧 | `/qq-status` | 登录态、连接状态、绑定用户 |
-| pi 侧 | `/qq-budget` | 诊断：被动额度、流式气泡数、最近 msgId 新鲜度 |
+| pi 侧 | `/qq-test-budget` | 诊断：被动额度、流式气泡数、最近 msgId 新鲜度 |
 | pi 侧 | `/qq-logout` | 清除内存凭据并断开 |
 | pi 侧 | `/qq-new` | 重置当前会话（QQ `/new` 调用） |
-| pi 侧 | `/qq-md [text]` | 诊断：发送 Markdown 消息，验证 C2C markdown 渲染能力 |
-| pi 侧 | `/qq-stream-test` | 诊断：开流→三帧→complete，验证流式帧是否渲染 |
+| pi 侧 | `/qq-test-md [text]` | 诊断：发送 Markdown 消息，验证 C2C markdown 渲染能力 |
+| pi 侧 | `/qq-test-stream` | 诊断：开流→三帧→complete，验证流式帧是否渲染 |
 | QQ 侧 | `/new` `/stop` `/compact` `/status` `/help` | 会话控制（见 F2） |
 
 ## 6. 可靠性与安全

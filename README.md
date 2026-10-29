@@ -49,9 +49,9 @@ Run these in the pi terminal:
 | `/qq-login` | Log in with a QR code and bind the scanning QQ user |
 | `/qq-status` | Show login, connection, model, context, and bound user |
 | `/qq-logout` | Log out and clear in-memory credentials |
-| `/qq-budget` | Show passive-reply budget and stream-bubble diagnostics |
-| `/qq-md [text]` | Send a Markdown test message |
-| `/qq-stream-test` | Run a streamed timeline diagnostic |
+| `/qq-test-budget` | Show passive-reply budget and stream-bubble diagnostics |
+| `/qq-test-md [text]` | Send a Markdown test message |
+| `/qq-test-stream` | Run a streamed timeline diagnostic |
 | `/qq-new` | Reset the current session (used by QQ `/new`) |
 
 QQ-side commands:
@@ -94,7 +94,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 - Only C2C (QQ private chat) is supported.
 - Incoming images are passed to the model as vision input; the current model must support image input.
 - Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
-- QQ limits passive replies per inbound message. Use `/qq-budget` to inspect the local budget.
+- QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
 
 ## License
 

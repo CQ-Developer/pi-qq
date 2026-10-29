@@ -259,7 +259,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("qq-budget", {
+  pi.registerCommand("qq-test-budget", {
     description: "pi-qq: show passive reply budget, stream bubbles, and last inbound target",
     handler: async (_args, ctx) => {
       ctx.ui.notify(formatBudgetStatus(budget.snapshot(), budget.lastTarget).join("\n"), "info");
@@ -296,7 +296,7 @@ export default function (pi: ExtensionAPI) {
     return bound ? { scope: "c2c" as const, targetId: bound } : undefined;
   };
 
-  pi.registerCommand("qq-md", {
+  pi.registerCommand("qq-test-md", {
     description: "pi-qq: send a Markdown message to verify QQ C2C Markdown rendering",
     handler: async (args, ctx) => {
       if (!running) {
@@ -318,7 +318,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("qq-stream-test", {
+  pi.registerCommand("qq-test-stream", {
     description: "pi-qq: run a streamed timeline diagnostic (thinking/tools/text)",
     handler: async (_args, ctx) => {
       if (!running) {
