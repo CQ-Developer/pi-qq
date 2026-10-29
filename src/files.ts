@@ -1,12 +1,11 @@
-/** QQ 非图片附件 → 本地保存，并在提示词中给出路径供 pi 使用。 */
+/** QQ 非图片附件 → 当前工作空间保存，并在提示词中给出路径供 pi 使用。 */
 import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { downloadLimited, type InboundAttachmentLike } from "./download";
 import { formatBytes } from "./format";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
-const DEFAULT_BASE_DIR = join(homedir(), ".pi", "agent", "pi-qq-files");
+const DEFAULT_BASE_DIR = join(process.cwd(), ".pi", "pi-qq");
 
 export interface SavedFile {
   path: string;
@@ -21,7 +20,7 @@ export interface FileFailure {
 
 export interface SaveFilesOptions {
   maxSize: number;
-  /** 测试可覆盖；默认 ~/.pi/agent/pi-qq-files */
+  /** 测试可覆盖；默认 <cwd>/.pi/pi-qq */
   baseDir?: string;
   /** 用于隔离同一消息的文件目录（通常传 msgId） */
   dirKey?: string;

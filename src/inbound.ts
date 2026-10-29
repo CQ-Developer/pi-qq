@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { setAllowedOpenid } from "./config";
 import { sendReply, type ReplyChannel } from "./outbound";
@@ -94,6 +95,7 @@ export function createInboundHandler(deps: InboundDeps) {
     if (fileAttachments.length > 0) {
       const result = await saveFiles(fileAttachments, {
         maxSize: deps.getFileMaxSize(),
+        baseDir: join(deps.ctx.cwd, ".pi", "pi-qq"),
         dirKey: msg.messageId,
       });
       files = result.files;

@@ -102,14 +102,14 @@ pi-qq 扩展 ── pi.sendUserMessage(text+images) ─┴─ pi 事件：
 
 **文件行为**
 
-- 非图片附件（如 zip/pdf/doc）下载后保存到 `~/.pi/agent/pi-qq-files/YYYY-MM-DD/<msgId>/<安全文件名>`。
+- 非图片附件（如 zip/pdf/doc）下载后保存到当前工作空间的 `.pi/pi-qq/YYYY-MM-DD/<msgId>/<安全文件名>`。
 - 文件名去掉路径与非法字符；同名文件自动加 `-1`、`-2` 后缀；不会写出保存目录。
 - 单文件超时 60s；`fileMaxSize` 默认 50MB；同样先看元数据，再在流式读取时二次限流。
 - 一条消息多个文件按原顺序保存；部分失败时成功的文件仍保留并给出失败清单。
 - 提示词中追加文件块，例如：
   ```text
   用户通过 QQ 发送了以下文件（已保存到本机，可用 read/bash 等工具访问）：
-  - /home/chen/.pi/agent/pi-qq-files/2026-10-29/xxx/report.pdf（1.4MB，原始名：report.pdf）
+  - /home/chen/project/myproj/.pi/pi-qq/2026-10-29/xxx/report.pdf（1.4MB，原始名：report.pdf）
 
   用户消息：
   帮我总结这个文件

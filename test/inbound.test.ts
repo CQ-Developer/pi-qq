@@ -23,6 +23,7 @@ function makeInboundHarness(
   const ctx = {
     isIdle: () => isIdle,
     ui: { notify: () => {} },
+    cwd: "/workspace/pi-qq-test",
     model: { input: opts.modelInput ?? ["text"] },
   };
   const deps = {
@@ -66,17 +67,21 @@ describe("inbound files", () => {
 
   it("保存文件并把路径与用户消息一起注入提示词", async () => {
     let received: unknown[] | undefined;
+    let receivedOptions: { baseDir?: string; dirKey?: string } | undefined;
     const harness = makeInboundHarness(true, {
       content: "分析这个文件",
       attachments: [attachment],
-      saveFiles: async (attachments) => {
+      saveFiles: async (attachments, options) => {
         received = attachments as unknown[];
+        receivedOptions = options as { baseDir?: string; dirKey?: string };
         return { files: [saved], failures: [] };
       },
     });
 
     await harness.run();
     expect(received).toHaveLength(1);
+    expect(receivedOptions?.baseDir).toBe("/workspace/pi-qq-test/.pi/pi-qq");
+    expect(receivedOptions?.dirKey).toBe("msg-new");
     expect(harness.userMessages).toHaveLength(1);
     const content = harness.userMessages[0]?.content as string;
     expect(content).toContain(saved.path);

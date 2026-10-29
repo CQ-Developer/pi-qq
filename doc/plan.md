@@ -98,7 +98,7 @@ pi-qq/
 
 ### M4 — 图片与打磨（F3 + markdownSupport 透传）
 
-1. [x] F3 图片/文件：图片转 `ImageContent`；非图片附件保存到 `~/.pi/agent/pi-qq-files/YYYY-MM-DD/<msgId>/`，提示词中追加绝对路径、大小与原始文件名；`fileMaxSize` 默认 50MB。
+1. [x] F3 图片/文件：图片转 `ImageContent`；非图片附件保存到当前工作空间的 `.pi/pi-qq/YYYY-MM-DD/<msgId>/`，提示词中追加绝对路径、大小与原始文件名；`fileMaxSize` 默认 50MB。
 2. [x] `markdownSupport: true`：`QQBot` 构造时已传入该开关，SDK 的 `sendText` 自动使用 msg_type=2；调用方保留原始 Markdown 即可，无需额外 `sendMarkdown`。
 3. [x] QQ 侧 `/new`：inbound 调用隐藏扩展命令 `qq-new`，命令 handler 使用 `ctx.newSession()`；非 idle 时提示先 `/stop`。
 4. [ ] 长代码块转文件附件（backlog）；多气泡 + 摘要额度实测已完成。
