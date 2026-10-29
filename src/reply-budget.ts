@@ -18,6 +18,17 @@ export interface AcquireResult {
   msgId?: string;
 }
 
+export interface BudgetSnapshot {
+  hasTarget: boolean;
+  fresh: boolean;
+  ageMs: number | null;
+  limit: number;
+  ttlHours: number;
+  remaining: number;
+  totalReplies: number;
+  trackedMessages: number;
+}
+
 export class ReplyBudget {
   private readonly limiter: ReplyLimiter;
   private readonly freshMs: number;
@@ -55,5 +66,33 @@ export class ReplyBudget {
   /** 被动回复发送成功后记账 */
   commitPassive(msgId: string): void {
     this.limiter.record(msgId);
+  }
+
+  /** 诊断快照：被动额度、最近目标新鲜度与累计发送数 */
+  snapshot(now = Date.now()): BudgetSnapshot {
+    const config = this.limiter.getConfig();
+    const stats = this.limiter.getStats();
+    if (!this.last) {
+      return {
+        hasTarget: false,
+        fresh: false,
+        ageMs: null,
+        limit: config.limit,
+        ttlHours: config.ttlHours,
+        remaining: 0,
+        ...stats,
+      };
+    }
+
+    const ageMs = Math.max(0, now - this.last.arrivedAt);
+    return {
+      hasTarget: true,
+      fresh: ageMs <= this.freshMs,
+      ageMs,
+      limit: config.limit,
+      ttlHours: config.ttlHours,
+      remaining: this.limiter.checkLimit(this.last.msgId).remaining,
+      ...stats,
+    };
   }
 }

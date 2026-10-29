@@ -302,6 +302,24 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("qq-budget", {
+    description: "pi-qq 诊断：查看被动回复预算与最近入站目标",
+    handler: async (_args, ctx) => {
+      const snap = budget.snapshot();
+      const last = budget.lastTarget;
+      const ageSec = last ? Math.max(0, Math.floor((Date.now() - last.arrivedAt) / 1000)) : null;
+      const lines = [
+        "pi-qq 被动回复预算",
+        `上限：${snap.limit} 条/msg（${snap.ttlHours}h）`,
+        `最近入站：${last ? `${last.openid.slice(0, 8)}… / ${last.msgId.slice(0, 8)}…，${ageSec}s 前` : "无"}`,
+        `剩余被动额度：${snap.hasTarget ? snap.remaining : "—"}`,
+        `msgId 窗口：${snap.hasTarget ? (snap.fresh ? "有效" : "已过期") : "—"}`,
+        `已记录：${snap.totalReplies} 条 / 跟踪 ${snap.trackedMessages} 个 msgId`,
+      ];
+      ctx.ui.notify(lines.join("\n"), "info");
+    },
+  });
+
   pi.registerCommand("qq-logout", {
     description: "pi-qq：清除凭据并断开连接（保留绑定与设置）",
     handler: async (_args, ctx) => {

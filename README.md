@@ -72,6 +72,7 @@ ln -s /path/to/pi-qq ~/.pi/agent/extensions/pi-qq
 | --- | --- | --- |
 | pi 侧 | `/qq-login` | 扫码登录/换绑 |
 | pi 侧 | `/qq-status` | 登录态、连接状态、绑定用户 |
+| pi 侧 | `/qq-budget` | 诊断：被动回复额度、最近 msgId 与新鲜度 |
 | pi 侧 | `/qq-logout` | 清除凭据并断开 |
 | pi 侧 | `/qq-md [text]` | 诊断：验证 C2C markdown 渲染能力 |
 | pi 侧 | `/qq-stream-test` | 诊断：追加模式流式全链路验证 |
@@ -97,7 +98,7 @@ QQ 用户每个回合看到的消息（确认已移除；文本与工具汇总�
 ```bash
 npm install              # 安装依赖（prettier / vitest 为 devDependencies）
 npm run typecheck        # 类型检查
-npm test                 # jiti 断言脚本（103 项）
+npm test                 # jiti 断言脚本（108 项）
 npm run format           # Prettier 格式化
 npm run format:check     # Prettier 校验
 ```

@@ -103,6 +103,18 @@ budget.observeInbound("openid-U", "msg-fresh-2", t0);
 const fresh = budget.acquire(t0);
 ok(fresh.mode === "passive" && fresh.msgId === "msg-fresh-2", "新 msgId 独立额度");
 
+// 诊断快照
+const snapBudget = new ReplyBudget();
+eq(snapBudget.snapshot(t0).hasTarget, false, "预算快照：无入站目标");
+snapBudget.observeInbound("openid-U", "msg-snap", t0);
+const snap0 = snapBudget.snapshot(t0);
+ok(snap0.hasTarget && snap0.fresh && snap0.remaining === 4, "预算快照：新目标剩余 4 条");
+snapBudget.commitPassive("msg-snap");
+const snap1 = snapBudget.snapshot(t0);
+eq(snap1.remaining, 3, "预算快照：记账后剩余 3 条");
+eq(snap1.totalReplies, 1, "预算快照：累计发送数");
+eq(snapBudget.snapshot(t0 + 6 * 60_000).fresh, false, "预算快照：msgId 超 5 分钟过期");
+
 // ———— RunFeedback.formatHeartbeat ————
 
 import { RunFeedback, formatHeartbeat } from "../src/run-feedback.ts";

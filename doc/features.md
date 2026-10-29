@@ -220,6 +220,7 @@ QQ 开放平台的发送限制直接决定回传策略，必须统一管理：
 | --- | --- | --- |
 | pi 侧 | `/qq-login` | 扫码登录并绑定 |
 | pi 侧 | `/qq-status` | 登录态、连接状态、绑定用户 |
+| pi 侧 | `/qq-budget` | 诊断：被动回复额度、最近 msgId 与新鲜度 |
 | pi 侧 | `/qq-logout` | 清除凭据并断开 |
 | pi 侧 | `/qq-send <text>` | 手动向绑定用户发一条测试消息 |
 | pi 侧 | `/qq-md [text]` | 诊断：发送 Markdown 消息，验证 C2C markdown 渲染能力 |
