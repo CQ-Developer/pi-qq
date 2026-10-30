@@ -117,6 +117,7 @@ When enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `
 ## Notes
 
 - Only C2C (QQ private chat) is supported.
+- Only runs triggered by inbound QQ messages are relayed to QQ. Tasks started directly in pi stay local.
 - Incoming images are passed to the model as vision input; the current model must support image input.
 - Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.

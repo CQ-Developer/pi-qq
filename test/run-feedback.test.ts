@@ -238,3 +238,19 @@ describe("RunFeedback 气泡切分", () => {
     expect(snapshot.streamBubblesTotal).toBe(3);
   });
 });
+describe("QQ run state", () => {
+  it("is active only for QQ-triggered runs", async () => {
+    const { rf } = makeRunHarness();
+    expect(rf.isQQRunActive()).toBe(false);
+
+    rf.onAgentStart();
+    expect(rf.isQQRunActive()).toBe(false);
+
+    rf.markQQTrigger("openid-u", "msg-qq");
+    rf.onAgentStart();
+    expect(rf.isQQRunActive()).toBe(true);
+
+    await rf.onAgentEnd();
+    expect(rf.isQQRunActive()).toBe(false);
+  });
+});

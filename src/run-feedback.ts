@@ -116,6 +116,11 @@ export class RunFeedback {
     this.pending = { openid, msgId, at: Date.now() };
   }
 
+  /** Whether a QQ-triggered run is active. Local pi runs have no RunFeedback state. */
+  isQQRunActive(): boolean {
+    return this.run !== null;
+  }
+
   onAgentStart(): void {
     const pending = this.pending;
     this.pending = null;

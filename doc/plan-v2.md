@@ -329,3 +329,4 @@ pi-qq/
 - 2026-10-30：F11 文件存储与去重实现完成；`npm test` 109 项通过，`typecheck`、`format:check` 通过。
 - 2026-10-30：实机测试发现两条文件消息并发时索引互相覆盖（`c.txt` 文件存在但索引缺失）。根因是 `bot.ts` 的 message handler 未 await `onMessage`，导致 `concurrencyGuard` 提前释放锁。已修复并新增 `test/bot.test.ts`。
 - 2026-10-30：F11 实机重测通过。`c.txt` / `b.txt` 快速连续上传后索引同时保留两项；`a.txt` / `d.txt` 不同文件名同内容按规则保留两份；索引共 4 项。
+- 2026-10-30：修复 QQ 登录后 pi 侧本地交互被回传 QQ 的问题。`RunFeedback.isQQRunActive()` 按 run 来源判断，`message_end` 仅回传 QQ 触发的 run；`npm test` 110 项通过。

@@ -222,13 +222,15 @@ export default function (pi: ExtensionAPI) {
     void runFeedback.onAssistantDelta(snapshot, thinking);
   });
 
-  // pi → QQ: assistant message relay (non-streaming path + F7 stream takeover).
+  // pi → QQ: assistant message relay (QQ-triggered runs only).
 
   pi.on("message_end", async (event, ctx) => {
     const msg = event.message;
     if (msg.role !== "assistant" || !running) return;
 
+    const fromQQ = runFeedback.isQQRunActive();
     log.debug("pi", "assistant message ended", {
+      fromQQ,
       stopReason: msg.stopReason,
       contentTypes: msg.content.map((block) => block.type),
       textPreview: previewForLog(
@@ -238,6 +240,7 @@ export default function (pi: ExtensionAPI) {
           .join("\n"),
       ),
     });
+    if (!fromQQ) return;
 
     const { config } = readConfig();
     const settings = getSettings(config);
