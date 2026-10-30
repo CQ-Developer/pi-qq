@@ -1,5 +1,7 @@
 # pi-qq
 
+[English](./README.md) | [简体中文](./README-zh.md)
+
 Connect [pi](https://github.com/earendil-works/pi) to a QQ private chat. Send text, voice, images, or files from mobile QQ; pi works on your machine and sends the result back to QQ.
 
 ## Install
@@ -29,11 +31,17 @@ Send a QQ private message to the bot to start a task.
 - **Text**: normal chat message.
 - **Voice**: QQ built-in ASR text is sent to pi directly; the audio is not downloaded or saved. If ASR returns no text, the bot asks you to resend or type it.
 - **Images**: sent to pi as vision input.
-- **Files**: saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/`. A file-only message does not start pi; send the instruction in the next text or voice message, and the saved path(s), size, and original filename are added to that prompt.
+- **Files**: saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/` and wait for your next instruction.
 
-When you upload multiple files before giving an instruction, they are combined into the next prompt. `/new` clears files waiting for an instruction.
+### Files
 
-Uploads are scoped to the current pi session. If you upload the same filename with identical content, pi reuses the existing file; the same filename with different content is saved as `name-1.ext`; different filenames with identical content are kept as separate files.
+A file-only message does **not** start pi. The file is saved, and pi waits for your next text or voice instruction before processing it.
+
+- Upload one or more files, then send a text or voice message describing what to do.
+- The next text/voice message is used as the instruction; the saved path(s), size, and original filename are added to that prompt.
+- Multiple files uploaded before the instruction are combined into one prompt.
+- `/new` clears files waiting for an instruction.
+- Uploads are scoped to the current pi session. If you upload the same filename with identical content, pi reuses the existing file; the same filename with different content is saved as `name-1.ext`; different filenames with identical content are kept as separate files.
 
 Example file prompt seen by pi:
 
