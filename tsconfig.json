@@ -9,9 +9,10 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
-    "typeRoots": ["../../.pi/agent/install/releases/1.4.0/node_modules/@types"],
+    "typeRoots": ["./node_modules/@types", "../../.pi/agent/install/releases/1.4.0/node_modules/@types"],
     "paths": {
       "@earendil-works/pi-coding-agent": [
+        "./node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts",
         "../../.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"
       ]
     }
