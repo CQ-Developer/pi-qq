@@ -1,6 +1,8 @@
 name: release
 
-# Requires repository secret NPM_TOKEN with publish permission and 2FA bypass for CI.
+# Uses npm Trusted Publisher (OIDC). Configure it on npm:
+# package Settings -> Trusted Publisher -> GitHub Actions
+# owner: CQ-Developer, repository: pi-qq, workflow: release.yml
 
 on:
   push:
@@ -26,7 +28,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
           cache: npm
 
@@ -47,8 +49,6 @@ jobs:
       - run: npm pack --dry-run
 
       - name: Publish npm package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           if npm view "@chen_hu_hu/pi-qq@$VERSION" version >/dev/null 2>&1; then
