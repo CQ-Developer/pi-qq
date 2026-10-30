@@ -19,11 +19,11 @@
 
 ### 行为
 
-| 情况 | 处理 |
-| --- | --- |
-| 有 ASR 文本 | `markQQTrigger()` → `pi.sendUserMessage(text, { deliverAs })` |
-| ASR 为空 | 回复 `Could not transcribe this voice message; please resend or type it.`，不触发 run |
-| 语音消息 | 不下载 `url` / `voice_wav_url`，不保存文件，不走图片/文件分支 |
+| 情况        | 处理                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------- |
+| 有 ASR 文本 | `markQQTrigger()` → `pi.sendUserMessage(text, { deliverAs })`                         |
+| ASR 为空    | 回复 `Could not transcribe this voice message; please resend or type it.`，不触发 run |
+| 语音消息    | 不下载 `url` / `voice_wav_url`，不保存文件，不走图片/文件分支                         |
 
 - 语音和文字是两条独立消息，不做同条组合。
 - 转写文本不参与 QQ 命令解析，作为普通用户消息交给 pi。
@@ -64,13 +64,13 @@
 }
 ```
 
-| 级别 | 输出 |
-| --- | --- |
-| `silent` | 不写日志（默认） |
-| `error` | error |
-| `warn` | warn + error |
-| `info` | info + warn + error |
-| `debug` | 全部，含 raw 事件、附件、prompt、工具参数/结果、正文 |
+| 级别     | 输出                                                 |
+| -------- | ---------------------------------------------------- |
+| `silent` | 不写日志（默认）                                     |
+| `error`  | error                                                |
+| `warn`   | warn + error                                         |
+| `info`   | info + warn + error                                  |
+| `debug`  | 全部，含 raw 事件、附件、prompt、工具参数/结果、正文 |
 
 - 配置键使用 `logLevel`，不使用 `log_level`。
 - 移除 `debug` 配置；旧 `debug: true` 迁移为 `logLevel: "debug"`，其他情况默认 `silent`。
@@ -86,10 +86,10 @@
 
 ## 4. 配置变更
 
-| 配置 | 变更 |
-| --- | --- |
-| `logLevel` | 新增；默认 `silent` |
-| `debug` | 移除；仅保留迁移读取 |
+| 配置       | 变更                 |
+| ---------- | -------------------- |
+| `logLevel` | 新增；默认 `silent`  |
+| `debug`    | 移除；仅保留迁移读取 |
 
 ## 5. 限制
 

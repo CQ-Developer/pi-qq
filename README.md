@@ -55,25 +55,25 @@ Voice messages use QQ's built-in ASR (`asr_refer_text`). The transcript is sent 
 
 Run these in the pi terminal:
 
-| Command | Description |
-| --- | --- |
-| `/qq-login` | Log in with a QR code and bind the scanning QQ user |
-| `/qq-status` | Show login, connection, model, context, and bound user |
-| `/qq-logout` | Log out and clear in-memory credentials |
-| `/qq-test-budget` | Show passive-reply budget and stream-bubble diagnostics |
-| `/qq-test-md [text]` | Send a Markdown test message |
-| `/qq-test-stream` | Run a streamed timeline diagnostic |
-| `/qq-new` | Reset the current session (used by QQ `/new`) |
+| Command              | Description                                             |
+| -------------------- | ------------------------------------------------------- |
+| `/qq-login`          | Log in with a QR code and bind the scanning QQ user     |
+| `/qq-status`         | Show login, connection, model, context, and bound user  |
+| `/qq-logout`         | Log out and clear in-memory credentials                 |
+| `/qq-test-budget`    | Show passive-reply budget and stream-bubble diagnostics |
+| `/qq-test-md [text]` | Send a Markdown test message                            |
+| `/qq-test-stream`    | Run a streamed timeline diagnostic                      |
+| `/qq-new`            | Reset the current session (used by QQ `/new`)           |
 
 QQ-side commands:
 
-| Command | Description |
-| --- | --- |
-| `/new` | Start a new pi session |
-| `/stop` | Abort the current run |
-| `/compact` | Compact the current context |
-| `/status` | Show session and context status |
-| `/help` | Show command help |
+| Command    | Description                     |
+| ---------- | ------------------------------- |
+| `/new`     | Start a new pi session          |
+| `/stop`    | Abort the current run           |
+| `/compact` | Compact the current context     |
+| `/status`  | Show session and context status |
+| `/help`    | Show command help               |
 
 ## Settings
 
@@ -87,18 +87,18 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 }
 ```
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `streamAssistant` | `true` | Stream assistant replies |
-| `markdownSupport` | `false` | Bot has QQ Markdown permission; pass Markdown through |
-| `deliverAs` | `"steer"` | Queue new messages while busy: `steer` or `followUp` |
-| `imageMaxSize` | `10485760` | QQ image download limit in bytes (10MB) |
-| `fileMaxSize` | `52428800` | QQ file download limit in bytes (50MB) |
-| `heartbeatMinutes` | `10` | Long-task heartbeat interval; `0` disables |
-| `heartbeatMaxMessages` | `3` | Per-run message heartbeat limit |
-| `streamRelay` | `true` | Use append-mode stream bubbles |
-| `streamFlushMs` | `10000` | Stream summary frame interval in ms (minimum 300) |
-| `logLevel` | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
+| Key                    | Default    | Description                                                  |
+| ---------------------- | ---------- | ------------------------------------------------------------ |
+| `streamAssistant`      | `true`     | Stream assistant replies                                     |
+| `markdownSupport`      | `false`    | Bot has QQ Markdown permission; pass Markdown through        |
+| `deliverAs`            | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
+| `imageMaxSize`         | `10485760` | QQ image download limit in bytes (10MB)                      |
+| `fileMaxSize`          | `52428800` | QQ file download limit in bytes (50MB)                       |
+| `heartbeatMinutes`     | `10`       | Long-task heartbeat interval; `0` disables                   |
+| `heartbeatMaxMessages` | `3`        | Per-run message heartbeat limit                              |
+| `streamRelay`          | `true`     | Use append-mode stream bubbles                               |
+| `streamFlushMs`        | `10000`    | Stream summary frame interval in ms (minimum 300)            |
+| `logLevel`             | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
 
 When enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads. Legacy `debug: true` maps to `logLevel: "debug"`.
 

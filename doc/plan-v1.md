@@ -12,11 +12,11 @@ npm init -y
 npm i @tencent-connect/qqbot-nodejs @tencent-connect/qqbot-connector qrcode-terminal
 ```
 
-| 包 | 版本锚点 | 用途 |
-| --- | --- | --- |
-| `@tencent-connect/qqbot-nodejs` | ^1.0.5 | QQ 协议层（本地另有源码 `/home/chen/project/qqbot-nodejs` 可查阅） |
-| `@tencent-connect/qqbot-connector` | ^1.2.0 | 扫码登录（唯一登录方式） |
-| `qrcode-terminal` | ^0.12 | 二维码 ASCII 渲染（零依赖） |
+| 包                                 | 版本锚点 | 用途                                                               |
+| ---------------------------------- | -------- | ------------------------------------------------------------------ |
+| `@tencent-connect/qqbot-nodejs`    | ^1.0.5   | QQ 协议层（本地另有源码 `/home/chen/project/qqbot-nodejs` 可查阅） |
+| `@tencent-connect/qqbot-connector` | ^1.2.0   | 扫码登录（唯一登录方式）                                           |
+| `qrcode-terminal`                  | ^0.12    | 二维码 ASCII 渲染（零依赖）                                        |
 
 开发加载方式：`pi --extension /home/chen/project/pi-qq`（jiti 直接跑 TS，无需构建）。
 
@@ -45,13 +45,13 @@ pi-qq/
 
 ## 2. pi 事件与 SDK 接线总表
 
-| 方向 | 信号 | 处理 |
-| --- | --- | --- |
-| QQ → pi | `bot.on("message")`（kind=c2c） | 白名单 → QQ 命令（`/new` `/stop` `/compact` `/status` `/help`）→ 文本+图片 → `pi.sendUserMessage()` |
-| pi → QQ | `message_update`（assistant） | 流式：`openStream().update(转换后全文)`，节流 ≥300ms |
-| pi → QQ | `message_end`（assistant） | `stream.complete()`；无流上下文时 `sendText`；`stopReason==="error"` 回错误摘要 |
-| 状态 | `session_start` / `session_shutdown` | 有内存登录态则启动 bot / 幂等停止 |
-| 收尾 | `agent_end` | 封口最后一个流式气泡（DONE）；不再发送用量摘要 |
+| 方向    | 信号                                 | 处理                                                                                                |
+| ------- | ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| QQ → pi | `bot.on("message")`（kind=c2c）      | 白名单 → QQ 命令（`/new` `/stop` `/compact` `/status` `/help`）→ 文本+图片 → `pi.sendUserMessage()` |
+| pi → QQ | `message_update`（assistant）        | 流式：`openStream().update(转换后全文)`，节流 ≥300ms                                                |
+| pi → QQ | `message_end`（assistant）           | `stream.complete()`；无流上下文时 `sendText`；`stopReason==="error"` 回错误摘要                     |
+| 状态    | `session_start` / `session_shutdown` | 有内存登录态则启动 bot / 幂等停止                                                                   |
+| 收尾    | `agent_end`                          | 封口最后一个流式气泡（DONE）；不再发送用量摘要                                                      |
 
 ## 3. 里程碑
 
@@ -111,13 +111,13 @@ pi-qq/
 
 ## 5. 风险与预案
 
-| 风险 | 影响 | 预案 |
-| --- | --- | --- |
-| 流式消息对非 C2C/过期 `msgId` 抛错 | 流式路径崩溃 | `openStream` 前置校验，失败即降级 `sendText`（M4 已含） |
-| 被动额度耗尽（长 run 多回复） | 消息发不出去 | reply-budget 统一发牌，超限降级主动+提示；摘要固定合并 |
-| markdown 转换漏判 | QQ 端残留记号 | 转换函数单测覆盖常见结构；允许透传开关兜底 |
-| connector 混淆代码异常 / 扫码接口变更 | 无法登录 | 重试扫码；升级 connector；保留日志排查 |
-| pi 事件在非 TUI 模式无 UI | 扩展报错 | 所有 `ctx.ui` 调用前判 `ctx.hasUI`/`ctx.mode` |
+| 风险                                  | 影响          | 预案                                                    |
+| ------------------------------------- | ------------- | ------------------------------------------------------- |
+| 流式消息对非 C2C/过期 `msgId` 抛错    | 流式路径崩溃  | `openStream` 前置校验，失败即降级 `sendText`（M4 已含） |
+| 被动额度耗尽（长 run 多回复）         | 消息发不出去  | reply-budget 统一发牌，超限降级主动+提示；摘要固定合并  |
+| markdown 转换漏判                     | QQ 端残留记号 | 转换函数单测覆盖常见结构；允许透传开关兜底              |
+| connector 混淆代码异常 / 扫码接口变更 | 无法登录      | 重试扫码；升级 connector；保留日志排查                  |
+| pi 事件在非 TUI 模式无 UI             | 扩展报错      | 所有 `ctx.ui` 调用前判 `ctx.hasUI`/`ctx.mode`           |
 
 ## 6. Todo-List（随进度勾选）
 
