@@ -1,7 +1,7 @@
 # pi-qq — plan-v2.md
 
 > 执行计划。功能范围见 [features-v2.md](./features-v2.md)；本文只回答：改哪些文件、按什么顺序做、每步怎么验收。
-> V2 范围：F8 语音自动转写、F9 轻量日志基础设施。不引入新依赖。
+> V2 范围：F8 语音自动转写、F9 轻量日志基础设施、F10 文件消息等待指令、F11 文件存储与去重。不引入新依赖。
 
 ## 0. 前置与范围
 
@@ -19,7 +19,8 @@ pi-qq/
 │   ├── logger.ts          # 新增：级别过滤、JSONL、按天单文件、SDK logger 适配
 │   ├── voice.ts           # 新增：语音附件判断、ASR 文本提取
 │   ├── config.ts          # 修改：logLevel、旧 debug 迁移
-│   ├── inbound.ts         # 修改：语音分支 + 日志分级
+│   ├── inbound.ts         # 修改：语音分支 + 日志分级 + pending + session uploads
+│   ├── files.ts           # 修改：session uploads、SHA-256 去重、索引维护
 │   ├── bot.ts             # 修改：接入 logger，移除 debug 选项
 │   ├── index.ts           # 修改：配置 logger，移除 getDebug，日志分级
 │   ├── outbound.ts        # 修改：发送日志分级
@@ -29,6 +30,7 @@ pi-qq/
 │   ├── voice.test.ts      # 新增
 │   ├── config.test.ts     # 新增或扩展现有设置测试
 │   ├── inbound.test.ts    # 修改
+│   ├── bot.test.ts        # 新增：message handler 串行回归
 │   └── run-feedback.test.ts # 修改
 ├── README.md              # 修改：logLevel、日志路径、语音说明
 └── doc/features-v2.md     # 已存在，按实现结果校正
@@ -148,7 +150,53 @@ pi-qq/
 - 语音消息不会出现在 `saveInboundFiles()` 的附件参数中。
 - 空 ASR 不会启动 agent。
 
-### M5b-3 — 文档与清理
+### M5b-3 — F10 文件消息等待指令
+
+**改动**
+
+1. `src/inbound.ts` 增加 pending 文件队列，仅处理非图片文件：
+   - 文件消息保存后入队，不回复，不调用 `sendUserMessage` / `markQQTrigger`。
+   - 下一条文字或语音 ASR 文本出队，合并后走现有 `formatFilePrompt()`。
+   - 消费后清空；`/new` 清空；其他命令不消费。
+   - 部分失败只入队成功文件；图片、普通文字、文件+文字行为不变。
+2. 更新 `test/inbound.test.ts`：
+   - 文件-only：保存、不回复、不发送 user message、不触发 run。
+   - 文件后文字：一次 run，提示词包含路径和文字。
+   - 连续文件：多个路径合并。
+   - 文件后语音：ASR 文本参与合并。
+   - `/new` 清空 pending。
+
+**验证**
+
+- `npm test -- test/inbound.test.ts` 通过。
+- 文件-only 不启动 agent；下一条指令只启动一次。
+- 图片行为与 v1 一致。
+
+### M5b-4 — F11 文件存储与去重
+
+**改动**
+
+1. `src/inbound.ts`：文件保存路径改为 `<cwd>/.pi/pi-qq/<sessionId>/uploads/`，sessionId 来自 `ctx.sessionManager.getSessionId()`。
+2. `src/files.ts`：
+   - 增加 `.index.json` 读写：`{ "<fileName>": "<sha256>" }`。
+   - 文件名不重复：保存、计算 SHA-256、写索引、引用。
+   - 同名不同内容：保存为下一个可用后缀名，写索引、引用新文件。
+   - 同名同内容：不保存，复用已有路径。
+   - 登录/会话启动：只检查索引中的文件是否存在，删除失效项；不重算所有 hash。
+   - 保存/复用前再次检查目标文件存在性；索引缺失或损坏时按需计算已有文件 hash。
+   - `bot.ts` 的 message handler 必须 await `onMessage`，让 SDK concurrencyGuard 持有锁到文件保存完成。
+3. 更新 `test/files.test.ts` / `test/inbound.test.ts`：
+   - 路径、索引格式、三类保存规则。
+   - 删除文件后的索引清理与惰性回退。
+   - pending 同名同内容不重复入队；不同文件名同内容保留两份。
+
+**验证**
+
+- `npm test -- test/files.test.ts test/inbound.test.ts` 通过。
+- 登录/会话启动只做存在性检查，不读取文件内容。
+- 同名同内容不新增文件；同名不同内容生成后缀文件。
+
+### M5b-5 — 文档与清理
 
 **改动**
 
@@ -170,7 +218,7 @@ pi-qq/
 
 ### 准备
 
-- [x] 阅读 `doc/features-v2.md`，确认范围仅为 F8/F9
+- [x] 阅读 `doc/features-v2.md`，确认范围仅为 F8/F9/F10/F11
 - [x] 运行基线 `npm test`、`npm run typecheck`
 - [x] 确认不新增 npm 依赖
 
@@ -199,10 +247,34 @@ pi-qq/
 - [x] `test/inbound.test.ts`：有 ASR / 空 ASR / 不保存文件
 - [x] 确认文字、图片、文件用例不回归
 
+### F10 — 文件等待指令
+
+- [x] `src/inbound.ts`：pending 文件队列
+- [x] 文件-only：保存后不回复，不启动 run
+- [x] 下一条文字/语音：合并 pending 文件后注入
+- [x] `/new` 清空 pending
+- [x] `test/inbound.test.ts`：pending 队列相关用例
+- [x] 图片、文字、文件+文字行为不回归
+- [x] QQ 实机文件等待指令验收
+
+### F11 — 文件存储与去重
+
+- [x] `inbound.ts`：session uploads 路径
+- [x] `files.ts`：`.index.json` 读写
+- [x] 文件名不重复：保存并索引
+- [x] 同名不同内容：生成后缀文件
+- [x] 同名同内容：复用已有文件
+- [x] 登录/会话启动：清理不存在文件的索引项
+- [x] 惰性检查：复用前确认文件仍存在
+- [x] `test/files.test.ts` / `test/inbound.test.ts`：去重与索引用例
+- [x] `bot.ts`：await message handler，确保文件保存串行
+- [x] `test/bot.test.ts`：handler await 回归
+- [x] QQ 实机文件去重验收（并发文件上传重测）
+
 ### 文档与收尾
 
-- [x] `README.md`：`logLevel`、日志路径、语音说明
-- [x] `doc/features-v2.md`：与实现保持一致
+- [x] `README.md`：`logLevel`、日志路径、语音说明、文件等待指令、文件去重
+- [x] `doc/features-v2.md`：F8/F9/F10/F11 与实现保持一致
 - [x] 清理临时调试说明
 - [x] `npm test`
 - [x] `npm run typecheck`
@@ -228,6 +300,15 @@ pi-qq/
 6. `logLevel: "debug"`：日志文件包含 `asr_refer_text` 和完整附件；`info` 不含正文。
 7. 旧配置 `debug: true` 仍能开启 debug 日志。
 8. 文字、图片、文件消息行为与 v1 一致。
+9. 只发文件：不回复，不启动 run。
+10. 文件后发文字/语音：只启动一次 run，提示词包含文件路径和指令。
+11. 连续上传多个文件：下一条指令合并全部文件。
+12. `/new` 后 pending 清空。
+13. 文件保存到 `.pi/pi-qq/<sessionId>/uploads/`。
+14. 文件名不重复：保存并引用。
+15. 同名不同内容：生成 `name-1.ext` 并引用。
+16. 同名同内容：不新增文件，复用已有路径。
+17. 删除文件后登录/会话启动清理索引，且不重算所有 hash。
 
 ## 5. 风险与预案
 
@@ -243,3 +324,8 @@ pi-qq/
 
 - 2026-10-30：M5a / M5b 代码与单测完成；`npm test` 97 项通过，`npm run typecheck`、`npm run format:check` 通过。
 - 2026-10-30：QQ 实机语音验收通过。两条语音均直接使用 `asr_refer_text` 进入 pi；未保存 `.amr`，未调用本地转写工具；`logLevel: "debug"` 日志包含 ASR 元数据与全文。
+- 2026-10-30：F10 文件等待指令实现完成；`npm test` 101 项通过，`typecheck`、`format:check` 通过。
+- 2026-10-30：QQ 实机文件等待指令验收通过。文件-only 无回复、无 run；后续文字指令正确合并 1 个和 2 个 pending 文件并读取。
+- 2026-10-30：F11 文件存储与去重实现完成；`npm test` 109 项通过，`typecheck`、`format:check` 通过。
+- 2026-10-30：实机测试发现两条文件消息并发时索引互相覆盖（`c.txt` 文件存在但索引缺失）。根因是 `bot.ts` 的 message handler 未 await `onMessage`，导致 `concurrencyGuard` 提前释放锁。已修复并新增 `test/bot.test.ts`。
+- 2026-10-30：F11 实机重测通过。`c.txt` / `b.txt` 快速连续上传后索引同时保留两项；`a.txt` / `d.txt` 不同文件名同内容按规则保留两份；索引共 4 项。

@@ -11,6 +11,7 @@ import { AppendStream } from "./src/append-stream";
 import { formatTokenCount } from "./src/format";
 import { formatBudgetStatus } from "./src/budget-status";
 import { configureLogger, log, previewForLog } from "./src/logger";
+import { pruneUploadIndex, sessionUploadDir } from "./src/files";
 
 /**
  * pi-qq extension entry.
@@ -90,9 +91,14 @@ export default function (pi: ExtensionAPI) {
 
   // —— Login and connection ——
 
-  const startWithCredentials = (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
+  const startWithCredentials = async (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
     const settings = getSettings(readConfig().config);
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
+    running?.stop();
+    stateDetail = undefined;
+    sessionCtx = ctx;
+    const uploadDir = sessionUploadDir(ctx.cwd, ctx.sessionManager.getSessionId());
+    const uploadIndex = await pruneUploadIndex(uploadDir);
     log.info("session", "starting bot", {
       appId: creds.appId,
       allowedOpenid,
@@ -100,10 +106,9 @@ export default function (pi: ExtensionAPI) {
       model: ctx.model?.name ?? null,
       markdownSupport: settings.markdownSupport,
       logLevel: settings.logLevel,
+      uploadDir,
+      indexedFiles: Object.keys(uploadIndex).length,
     });
-    running?.stop();
-    stateDetail = undefined;
-    sessionCtx = ctx;
     running = startBot({
       credentials: creds,
       allowedOpenid,
@@ -143,7 +148,7 @@ export default function (pi: ExtensionAPI) {
 
   // —— Lifecycle ——
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     const { config, error } = readConfig();
     const settings = getSettings(config);
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
@@ -159,7 +164,7 @@ export default function (pi: ExtensionAPI) {
       configError: error ?? null,
     });
     if (login) {
-      startWithCredentials(ctx, login.credentials, login.allowedOpenid);
+      await startWithCredentials(ctx, login.credentials, login.allowedOpenid);
     } else if (ctx.hasUI) {
       ctx.ui.notify("pi-qq: run /qq-login to scan a QR code.", "warning");
     }
@@ -297,7 +302,7 @@ export default function (pi: ExtensionAPI) {
 
       const credentials: Credentials = { appId: result.appId, appSecret: result.appSecret };
       setLoginState({ credentials, allowedOpenid: result.userOpenid });
-      startWithCredentials(ctx, credentials, result.userOpenid);
+      await startWithCredentials(ctx, credentials, result.userOpenid);
     },
   });
 
@@ -320,7 +325,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       stopIfRunning();
       setLoginState(undefined);
-      ctx.ui.notify("pi-qq logged out. Credentials cleared from memory; run /qq-login to scan again.", "info");
+      ctx.ui.notify("pi-qq logged out.", "info");
     },
   });
 

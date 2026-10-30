@@ -83,7 +83,7 @@ export function startBot(opts: StartBotOptions): RunningBot {
     log.error("bot", "error event", { err });
     opts.onRecoverableError?.(err);
   });
-  bot.on("message", (_ctx, msg) => {
+  bot.on("message", async (_ctx, msg) => {
     log.debug("bot", "inbound message", {
       kind: msg.kind,
       rawEventType: msg.rawEventType,
@@ -102,9 +102,11 @@ export function startBot(opts: StartBotOptions): RunningBot {
       msgElements: msg.msgElements,
       raw: msg.raw,
     });
-    Promise.resolve(opts.onMessage?.(bot, msg)).catch((err: unknown) => {
+    try {
+      await opts.onMessage?.(bot, msg);
+    } catch (err) {
       log.error("bot", "message handler rejected", { err });
-    });
+    }
   });
 
   let stopped = false;

@@ -1,5 +1,4 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { join } from "node:path";
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
@@ -10,7 +9,7 @@ import {
   resolveInboundImages,
   type ImageContentLike,
 } from "./images";
-import { formatFilePrompt, saveInboundFiles, type SavedFile } from "./files";
+import { formatFilePrompt, saveInboundFiles, sessionUploadDir, type SavedFile } from "./files";
 import { log } from "./logger";
 import { isVoiceAttachment, resolveVoiceTranscript } from "./voice";
 
@@ -40,6 +39,14 @@ export interface InboundDeps {
 }
 
 export function createInboundHandler(deps: InboundDeps) {
+  // F10: files uploaded without text wait for the next text/voice instruction.
+  let pendingFiles: SavedFile[] = [];
+  const takePendingFiles = (): SavedFile[] => {
+    const files = pendingFiles;
+    pendingFiles = [];
+    return files;
+  };
+
   return async (bot: QQBot, msg: QQBotInboundMessage): Promise<void> => {
     log.debug("inbound", "message received", {
       kind: msg.kind,
@@ -89,7 +96,12 @@ export function createInboundHandler(deps: InboundDeps) {
 
     const text = (msg.content ?? "").trim();
     if (text.startsWith("/")) {
-      log.info("inbound", "QQ command", { command: text.split(/\s+/)[0] });
+      const command = text.split(/\s+/)[0];
+      log.info("inbound", "QQ command", { command });
+      if (command === "/new" && deps.ctx.isIdle() && pendingFiles.length > 0) {
+        log.info("inbound", "cleared pending files for /new", { count: pendingFiles.length });
+        pendingFiles = [];
+      }
       await handleCommand(text, reply, deps);
       return;
     }
@@ -116,9 +128,15 @@ export function createInboundHandler(deps: InboundDeps) {
         return;
       }
       log.debug("inbound", "voice transcript", { messageId: msg.messageId, transcript });
+      const pending = takePendingFiles();
+      const promptText = formatFilePrompt(pending, transcript);
       deps.markQQTrigger(msg.senderId, msg.messageId);
-      deps.pi.sendUserMessage(transcript, { deliverAs: deps.getDeliverAs() });
-      log.info("inbound", "voice sent to pi", { messageId: msg.messageId, asrLength: transcript.length });
+      deps.pi.sendUserMessage(promptText, { deliverAs: deps.getDeliverAs() });
+      log.info("inbound", "voice sent to pi", {
+        messageId: msg.messageId,
+        asrLength: transcript.length,
+        pendingFiles: pending.length,
+      });
       return;
     }
 
@@ -145,10 +163,15 @@ export function createInboundHandler(deps: InboundDeps) {
 
     let files: SavedFile[] = [];
     if (fileAttachments.length > 0) {
+      const uploadDir = sessionUploadDir(deps.ctx.cwd, deps.ctx.sessionManager.getSessionId());
+      log.debug("inbound", "saving files", {
+        messageId: msg.messageId,
+        count: fileAttachments.length,
+        uploadDir,
+      });
       const result = await saveFiles(fileAttachments, {
         maxSize: deps.getFileMaxSize(),
-        baseDir: join(deps.ctx.cwd, ".pi", "pi-qq"),
-        dirKey: msg.messageId,
+        uploadDir,
       });
       files = result.files;
       failures.push(...result.failures);
@@ -170,15 +193,29 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
+    // F10: a file-only message waits for the next text/voice instruction.
+    if (!text && images.length === 0 && files.length > 0) {
+      pendingFiles.push(...files);
+      log.info("inbound", "files pending for instruction", {
+        messageId: msg.messageId,
+        count: files.length,
+        pendingCount: pendingFiles.length,
+      });
+      return;
+    }
+
     // F7: mark a QQ-triggered run; do not send a start confirmation.
     deps.markQQTrigger(msg.senderId, msg.messageId);
-    const promptText = formatFilePrompt(files, text);
+    const pending = text ? takePendingFiles() : [];
+    const promptFiles = [...pending, ...files];
+    const promptText = formatFilePrompt(promptFiles, text);
     deps.pi.sendUserMessage(buildImageMessageContent(promptText, images), { deliverAs: deps.getDeliverAs() });
     log.info("inbound", "sent to pi", {
       messageId: msg.messageId,
       textLength: text.length,
       images: images.length,
-      files: files.length,
+      files: promptFiles.length,
+      pendingFiles: pending.length,
       deliverAs: deps.getDeliverAs(),
     });
   };

@@ -1,11 +1,13 @@
-/** Save QQ non-image attachments in the workspace and reference them in the prompt. */
-import { mkdir, writeFile } from "node:fs/promises";
+/** Save QQ non-image attachments in the workspace, with session-scoped deduplication. */
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { downloadLimited, type InboundAttachmentLike } from "./download";
 import { formatBytes } from "./format";
+import { log } from "./logger";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
-const DEFAULT_BASE_DIR = join(process.cwd(), ".pi", "pi-qq");
+const UPLOAD_INDEX_FILENAME = ".index.json";
 
 export interface SavedFile {
   path: string;
@@ -18,13 +20,15 @@ export interface FileFailure {
   reason: string;
 }
 
+/** fileName -> SHA-256. Paths are derived from uploadDir. */
+export type UploadIndex = Record<string, string>;
+
 export interface SaveFilesOptions {
   maxSize: number;
-  /** Test override; defaults to <cwd>/.pi/pi-qq. */
-  baseDir?: string;
-  /** Directory key for one message (usually msgId). */
-  dirKey?: string;
-  now?: Date;
+  /** `<cwd>/.pi/pi-qq/<sessionId>/uploads`. */
+  uploadDir: string;
+  /** Test/caller override; loaded from uploadDir when omitted. Mutated in place. */
+  index?: UploadIndex;
   fetchImpl?: typeof fetch;
 }
 
@@ -33,18 +37,18 @@ export interface SaveFilesResult {
   failures: FileFailure[];
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
+function safePathSegment(key: string): string {
+  const cleaned = key.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^[._]+|[._]+$/g, "");
+  return cleaned.slice(0, 64) || "session";
 }
 
-function dateStamp(now: Date): string {
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+/** Session-scoped upload directory; no date or msgId subdirectories. */
+export function sessionUploadDir(cwd: string, sessionId: string): string {
+  return join(cwd, ".pi", "pi-qq", safePathSegment(sessionId), "uploads");
 }
 
-function withSuffix(filename: string, suffix: number): string {
-  const ext = extname(filename);
-  const stem = filename.slice(0, filename.length - ext.length);
-  return `${stem}-${suffix}${ext}`;
+export function uploadIndexPath(uploadDir: string): string {
+  return join(uploadDir, UPLOAD_INDEX_FILENAME);
 }
 
 /** Keep only a safe basename (no paths/control/Windows-invalid chars); truncate long stems. */
@@ -62,22 +66,134 @@ export function sanitizeFilename(filename: string | undefined, fallback: string)
   return `${stem.slice(0, maxStemLength)}${ext}`;
 }
 
-function safeDirKey(key: string): string {
-  const cleaned = key.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^[._]+|[._]+$/g, "");
-  return cleaned.slice(0, 64) || "msg";
+function withSuffix(filename: string, suffix: number): string {
+  const ext = extname(filename);
+  const stem = filename.slice(0, filename.length - ext.length);
+  return `${stem}-${suffix}${ext}`;
 }
 
-async function writeUnique(dir: string, filename: string, body: Buffer): Promise<string> {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const candidate = attempt === 0 ? filename : withSuffix(filename, attempt);
-    const path = join(dir, candidate);
-    try {
-      await writeFile(path, body, { flag: "wx" });
-      return path;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+function isSafeIndexKey(filename: string): boolean {
+  return (
+    filename.length > 0 &&
+    filename !== "." &&
+    filename !== ".." &&
+    filename !== UPLOAD_INDEX_FILENAME &&
+    basename(filename) === filename
+  );
+}
+
+export function sha256Hex(body: Buffer): string {
+  return createHash("sha256").update(body).digest("hex");
+}
+
+async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+export async function loadUploadIndex(uploadDir: string): Promise<UploadIndex> {
+  try {
+    const parsed = JSON.parse(await readFile(uploadIndexPath(uploadDir), "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const index: UploadIndex = {};
+    for (const [filename, hash] of Object.entries(parsed as Record<string, unknown>)) {
+      if (isSafeIndexKey(filename) && typeof hash === "string") index[filename] = hash;
+    }
+    return index;
+  } catch {
+    return {};
+  }
+}
+
+async function persistUploadIndex(uploadDir: string, index: UploadIndex): Promise<void> {
+  const path = uploadIndexPath(uploadDir);
+  const tmp = `${path}.${process.pid}.tmp`;
+  try {
+    await mkdir(uploadDir, { recursive: true });
+    await writeFile(tmp, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+    await rename(tmp, path);
+  } catch (err) {
+    log.warn("files", "failed to write upload index", { path, err });
+  }
+}
+
+/** Load the index and drop entries whose files no longer exist. No content hashing. */
+export async function pruneUploadIndex(uploadDir: string): Promise<UploadIndex> {
+  const index = await loadUploadIndex(uploadDir);
+  let changed = false;
+  for (const filename of Object.keys(index)) {
+    if (!(await isFile(join(uploadDir, filename)))) {
+      delete index[filename];
+      changed = true;
     }
   }
+  if (changed) await persistUploadIndex(uploadDir, index);
+  return index;
+}
+
+async function hashExistingFile(path: string): Promise<string> {
+  return sha256Hex(await readFile(path));
+}
+
+async function saveOrReuse(
+  uploadDir: string,
+  filename: string,
+  body: Buffer,
+  index: UploadIndex,
+): Promise<{ file: SavedFile; changed: boolean }> {
+  const hash = sha256Hex(body);
+  const target = join(uploadDir, filename);
+  let changed = false;
+
+  if (!(await isFile(target))) {
+    // A stale index entry must not make a missing file look reusable.
+    if (index[filename]) {
+      delete index[filename];
+      changed = true;
+    }
+    await writeFile(target, body, { flag: "wx" });
+    index[filename] = hash;
+    return { file: { path: target, originalName: filename, size: body.byteLength }, changed: true };
+  }
+
+  let existingHash = index[filename];
+  if (!existingHash) {
+    existingHash = await hashExistingFile(target);
+    index[filename] = existingHash;
+    changed = true;
+  }
+  if (existingHash === hash) {
+    return { file: { path: target, originalName: filename, size: body.byteLength }, changed };
+  }
+
+  for (let suffix = 1; suffix < 100; suffix++) {
+    const candidate = withSuffix(filename, suffix);
+    const candidatePath = join(uploadDir, candidate);
+    if (await isFile(candidatePath)) {
+      let candidateHash = index[candidate];
+      if (!candidateHash) {
+        candidateHash = await hashExistingFile(candidatePath);
+        index[candidate] = candidateHash;
+        changed = true;
+      }
+      if (candidateHash === hash) {
+        return { file: { path: candidatePath, originalName: candidate, size: body.byteLength }, changed };
+      }
+      continue;
+    }
+
+    if (index[candidate]) {
+      delete index[candidate];
+      changed = true;
+    }
+    await writeFile(candidatePath, body, { flag: "wx" });
+    index[candidate] = hash;
+    return { file: { path: candidatePath, originalName: candidate, size: body.byteLength }, changed: true };
+  }
+
   throw new Error("Could not allocate a unique filename");
 }
 
@@ -86,20 +202,25 @@ export async function saveInboundFiles(
   attachments: readonly InboundAttachmentLike[],
   options: SaveFilesOptions,
 ): Promise<SaveFilesResult> {
-  const now = options.now ?? new Date();
-  const baseDir = options.baseDir ?? DEFAULT_BASE_DIR;
-  const dir = options.dirKey
-    ? join(baseDir, dateStamp(now), safeDirKey(options.dirKey))
-    : join(baseDir, dateStamp(now));
+  const uploadDir = options.uploadDir;
   const limit = Math.max(1, options.maxSize);
   const fetchImpl = options.fetchImpl ?? fetch;
-
+  const index = options.index ?? (await loadUploadIndex(uploadDir));
   const files: SavedFile[] = [];
   const failures: FileFailure[] = [];
-  if (attachments.length > 0) await mkdir(dir, { recursive: true });
+  const seenPaths = new Set<string>();
+  let indexChanged = false;
 
-  for (const [index, attachment] of attachments.entries()) {
-    const fallback = `file-${index + 1}`;
+  if (attachments.length > 0) await mkdir(uploadDir, { recursive: true });
+
+  const addFile = (file: SavedFile) => {
+    if (seenPaths.has(file.path)) return;
+    seenPaths.add(file.path);
+    files.push(file);
+  };
+
+  for (const [position, attachment] of attachments.entries()) {
+    const fallback = `file-${position + 1}`;
     const filename = sanitizeFilename(attachment.filename, fallback);
     if (typeof attachment.size === "number" && attachment.size > limit) {
       failures.push({ filename, reason: `file too large (${formatBytes(attachment.size)} > ${formatBytes(limit)})` });
@@ -114,13 +235,15 @@ export async function saveInboundFiles(
         kind: "file",
         fetchImpl,
       });
-      const path = await writeUnique(dir, filename, body);
-      files.push({ path, originalName: filename, size: body.byteLength });
+      const result = await saveOrReuse(uploadDir, filename, body, index);
+      indexChanged ||= result.changed;
+      addFile(result.file);
     } catch (err) {
       failures.push({ filename, reason: err instanceof Error ? err.message : "Download failed" });
     }
   }
 
+  if (indexChanged) await persistUploadIndex(uploadDir, index);
   return { files, failures };
 }
 

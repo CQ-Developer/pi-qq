@@ -29,13 +29,17 @@ Send a QQ private message to the bot to start a task.
 - **Text**: normal chat message.
 - **Voice**: QQ built-in ASR text is sent to pi directly; the audio is not downloaded or saved. If ASR returns no text, the bot asks you to resend or type it.
 - **Images**: sent to pi as vision input.
-- **Files**: saved under the current workspace at `.pi/pi-qq/YYYY-MM-DD/<msgId>/`; the saved path, size, and original filename are added to the prompt.
+- **Files**: saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/`. A file-only message does not start pi; send the instruction in the next text or voice message, and the saved path(s), size, and original filename are added to that prompt.
+
+When you upload multiple files before giving an instruction, they are combined into the next prompt. `/new` clears files waiting for an instruction.
+
+Uploads are scoped to the current pi session. If you upload the same filename with identical content, pi reuses the existing file; the same filename with different content is saved as `name-1.ext`; different filenames with identical content are kept as separate files.
 
 Example file prompt seen by pi:
 
 ```text
 User sent the following file via QQ (saved locally; use read/bash or other tools to access it):
-- /home/chen/project/myproj/.pi/pi-qq/2026-10-29/xxx/report.pdf (1.4MB, original name: report.pdf)
+- /home/chen/project/myproj/.pi/pi-qq/<sessionId>/uploads/report.pdf (1.4MB, original name: report.pdf)
 
 User message:
 Summarize this file.
