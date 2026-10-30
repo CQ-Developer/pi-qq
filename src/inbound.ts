@@ -11,6 +11,8 @@ import {
   type ImageContentLike,
 } from "./images";
 import { formatFilePrompt, saveInboundFiles, type SavedFile } from "./files";
+import { log } from "./logger";
+import { isVoiceAttachment, resolveVoiceTranscript } from "./voice";
 
 /**
  * F2: QQ → pi inbound handling.
@@ -39,13 +41,43 @@ export interface InboundDeps {
 
 export function createInboundHandler(deps: InboundDeps) {
   return async (bot: QQBot, msg: QQBotInboundMessage): Promise<void> => {
-    if (msg.kind !== "c2c") return;
+    log.debug("inbound", "message received", {
+      kind: msg.kind,
+      rawEventType: msg.rawEventType,
+      messageId: msg.messageId,
+      senderId: msg.senderId,
+      senderName: msg.senderName,
+      senderIsBot: msg.senderIsBot,
+      content: msg.content,
+      msgType: msg.msgType,
+      timestamp: msg.timestamp,
+      msgIdx: msg.msgIdx,
+      refMsgIdx: msg.refMsgIdx,
+      messageScene: msg.messageScene,
+      attachments: msg.attachments,
+      msgElements: msg.msgElements,
+      raw: msg.raw,
+    });
+
+    if (msg.kind !== "c2c") {
+      log.debug("inbound", "skipped non-c2c message", { kind: msg.kind });
+      return;
+    }
 
     const allowed = deps.getAllowedOpenid();
-    if (!allowed || msg.senderId !== allowed) return;
+    if (!allowed || msg.senderId !== allowed) {
+      log.debug("inbound", "skipped non-allowlisted sender", { senderId: msg.senderId });
+      return;
+    }
 
     // Record passive reply target/freshness for outbound budget.
     deps.budget.observeInbound(msg.senderId, msg.messageId);
+    log.info("inbound", "message received", {
+      messageId: msg.messageId,
+      senderId: msg.senderId,
+      contentLength: (msg.content ?? "").length,
+      attachmentCount: (msg.attachments ?? []).length,
+    });
 
     const channel: ReplyChannel = {
       budget: deps.budget,
@@ -57,13 +89,36 @@ export function createInboundHandler(deps: InboundDeps) {
 
     const text = (msg.content ?? "").trim();
     if (text.startsWith("/")) {
+      log.info("inbound", "QQ command", { command: text.split(/\s+/)[0] });
       await handleCommand(text, reply, deps);
       return;
     }
 
     const attachments = msg.attachments ?? [];
     if (!text && attachments.length === 0) {
+      log.warn("inbound", "unsupported message: no text and no attachments", { messageId: msg.messageId });
       await reply("Unsupported message type.");
+      return;
+    }
+
+    // F8: voice messages use QQ built-in ASR; never download or save the audio.
+    const voiceAttachments = attachments.filter(isVoiceAttachment);
+    if (voiceAttachments.length > 0) {
+      const transcript = resolveVoiceTranscript(voiceAttachments);
+      log.info("inbound", "voice message", {
+        messageId: msg.messageId,
+        hasAsr: Boolean(transcript),
+        asrLength: transcript?.length ?? 0,
+      });
+      if (!transcript) {
+        log.warn("inbound", "voice ASR returned no text", { messageId: msg.messageId });
+        await reply("Could not transcribe this voice message; please resend or type it.");
+        return;
+      }
+      log.debug("inbound", "voice transcript", { messageId: msg.messageId, transcript });
+      deps.markQQTrigger(msg.senderId, msg.messageId);
+      deps.pi.sendUserMessage(transcript, { deliverAs: deps.getDeliverAs() });
+      log.info("inbound", "voice sent to pi", { messageId: msg.messageId, asrLength: transcript.length });
       return;
     }
 
@@ -76,6 +131,10 @@ export function createInboundHandler(deps: InboundDeps) {
     if (imageAttachments.length > 0) {
       const supportsImages = deps.ctx.model?.input.includes("image") ?? false;
       if (!supportsImages) {
+        log.warn("inbound", "model does not support images; skipped", {
+          messageId: msg.messageId,
+          count: imageAttachments.length,
+        });
         await reply(`Model does not support image input; skipped ${imageAttachments.length} image(s).`);
       } else {
         const result = await resolveInboundImages(imageAttachments, deps.getImageMaxSize());
@@ -96,14 +155,32 @@ export function createInboundHandler(deps: InboundDeps) {
     }
 
     if (failures.length > 0) {
+      log.warn("inbound", "attachment failure summary", {
+        messageId: msg.messageId,
+        failures,
+        successCount: images.length + files.length,
+      });
       await reply(formatImageFailures(failures, images.length + files.length));
     }
-    if (!text && images.length === 0 && files.length === 0) return;
+    if (!text && images.length === 0 && files.length === 0) {
+      log.warn("inbound", "no injectable content after attachment handling", {
+        messageId: msg.messageId,
+        failures: failures.length,
+      });
+      return;
+    }
 
     // F7: mark a QQ-triggered run; do not send a start confirmation.
     deps.markQQTrigger(msg.senderId, msg.messageId);
     const promptText = formatFilePrompt(files, text);
     deps.pi.sendUserMessage(buildImageMessageContent(promptText, images), { deliverAs: deps.getDeliverAs() });
+    log.info("inbound", "sent to pi", {
+      messageId: msg.messageId,
+      textLength: text.length,
+      images: images.length,
+      files: files.length,
+      deliverAs: deps.getDeliverAs(),
+    });
   };
 }
 

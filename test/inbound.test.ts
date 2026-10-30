@@ -105,6 +105,46 @@ describe("inbound files", () => {
   });
 });
 
+describe("inbound voice", () => {
+  const voice = {
+    content_type: "voice",
+    url: "https://example.com/voice.amr",
+    filename: "voice.amr",
+    size: 3036,
+    asr_refer_text: "测试。",
+  };
+
+  it("sends ASR text to pi without saving the voice file", async () => {
+    let saved = false;
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [voice],
+      saveFiles: async () => {
+        saved = true;
+        return { files: [], failures: [] };
+      },
+    });
+
+    await harness.run();
+    expect(harness.userMessages).toEqual([{ content: "测试。", options: { deliverAs: "steer" } }]);
+    expect(harness.sent).toEqual([]);
+    expect(harness.triggers()).toBe(1);
+    expect(saved).toBe(false);
+  });
+
+  it("replies and skips the run when ASR is empty", async () => {
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [{ ...voice, asr_refer_text: "   " }],
+    });
+
+    await harness.run();
+    expect(harness.sent).toEqual(["Could not transcribe this voice message; please resend or type it."]);
+    expect(harness.userMessages).toEqual([]);
+    expect(harness.triggers()).toBe(0);
+  });
+});
+
 describe("inbound /new", () => {
   it("idle 时回复并调用 qq-new 扩展命令，不触发 agent run", async () => {
     const harness = makeInboundHarness(true);

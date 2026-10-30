@@ -5,7 +5,7 @@ import { ReplyBudget } from "../src/reply-budget";
 const DONE_STATE = 10;
 const MIN = 60_000;
 
-function makeRunHarness(debug = false) {
+function makeRunHarness() {
   const calls: Array<Record<string, unknown>> = [];
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
@@ -27,7 +27,6 @@ function makeRunHarness(debug = false) {
     getHeartbeatMaxMessages: () => 3,
     getStreamFlushMs: () => 300,
     getStreamRelay: () => true,
-    getDebug: () => debug,
     makeChannel: () => ({ budget: new ReplyBudget(), boundOpenid: "openid-u" }),
     onWarn: () => {},
   };
@@ -237,16 +236,5 @@ describe("RunFeedback 气泡切分", () => {
     const snapshot = budget.snapshot();
     expect(snapshot.streamBubbles).toBe(3);
     expect(snapshot.streamBubblesTotal).toBe(3);
-  });
-
-  it("debug 模式行组带时间戳", async () => {
-    const { rf, calls } = makeRunHarness(true);
-    rf.markQQTrigger("openid-u", "msg-debug");
-    rf.onAgentStart();
-    rf.onToolStart("bash");
-    await rf.flushWindow();
-    await rf.onAgentEnd();
-
-    expect(collectBubbles(calls)[0]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] \[🔧\] \[1\] bash$/);
   });
 });

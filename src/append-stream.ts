@@ -31,7 +31,7 @@ export interface AppendStreamOptions {
   retryBaseMs?: number;
   /** Background throttle flush failure (stream is no longer trusted). */
   onError?: (err: Error) => void;
-  /** Diagnostic log (debug mode): rate-limit retries/final failures. */
+  /** Diagnostic log via the shared logger: rate-limit retries/final failures. */
   onDebug?: (message: string) => void;
 }
 

@@ -1,5 +1,6 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { ReplyBudget } from "./reply-budget";
+import { log } from "./logger";
 
 /**
  * pi → QQ text relay (F4 non-streaming path): lightweight Markdown-to-plain
@@ -115,16 +116,32 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
     const replyTarget =
       mode === "passive" && msgId ? { scope: "c2c" as const, targetId, msgId } : { scope: "c2c" as const, targetId };
     try {
+      log.debug("outbound", "sending text chunk", {
+        mode,
+        targetId,
+        msgId: msgId ?? null,
+        length: chunk.length,
+        text: chunk,
+      });
       await bot.sendText(replyTarget, chunk);
       if (mode === "passive" && msgId) ch.budget.commitPassive(msgId);
+      log.info("outbound", "text chunk sent", { mode, targetId, length: chunk.length });
     } catch (err) {
+      log.warn("outbound", "text chunk failed", {
+        mode,
+        targetId,
+        length: chunk.length,
+        err,
+      });
       if (mode === "passive") {
         // Passive failure (e.g. stale msgId) → retry once proactively.
         try {
+          log.warn("outbound", "passive send failed; retrying proactively", { targetId: ch.boundOpenid });
           await bot.sendText({ scope: "c2c", targetId: ch.boundOpenid }, chunk);
           ch.onWarn?.("Passive reply failed; falling back to proactive.");
           continue;
         } catch (retryErr) {
+          log.error("outbound", "proactive retry failed", { targetId: ch.boundOpenid, err: retryErr });
           ch.onWarn?.(`Proactive send failed: ${(retryErr as Error).message}`);
           continue;
         }

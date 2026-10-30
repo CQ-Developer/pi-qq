@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { normalizeLogLevel, type LogLevel } from "./logger";
 
 /**
  * ~/.pi/agent/pi-qq.json contains non-secret settings only.
@@ -27,7 +28,9 @@ export interface PiQQSettings {
   heartbeatMaxMessages?: number;
   /** F7: stream summary frame interval (ms, minimum 300) */
   streamFlushMs?: number;
-  /** Diagnostic mode: SDK logs + stream retry/timeout logs */
+  /** Log threshold: silent, error, warn, info, debug (default: silent) */
+  logLevel?: LogLevel;
+  /** @deprecated Use logLevel; kept only for config migration. */
   debug?: boolean;
   /** F7: append-mode stream relay switch */
   streamRelay?: boolean;
@@ -59,10 +62,11 @@ export function readConfig(): { config: PiQQConfig; error?: string } {
   }
 }
 
-export interface ResolvedSettings extends Required<PiQQSettings> {}
+export interface ResolvedSettings extends Required<Omit<PiQQSettings, "debug">> {}
 
 /** Settings with defaults applied (features-v1.md §4). */
 export function getSettings(config: PiQQConfig): ResolvedSettings {
+  const logLevel = normalizeLogLevel(config.logLevel ?? (config.debug ? "debug" : undefined));
   return {
     streamAssistant: config.streamAssistant ?? true,
     markdownSupport: config.markdownSupport ?? false,
@@ -72,7 +76,7 @@ export function getSettings(config: PiQQConfig): ResolvedSettings {
     heartbeatMinutes: config.heartbeatMinutes ?? 10,
     heartbeatMaxMessages: config.heartbeatMaxMessages ?? 3,
     streamFlushMs: config.streamFlushMs ?? 10_000,
-    debug: config.debug ?? false,
+    logLevel,
     streamRelay: config.streamRelay ?? true,
   };
 }

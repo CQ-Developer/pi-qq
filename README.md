@@ -1,6 +1,6 @@
 # pi-qq
 
-Connect [pi](https://github.com/earendil-works/pi) to a QQ private chat. Send text, images, or files from mobile QQ; pi works on your machine and sends the result back to QQ.
+Connect [pi](https://github.com/earendil-works/pi) to a QQ private chat. Send text, voice, images, or files from mobile QQ; pi works on your machine and sends the result back to QQ.
 
 ## Install
 
@@ -27,6 +27,7 @@ Credentials are kept in process memory only. Restarting pi requires scanning aga
 Send a QQ private message to the bot to start a task.
 
 - **Text**: normal chat message.
+- **Voice**: QQ built-in ASR text is sent to pi directly; the audio is not downloaded or saved. If ASR returns no text, the bot asks you to resend or type it.
 - **Images**: sent to pi as vision input.
 - **Files**: saved under the current workspace at `.pi/pi-qq/YYYY-MM-DD/<msgId>/`; the saved path, size, and original filename are added to the prompt.
 
@@ -39,6 +40,16 @@ User sent the following file via QQ (saved locally; use read/bash or other tools
 User message:
 Summarize this file.
 ```
+
+### Voice messages
+
+Voice messages use QQ's built-in ASR (`asr_refer_text`). The transcript is sent to pi as normal user text; pi never receives the audio file.
+
+- The voice attachment is not downloaded or saved as `.amr` / `.silk`.
+- No local or external speech-to-text service is used.
+- If QQ ASR returns no text, the bot replies `Could not transcribe this voice message; please resend or type it.` and does not start a pi run.
+- Voice and text are separate QQ messages; send them one after another when needed.
+- To inspect the raw ASR result, set `logLevel` to `debug`; the log includes `asr_refer_text` and attachment metadata.
 
 ## Commands
 
@@ -72,7 +83,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 {
   "markdownSupport": false,
   "streamFlushMs": 10000,
-  "debug": false
+  "logLevel": "silent"
 }
 ```
 
@@ -87,7 +98,9 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 | `heartbeatMaxMessages` | `3` | Per-run message heartbeat limit |
 | `streamRelay` | `true` | Use append-mode stream bubbles |
 | `streamFlushMs` | `10000` | Stream summary frame interval in ms (minimum 300) |
-| `debug` | `false` | SDK and stream retry/timeout diagnostics |
+| `logLevel` | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
+
+When enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads. Legacy `debug: true` maps to `logLevel: "debug"`.
 
 ## Notes
 
@@ -95,7 +108,3 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 - Incoming images are passed to the model as vision input; the current model must support image input.
 - Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
-
-## License
-
-MIT

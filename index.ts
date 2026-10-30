@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
 import { getSettings, readConfig, type Credentials } from "./src/config";
 import { startBot, type BotState, type RunningBot } from "./src/bot";
 import { runQrLogin } from "./src/login";
@@ -9,6 +10,7 @@ import { RunFeedback } from "./src/run-feedback";
 import { AppendStream } from "./src/append-stream";
 import { formatTokenCount } from "./src/format";
 import { formatBudgetStatus } from "./src/budget-status";
+import { configureLogger, log, previewForLog } from "./src/logger";
 
 /**
  * pi-qq extension entry.
@@ -48,7 +50,6 @@ const runFeedback = new RunFeedback({
   getHeartbeatMaxMessages: () => getSettings(readConfig().config).heartbeatMaxMessages,
   getStreamRelay: () => getSettings(readConfig().config).streamRelay,
   getStreamFlushMs: () => getSettings(readConfig().config).streamFlushMs,
-  getDebug: () => getSettings(readConfig().config).debug,
   makeChannel: () => ({
     budget,
     boundOpenid: getLoginState()?.allowedOpenid ?? "",
@@ -91,6 +92,15 @@ export default function (pi: ExtensionAPI) {
 
   const startWithCredentials = (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
     const settings = getSettings(readConfig().config);
+    configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
+    log.info("session", "starting bot", {
+      appId: creds.appId,
+      allowedOpenid,
+      cwd: ctx.cwd,
+      model: ctx.model?.name ?? null,
+      markdownSupport: settings.markdownSupport,
+      logLevel: settings.logLevel,
+    });
     running?.stop();
     stateDetail = undefined;
     sessionCtx = ctx;
@@ -98,7 +108,6 @@ export default function (pi: ExtensionAPI) {
       credentials: creds,
       allowedOpenid,
       markdownSupport: settings.markdownSupport,
-      debug: settings.debug,
       onMessage: createInboundHandler({
         pi,
         ctx,
@@ -135,10 +144,20 @@ export default function (pi: ExtensionAPI) {
   // —— Lifecycle ——
 
   pi.on("session_start", (_event, ctx) => {
-    const { error } = readConfig();
+    const { config, error } = readConfig();
+    const settings = getSettings(config);
+    configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
     if (error) ctx.ui.notify(`pi-qq ${error}`, "error");
 
     const login = getLoginState();
+    log.info("session", "started", {
+      cwd: ctx.cwd,
+      hasUI: ctx.hasUI,
+      model: ctx.model?.name ?? null,
+      logLevel: settings.logLevel,
+      login: login ? { appId: login.credentials.appId, allowedOpenid: login.allowedOpenid } : null,
+      configError: error ?? null,
+    });
     if (login) {
       startWithCredentials(ctx, login.credentials, login.allowedOpenid);
     } else if (ctx.hasUI) {
@@ -147,6 +166,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", () => {
+    log.info("session", "shutting down");
     stopIfRunning();
     sessionCtx = undefined;
     runFeedback.dispose();
@@ -155,18 +175,31 @@ export default function (pi: ExtensionAPI) {
   // F7 run feedback: agent lifecycle / tool counts / text streaming.
 
   pi.on("agent_start", () => {
+    log.info("agent", "run started");
     runFeedback.onAgentStart();
   });
 
   pi.on("agent_end", () => {
+    log.info("agent", "run ended");
     void runFeedback.onAgentEnd();
   });
 
   pi.on("tool_execution_start", (event) => {
+    log.debug("tool", "start", {
+      toolName: event.toolName,
+      toolCallId: event.toolCallId,
+      args: previewForLog(event.args),
+    });
     void runFeedback.onToolStart(event.toolName);
   });
 
   pi.on("tool_execution_end", (event) => {
+    log.debug("tool", "end", {
+      toolName: event.toolName,
+      toolCallId: event.toolCallId,
+      isError: event.isError,
+      result: previewForLog(event.result),
+    });
     runFeedback.onToolEnd(event.toolName, event.isError);
   });
 
@@ -190,6 +223,17 @@ export default function (pi: ExtensionAPI) {
     const msg = event.message;
     if (msg.role !== "assistant" || !running) return;
 
+    log.debug("pi", "assistant message ended", {
+      stopReason: msg.stopReason,
+      contentTypes: msg.content.map((block) => block.type),
+      textPreview: previewForLog(
+        msg.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      ),
+    });
+
     const { config } = readConfig();
     const settings = getSettings(config);
     const isError = msg.stopReason === "error";
@@ -205,6 +249,7 @@ export default function (pi: ExtensionAPI) {
         .trim();
     }
     if (!text) {
+      log.debug("pi", "assistant message has no text", { isError });
       // Textless assistant messages also end the feedback turn: reset thinking state
       // and flush pending thinking rows so the next message does not swallow them.
       await runFeedback.onAssistantFinal("", isError);
@@ -212,16 +257,20 @@ export default function (pi: ExtensionAPI) {
     }
 
     // F7 stream takeover: stream frames render Markdown; send raw text so lengths match.
-    if (await runFeedback.onAssistantFinal(text, isError)) return;
+    const streamTookOver = await runFeedback.onAssistantFinal(text, isError);
+    log.debug("pi", "stream takeover decision", { streamTookOver, isError, textPreview: previewForLog(text) });
+    if (streamTookOver) return;
 
     const payload = settings.markdownSupport ? text : markdownToPlain(text);
 
     const bound = getLoginState()?.allowedOpenid;
     if (!bound) {
+      log.warn("pi", "no bound user; reply skipped");
       ctx.ui.notify("pi-qq: no bound QQ user; skipping reply.", "warning");
       return;
     }
 
+    log.info("pi", "sending reply", { textLength: text.length, payloadLength: payload.length });
     void sendReply(running.bot, payload, {
       budget,
       boundOpenid: bound,

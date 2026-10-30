@@ -8,6 +8,7 @@ import {
 } from "@tencent-connect/qqbot-nodejs";
 import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import type { Credentials } from "./config";
+import { log, sdkLogger } from "./logger";
 
 /**
  * Session-level QQBot lifecycle: creation, middleware, connection state,
@@ -27,8 +28,6 @@ export interface StartBotOptions {
   /** F2: QR-bound single user; production always provides it */
   allowedOpenid?: string;
   markdownSupport?: boolean;
-  /** Debug mode: print SDK logs (timeouts/rate limits/reconnects) to the terminal. */
-  debug?: boolean;
   /** Inbound message handler. */
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;
   /** Connection state changes; the caller decides how to notify the UI. */
@@ -44,10 +43,17 @@ export interface RunningBot {
 }
 
 export function startBot(opts: StartBotOptions): RunningBot {
+  log.info("bot", "starting", {
+    appId: opts.credentials.appId,
+    allowedOpenid: opts.allowedOpenid,
+    markdownSupport: opts.markdownSupport,
+  });
+
   const bot = new QQBot({
     appId: opts.credentials.appId,
     appSecret: opts.credentials.appSecret,
     markdownSupport: opts.markdownSupport ?? false,
+    logger: sdkLogger,
   });
 
   // Echo filtering + message deduplication (SDK default 5s window).
@@ -59,14 +65,46 @@ export function startBot(opts: StartBotOptions): RunningBot {
   // Serialize per user so streams and replies do not race.
   bot.use(concurrencyGuard());
 
-  const report = (state: BotState, detail?: string) => opts.onStateChange?.(state, detail);
+  const report = (state: BotState, detail?: string) => {
+    if (state === "blocked" || (state === "stopped" && detail)) {
+      log.error("bot", state, { detail });
+    } else if (state === "reconnecting") {
+      log.warn("bot", state, { detail });
+    } else {
+      log.info("bot", state, { detail });
+    }
+    opts.onStateChange?.(state, detail);
+  };
 
   bot.on("ready", () => report("connected"));
   bot.on("resumed", () => report("connected"));
   bot.on("disconnected", ({ willReconnect }) => report(willReconnect ? "reconnecting" : "stopped"));
-  bot.on("error", (err) => opts.onRecoverableError?.(err));
+  bot.on("error", (err) => {
+    log.error("bot", "error event", { err });
+    opts.onRecoverableError?.(err);
+  });
   bot.on("message", (_ctx, msg) => {
-    void opts.onMessage?.(bot, msg);
+    log.debug("bot", "inbound message", {
+      kind: msg.kind,
+      rawEventType: msg.rawEventType,
+      messageId: msg.messageId,
+      senderId: msg.senderId,
+      senderName: msg.senderName,
+      senderIsBot: msg.senderIsBot,
+      content: msg.content,
+      msgType: msg.msgType,
+      timestamp: msg.timestamp,
+      replyTarget: msg.replyTarget,
+      msgIdx: msg.msgIdx,
+      refMsgIdx: msg.refMsgIdx,
+      messageScene: msg.messageScene,
+      attachments: msg.attachments,
+      msgElements: msg.msgElements,
+      raw: msg.raw,
+    });
+    Promise.resolve(opts.onMessage?.(bot, msg)).catch((err: unknown) => {
+      log.error("bot", "message handler rejected", { err });
+    });
   });
 
   let stopped = false;

@@ -2,6 +2,7 @@ import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { AppendStream } from "./append-stream";
 import { sendReply, type ReplyChannel } from "./outbound";
 import type { ReplyBudget } from "./reply-budget";
+import { log } from "./logger";
 
 /**
  * F7 long-task feedback: run-level state machine (summary frames + text bubbles).
@@ -15,7 +16,7 @@ import type { ReplyBudget } from "./reply-budget";
  * The final reply is its own text bubble. Frames are sent every `streamFlushMs`
  * (default 10000ms):
  *
- *   Activity: [💭] Thinking... / [🔧] [2] bash (event order; timestamps only in debug)
+ *   Activity: [💭] Thinking... / [🔧] [2] bash (event order)
  *   Text: message text (streamed increments, rendered as Markdown)
  *
  * Any failed frame discards the bubble; unsent text falls back to the message path.
@@ -35,8 +36,6 @@ export interface RunFeedbackDeps {
   /** Stream summary frame interval in ms (minimum 300). */
   getStreamFlushMs: () => number;
   getStreamRelay: () => boolean;
-  /** Debug mode: SDK logs plus timestamps on stream frames. */
-  getDebug: () => boolean;
   makeChannel: () => ReplyChannel;
   onWarn: (msg: string) => void;
 }
@@ -82,14 +81,7 @@ interface RunState {
   messageHeartbeats: number;
 }
 
-/** Local HH:MM:SS timestamp for debug frames. */
-function nowStamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
-/** Tool count line: `[🔧] [n] name`; debug mode prefixes [HH:MM:SS]. */
+/** Tool count line: `[🔧] [n] name`. */
 function formatToolCount(name: string, count: number): string {
   return `[🔧] [${count}] ${name}`;
 }
@@ -117,11 +109,6 @@ export class RunFeedback {
 
   constructor(deps: RunFeedbackDeps) {
     this.deps = deps;
-  }
-
-  private debug(message: string): void {
-    if (!this.deps.getDebug()) return;
-    console.error(`[pi-qq debug ${nowStamp()}] ${message}`);
   }
 
   /** Called by inbound before injecting: mark the next run as QQ-triggered. */
@@ -153,7 +140,7 @@ export class RunFeedback {
       messageHeartbeats: 0,
     };
     this.run = run;
-    this.debug(`run start msgId=${run.msgId?.slice(0, 8) ?? "?"}`);
+    log.debug("run", "started", { msgId: run.msgId?.slice(0, 8) ?? "?" });
 
     // Typing keepalive: start immediately, renew every 50s (zero quota).
     const keepTyping = () => {
@@ -260,7 +247,10 @@ export class RunFeedback {
     this.clearTimers();
     this.run = null;
     if (run) {
-      this.debug(`run end elapsed=${Math.round((Date.now() - run.startedAt) / 1000)}s`);
+      log.debug("run", "ended", {
+        msgId: run.msgId?.slice(0, 8) ?? "?",
+        elapsedMs: Date.now() - run.startedAt,
+      });
       // Do not resend on DONE failure; content was already shown.
       try {
         await this.sealBubble(run);
@@ -334,21 +324,18 @@ export class RunFeedback {
     );
   }
 
-  /** Append activity rows; debug mode prefixes timestamps; rows continue across frames. */
+  /** Append activity rows; rows continue across frames. */
   private async appendLineGroups(r: RunState, lines?: string[]): Promise<boolean> {
     const group = lines ?? this.collectWindowLines(r);
     if (group.length === 0) return true;
-    const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
-    const frame = stamp + group.join(`\n${stamp}`) + "\n";
-    return this.pushAppend(r, frame, "activity");
+    return this.pushAppend(r, `${group.join("\n")}\n`, "activity");
   }
 
-  /** Append text: text messages own bubbles; debug mode adds inline timestamps. */
+  /** Append text: text messages own bubbles. */
   private async appendText(r: RunState, text: string): Promise<boolean> {
     // Previous text message finalized: seal it and start a new bubble.
     if (r.startNewBubble) await this.closeBubble(r);
-    const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
-    return this.pushAppend(r, stamp + text, "text");
+    return this.pushAppend(r, text, "text");
   }
 
   /** Heartbeat fallback when streaming is unavailable (max N messages per run). */
@@ -363,8 +350,7 @@ export class RunFeedback {
     const bot = this.deps.bot();
     if (!bot) return;
     run.messageHeartbeats += 1;
-    const stamp = this.deps.getDebug() ? `[${nowStamp()}] ` : "";
-    await sendReply(bot, `${stamp}${formatHeartbeat(Date.now() - run.startedAt, run.tools)}`, this.deps.makeChannel());
+    await sendReply(bot, formatHeartbeat(Date.now() - run.startedAt, run.tools), this.deps.makeChannel());
   }
 
   /** Append a frame (lazy bubble; close on kind change); discard on failure. */
@@ -381,7 +367,7 @@ export class RunFeedback {
         run.cur = {
           stream: new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
             onError: (err) => this.handleStreamError(run, err),
-            onDebug: (message) => this.debug(`stream msgId=${run.msgId?.slice(0, 8) ?? "?"} ${message}`),
+            onDebug: (message) => log.debug("stream", message, { msgId: run.msgId?.slice(0, 8) ?? "?" }),
           }),
           kind,
         };
@@ -400,9 +386,11 @@ export class RunFeedback {
   private handleStreamError(run: RunState, err: Error): void {
     const had = run.cur !== null;
     run.cur = null;
-    this.debug(
-      `stream error msgId=${run.msgId?.slice(0, 8) ?? "?"} elapsed=${Math.round((Date.now() - run.startedAt) / 1000)}s: ${err.message}`,
-    );
+    log.warn("stream", "stream error", {
+      msgId: run.msgId?.slice(0, 8) ?? "?",
+      elapsedMs: Date.now() - run.startedAt,
+      err,
+    });
     if (had) this.deps.onWarn(`Stream unavailable; falling back to text (${err.message}).`);
     const rest = run.finalizedText.slice(run.resultSentLen);
     if (rest) {
