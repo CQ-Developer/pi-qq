@@ -39,7 +39,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "typecheck": "npx -y -p typescript tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "npx --node-options=\"--experimental-strip-types\" eslint --flag unstable_native_nodejs_ts_config .",
+    "lint:fix": "npx --node-options=\"--experimental-strip-types\" eslint --flag unstable_native_nodejs_ts_config . --fix",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -59,8 +61,12 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^1.4.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.20.5",
+    "eslint": "^10.14.0",
     "prettier": "^3.9.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^5.0.5"
   }
 }

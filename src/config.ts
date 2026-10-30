@@ -62,7 +62,7 @@ export function readConfig(): { config: PiQQConfig; error?: string } {
   }
 }
 
-export interface ResolvedSettings extends Required<Omit<PiQQSettings, "debug">> {}
+export type ResolvedSettings = Required<Omit<PiQQSettings, "debug">>;
 
 /** Settings with defaults applied (features-v1.md §4). */
 export function getSettings(config: PiQQConfig): ResolvedSettings {

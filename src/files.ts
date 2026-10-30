@@ -55,6 +55,8 @@ export function uploadIndexPath(uploadDir: string): string {
 export function sanitizeFilename(filename: string | undefined, fallback: string): string {
   const raw = basename((filename ?? "").trim());
   const cleaned = raw
+    // Control characters are rejected intentionally when normalizing a filename.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_")
     .replace(/^[.\s]+|[.\s]+$/g, "")
     .trim();
@@ -152,7 +154,6 @@ async function saveOrReuse(
     // A stale index entry must not make a missing file look reusable.
     if (index[filename]) {
       delete index[filename];
-      changed = true;
     }
     await writeFile(target, body, { flag: "wx" });
     index[filename] = hash;
@@ -187,7 +188,6 @@ async function saveOrReuse(
 
     if (index[candidate]) {
       delete index[candidate];
-      changed = true;
     }
     await writeFile(candidatePath, body, { flag: "wx" });
     index[candidate] = hash;

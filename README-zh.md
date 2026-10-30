@@ -114,6 +114,20 @@ QQ 侧命令：
 
 启用日志后，日志写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。旧配置 `debug: true` 会映射为 `logLevel: "debug"`。
 
+## 开发
+
+需要 Node.js 22.19 或更高版本（与 pi 的要求一致）。安装依赖后运行：
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run format:check
+```
+
+`eslint.config.ts` 使用 Node.js 原生 TypeScript 剥离能力加载，不需要 `jiti`。
+
 ## 说明
 
 - 仅支持 C2C（QQ 私聊）。

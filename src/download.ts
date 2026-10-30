@@ -79,7 +79,7 @@ export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
     return await readBodyLimited(response, limit, opts.kind);
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new Error(`download timed out after ${opts.timeoutMs / 1000}s`);
+      throw new Error(`download timed out after ${opts.timeoutMs / 1000}s`, { cause: err });
     }
     throw err;
   } finally {

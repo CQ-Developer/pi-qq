@@ -97,7 +97,6 @@ export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>
   return `⏱ Running for ${elapsedText} · ${parts.join(" · ")}${suffix}`;
 }
 
-const STREAM_LIVENESS_MS = 60_000; // Add a liveness row after this much silence
 const TYPING_INTERVAL_MS = 50_000; // Platform typing window ~60s; renew early
 const PENDING_TTL_MS = 15_000; // QQ trigger TTL (older means a local run)
 

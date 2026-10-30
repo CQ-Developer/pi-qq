@@ -114,6 +114,20 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 
 When enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads. Legacy `debug: true` maps to `logLevel: "debug"`.
 
+## Development
+
+Node.js 22.19 or newer is required, matching pi. Install dependencies and run:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run format:check
+```
+
+`eslint.config.ts` is loaded through Node.js native TypeScript stripping; `jiti` is not required.
+
 ## Notes
 
 - Only C2C (QQ private chat) is supported.
