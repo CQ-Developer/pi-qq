@@ -44,6 +44,8 @@ interface RunState {
   toolOpen: boolean;
   activeTool?: string;
   tools: ToolCall[];
+  deferredThinking: string;
+  deferredText: string;
   blockClosed: boolean;
   typingTimer?: ReturnType<typeof setInterval>;
 }
@@ -211,6 +213,8 @@ export class RunFeedback {
       lastChar: "",
       toolOpen: false,
       tools: [],
+      deferredThinking: "",
+      deferredText: "",
       blockClosed: false,
     };
     this.run = run;
@@ -251,9 +255,13 @@ export class RunFeedback {
       const delta = snapshotThinking.slice(run.thinkingSentLen);
       run.thinkingSentLen = snapshotThinking.length;
       if (this.deps.getThinkingRelay()) {
-        const newBubble = this.startsNewBlock(run, "thinking");
-        const prefix = this.beginBlock(run, "thinking", newBubble);
-        this.push(run, `${prefix}${quoteThinking(delta, run)}`, prefix.length > 0 || newBubble, false, newBubble);
+        if (this.hasPendingTools(run)) {
+          run.deferredThinking += delta;
+        } else {
+          const newBubble = this.startsNewBlock(run, "thinking");
+          const prefix = this.beginBlock(run, "thinking", newBubble);
+          this.push(run, `${prefix}${quoteThinking(delta, run)}`, prefix.length > 0 || newBubble, false, newBubble);
+        }
       }
     }
 
@@ -261,6 +269,10 @@ export class RunFeedback {
     const delta = full.slice(run.resultSentLen);
     if (!delta) return;
     run.resultSentLen = full.length;
+    if (this.hasPendingTools(run)) {
+      run.deferredText += delta;
+      return;
+    }
     if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     const newBubble = this.startsNewBlock(run, "text");
     const prefix = this.beginBlock(run, "text", newBubble);
@@ -276,10 +288,14 @@ export class RunFeedback {
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
     if (!isError && text && delta) {
-      if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
-      const newBubble = this.startsNewBlock(run, "text");
-      const prefix = this.beginBlock(run, "text", newBubble);
-      this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
+      if (this.hasPendingTools(run)) {
+        run.deferredText += delta;
+      } else {
+        if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
+        const newBubble = this.startsNewBlock(run, "text");
+        const prefix = this.beginBlock(run, "text", newBubble);
+        this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
+      }
     }
     if (!isError && text) run.blockClosed = true;
 
@@ -301,6 +317,8 @@ export class RunFeedback {
     const run = this.run;
     if (!run) return;
     if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
+    await this.drainQueue();
+    if (!this.hasPendingTools(run)) this.flushDeferred(run);
     await this.drainQueue();
     this.clearTimers();
     this.run = null;
@@ -395,6 +413,29 @@ export class RunFeedback {
     });
   }
 
+  private hasPendingTools(run: RunState): boolean {
+    return Boolean(run.activeTool) || run.tools.some((tool) => !tool.finished);
+  }
+
+  private flushDeferred(run: RunState): void {
+    if (run.streamDead) return;
+    if (run.deferredThinking) {
+      const thinking = run.deferredThinking;
+      run.deferredThinking = "";
+      const newBubble = this.startsNewBlock(run, "thinking");
+      const prefix = this.beginBlock(run, "thinking", newBubble);
+      this.push(run, `${prefix}${quoteThinking(thinking, run)}`, prefix.length > 0 || newBubble, false, newBubble);
+      this.appendThinkingTrailer(run);
+    }
+    if (run.deferredText) {
+      const text = run.deferredText;
+      run.deferredText = "";
+      const newBubble = this.startsNewBlock(run, "text");
+      const prefix = this.beginBlock(run, "text", newBubble);
+      this.push(run, `${prefix}${text}`, prefix.length > 0 || newBubble, false, newBubble);
+    }
+  }
+
   private startNextTool(run: RunState): void {
     if (run.streamDead || run.activeTool) return;
     const tool = run.tools.find((candidate) => !candidate.started);
@@ -425,6 +466,7 @@ export class RunFeedback {
       if (run.activeTool !== tool.id) return;
       run.activeTool = undefined;
       this.startNextTool(run);
+      if (!this.hasPendingTools(run)) this.flushDeferred(run);
     });
   }
 

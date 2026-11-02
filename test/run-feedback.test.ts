@@ -277,6 +277,23 @@ describe("RunFeedback 直推", () => {
     expect(bubbleContents(calls).at(-1)).toContain("*[bash]* `echo");
   });
 
+  it("工具未完成时后续思考延后，不打乱工具顺序", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "one" }, "call-1");
+    rf.onToolStart("bash", { command: "two" }, "call-2");
+    rf.onToolEnd("bash", false, "1", "call-1");
+    rf.onAssistantDelta("", "after tools");
+    rf.onToolEnd("bash", false, "2", "call-2");
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual([
+      "*[bash]* `one`\n```text\n1\n```\n",
+      "*[bash]* `two`\n```text\n2\n```\n",
+      "> after tools\n>\n",
+    ]);
+  });
+
   it("同名并行工具按 toolCallId 归属结果", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);
