@@ -294,6 +294,20 @@ describe("RunFeedback 直推", () => {
     ]);
   });
 
+  it("abort 后不再发送待处理的工具与思考", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "one" }, "call-1");
+    rf.onToolStart("bash", { command: "two" }, "call-2");
+    rf.onToolEnd("bash", false, "1", "call-1");
+    rf.onAssistantDelta("", "later");
+    rf.abort();
+    rf.onToolEnd("bash", false, "2", "call-2");
+    await rf.onAgentEnd();
+
+    expect(calls).toEqual([]);
+  });
+
   it("同名并行工具按 toolCallId 归属结果", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);

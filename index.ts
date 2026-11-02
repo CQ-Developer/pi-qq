@@ -103,6 +103,7 @@ export default function (pi: ExtensionAPI) {
         getStatusLines,
         onWarn: onWarn(ctx),
         markQQTrigger: (openid, msgId) => runFeedback.markQQTrigger(openid, msgId),
+        onAbort: () => runFeedback.abort(),
       }),
       onStateChange: (state, detail) => {
         lastState = state;
