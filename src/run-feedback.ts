@@ -12,6 +12,15 @@ export interface RunFeedbackDeps {
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
 
+interface ToolCall {
+  id: string;
+  name: string;
+  args?: unknown;
+  result?: { isError: boolean; result?: unknown };
+  started: boolean;
+  finished: boolean;
+}
+
 interface RunState {
   startedAt: number;
   openid: string;
@@ -33,7 +42,8 @@ interface RunState {
   fenceQuoted: boolean;
   lastChar: string;
   toolOpen: boolean;
-  toolActive: number;
+  activeTool?: string;
+  tools: ToolCall[];
   blockClosed: boolean;
   typingTimer?: ReturnType<typeof setInterval>;
 }
@@ -98,7 +108,7 @@ function primaryArg(args: unknown): string {
 
 export function formatToolLine(name: string, args: unknown): string {
   const primary = primaryArg(args);
-  return primary ? `[${name}] ${inlineCode(primary)}` : `[${name}]`;
+  return primary ? `${inlineCode(name)} ${primary}` : inlineCode(name);
 }
 
 function resultText(result: unknown): string {
@@ -200,7 +210,7 @@ export class RunFeedback {
       fenceQuoted: false,
       lastChar: "",
       toolOpen: false,
-      toolActive: 0,
+      tools: [],
       blockClosed: false,
     };
     this.run = run;
@@ -214,25 +224,23 @@ export class RunFeedback {
     run.typingTimer = setInterval(keepTyping, TYPING_INTERVAL_MS);
   }
 
-  onToolStart(toolName: string, args?: unknown): void {
+  onToolStart(toolName: string, args?: unknown, toolCallId?: string): void {
     const run = this.run;
     if (!run || run.streamDead) return;
-    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
-    const newGroup = run.toolActive === 0;
-    const newBubble = newGroup && (run.lastKind !== "none" || run.blockClosed);
-    run.toolActive += 1;
-    if (newGroup) run.toolOpen = true;
-    const prefix = this.beginBlock(run, "tool", newBubble);
-    this.push(run, `${prefix}${formatToolLine(toolName, args)}\n`, prefix.length > 0 || newBubble, false, newBubble);
+    const id = toolCallId ?? toolName;
+    if (run.tools.some((tool) => tool.id === id)) return;
+    run.tools.push({ id, name: toolName, args, started: false, finished: false });
+    this.startNextTool(run);
   }
 
-  onToolEnd(toolName: string, isError: boolean, result?: unknown): void {
+  onToolEnd(toolName: string, isError: boolean, result?: unknown, toolCallId?: string): void {
     const run = this.run;
     if (!run || run.streamDead) return;
-    const endTool = run.toolActive <= 1;
-    run.toolActive = Math.max(0, run.toolActive - 1);
-    const prefix = this.beginBlock(run, "tool");
-    this.push(run, `${prefix}${formatToolResult(result, isError)}`, prefix.length > 0, endTool);
+    const id = toolCallId ?? toolName;
+    const tool = run.tools.find((candidate) => candidate.id === id);
+    if (!tool) return;
+    tool.result = { isError, result };
+    if (run.activeTool === id) this.finishTool(run, tool);
   }
 
   onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
@@ -293,7 +301,7 @@ export class RunFeedback {
     const run = this.run;
     if (!run) return;
     if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
-    await this.queue;
+    await this.drainQueue();
     this.clearTimers();
     this.run = null;
     log.debug("run", "ended", {
@@ -387,6 +395,39 @@ export class RunFeedback {
     });
   }
 
+  private startNextTool(run: RunState): void {
+    if (run.streamDead || run.activeTool) return;
+    const tool = run.tools.find((candidate) => !candidate.started);
+    if (!tool) return;
+    tool.started = true;
+    run.activeTool = tool.id;
+    run.toolOpen = true;
+    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
+    const newBubble = run.lastKind !== "none";
+    const prefix = this.beginBlock(run, "tool", newBubble);
+    this.push(
+      run,
+      `${prefix}${formatToolLine(tool.name, tool.args)}\n`,
+      prefix.length > 0 || newBubble,
+      false,
+      newBubble,
+    );
+    if (tool.result) this.finishTool(run, tool);
+  }
+
+  private finishTool(run: RunState, tool: ToolCall): void {
+    if (!tool.result || tool.finished) return;
+    tool.finished = true;
+    const prefix = this.beginBlock(run, "tool");
+    this.push(run, `${prefix}${formatToolResult(tool.result.result, tool.result.isError)}`, prefix.length > 0, true);
+    void this.enqueue(async () => {
+      if (this.run !== run || run.streamDead) return;
+      if (run.activeTool !== tool.id) return;
+      run.activeTool = undefined;
+      this.startNextTool(run);
+    });
+  }
+
   private push(run: RunState, text: string, blockBoundary = false, endTool = false, newBubble = false): void {
     if (!text || run.streamDead) return;
     void this.enqueue(async () => {
@@ -474,6 +515,14 @@ export class RunFeedback {
     });
   }
 
+  private async drainQueue(): Promise<void> {
+    for (;;) {
+      const current = this.queue;
+      await current;
+      if (current === this.queue) return;
+    }
+  }
+
   private enqueue(op: () => Promise<void>): Promise<void> {
     const next = this.queue.then(op, op);
     this.queue = next.catch(() => {});
@@ -502,7 +551,7 @@ export class RunFeedback {
   }
 
   private async flushStream(run: RunState): Promise<boolean> {
-    await this.queue;
+    await this.drainQueue();
     if (run.streamDead) return false;
     if (!run.cur && !run.pendingResume) return true;
     for (let attempt = 0; attempt <= MAX_RESUME_ATTEMPTS; attempt++) {
