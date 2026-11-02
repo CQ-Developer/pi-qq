@@ -3,12 +3,30 @@ import { chunkText, markdownToPlain, TEXT_CHUNK_LIMIT } from "../src/outbound";
 import { getSettings } from "../src/config";
 
 describe("getSettings", () => {
-  it("汇总帧默认 10s", () => {
-    expect(getSettings({}).streamFlushMs).toBe(10_000);
+  it("thinkingRelay 默认开启", () => {
+    expect(getSettings({}).thinkingRelay).toBe(true);
   });
 
-  it("streamFlushMs 可显式覆盖", () => {
-    expect(getSettings({ streamFlushMs: 3000 }).streamFlushMs).toBe(3000);
+  it("thinkingRelay 可显式关闭", () => {
+    expect(getSettings({ thinkingRelay: false }).thinkingRelay).toBe(false);
+  });
+
+  it("旧配置键被忽略", () => {
+    const settings = getSettings({
+      streamFlushMs: 3000,
+      streamAssistant: true,
+      streamRelay: true,
+      markdownSupport: true,
+      heartbeatMinutes: 10,
+      heartbeatMaxMessages: 3,
+    } as never);
+    expect(settings).toEqual({
+      thinkingRelay: true,
+      deliverAs: "steer",
+      imageMaxSize: 10 * 1024 * 1024,
+      fileMaxSize: 50 * 1024 * 1024,
+      logLevel: "silent",
+    });
   });
 });
 

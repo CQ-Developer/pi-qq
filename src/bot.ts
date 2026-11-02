@@ -10,35 +10,18 @@ import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import type { Credentials } from "./config";
 import { log, sdkLogger } from "./logger";
 
-/**
- * Session-level QQBot lifecycle: creation, middleware, connection state,
- * and fatal-error reporting. start() blocks until stop()/abort, so it runs
- * in the background (void, not awaited).
- */
-
-export type BotState =
-  | "stopped" // Not running/stopped
-  | "starting" // Connecting, waiting for READY
-  | "connected" // Online (READY/RESUMED)
-  | "reconnecting" // Disconnected; the SDK is reconnecting
-  | "blocked"; // Fatal close (4914 offline / 4915 banned); manual action required
+export type BotState = "stopped" | "starting" | "connected" | "reconnecting" | "blocked";
 
 export interface StartBotOptions {
   credentials: Credentials;
-  /** F2: QR-bound single user; production always provides it */
   allowedOpenid?: string;
-  markdownSupport?: boolean;
-  /** Inbound message handler. */
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;
-  /** Connection state changes; the caller decides how to notify the UI. */
   onStateChange?: (state: BotState, detail?: string) => void;
-  /** Recoverable errors; the SDK reconnects automatically. */
   onRecoverableError?: (err: Error) => void;
 }
 
 export interface RunningBot {
   bot: QQBot;
-  /** Idempotent stop. */
   stop: () => void;
 }
 
@@ -46,23 +29,17 @@ export function startBot(opts: StartBotOptions): RunningBot {
   log.info("bot", "starting", {
     appId: opts.credentials.appId,
     allowedOpenid: opts.allowedOpenid,
-    markdownSupport: opts.markdownSupport,
   });
 
   const bot = new QQBot({
     appId: opts.credentials.appId,
     appSecret: opts.credentials.appSecret,
-    markdownSupport: opts.markdownSupport ?? false,
     logger: sdkLogger,
   });
 
-  // Echo filtering + message deduplication (SDK default 5s window).
   bot.use(messageFilter({ skipSelfEcho: true }));
-  // Strip protocol markers such as @mentions and face tags.
   bot.use(contentSanitizer({ stripBotMention: true }));
-  // Single-user allowlist for C2C; inbound also rejects when no QR login is active.
   bot.use(accessPolicy(opts.allowedOpenid ? { c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } } : {}));
-  // Serialize per user so streams and replies do not race.
   bot.use(concurrencyGuard());
 
   const report = (state: BotState, detail?: string) => {
@@ -112,7 +89,7 @@ export function startBot(opts: StartBotOptions): RunningBot {
   let stopped = false;
   report("starting");
   void bot.start().catch((err: unknown) => {
-    if (stopped) return; // Normal return from an explicit stop().
+    if (stopped) return;
     const code = (err as { code?: string }).code;
     if (code === GatewayErrorCode.FATAL_CLOSE) {
       const closeCode = (err as { closeCode?: number }).closeCode;

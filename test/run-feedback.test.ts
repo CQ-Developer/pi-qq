@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { RunFeedback, formatHeartbeat } from "../src/run-feedback";
+import { RunFeedback, formatToolLine, formatToolResult } from "../src/run-feedback";
 import { ReplyBudget } from "../src/reply-budget";
 
 const DONE_STATE = 10;
-const MIN = 60_000;
 
-function makeRunHarness() {
+function makeRunHarness(options: { thinkingRelay?: boolean; failNext?: number; alwaysFail?: boolean } = {}) {
   const calls: Array<Record<string, unknown>> = [];
+  const attempts: Array<Record<string, unknown>> = [];
+  const warns: string[] = [];
+  let failuresLeft = options.failNext ?? 0;
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+      attempts.push({ ...req });
+      if (options.alwaysFail || failuresLeft > 0) {
+        if (failuresLeft > 0) failuresLeft -= 1;
+        throw new Error("stream broke");
+      }
       calls.push({ ...req });
       return { id: `sm-${calls.length}` };
     },
@@ -22,222 +29,345 @@ function makeRunHarness() {
   const deps = {
     bot: () => bot,
     budget,
-    boundOpenid: () => "openid-u",
-    getHeartbeatMinutes: () => 0,
-    getHeartbeatMaxMessages: () => 3,
-    getStreamFlushMs: () => 300,
-    getStreamRelay: () => true,
-    makeChannel: () => ({ budget: new ReplyBudget(), boundOpenid: "openid-u" }),
-    onWarn: () => {},
+    getThinkingRelay: () => options.thinkingRelay ?? true,
+    onWarn: (msg: string) => warns.push(msg),
   };
-  return { rf: new RunFeedback(deps as never), calls, budget };
+  return { rf: new RunFeedback(deps as never), calls, attempts, warns, budget };
 }
 
-/** Split bubbles on DONE frames and return each bubble's accumulated content. */
-function collectBubbles(calls: Array<Record<string, unknown>>): string[] {
+function streamContent(calls: Array<Record<string, unknown>>): string {
+  return calls
+    .filter((call) => call.input_state !== DONE_STATE)
+    .map((call) => call.content_raw as string)
+    .join("");
+}
+
+function bubbleContents(calls: Array<Record<string, unknown>>): string[] {
   const bubbles: string[] = [];
   let current = "";
   for (const call of calls) {
     if (call.input_state === DONE_STATE) {
-      bubbles.push(current.trim());
+      if (current) bubbles.push(current);
       current = "";
-    } else {
-      current += call.content_raw as string;
+      continue;
     }
+    if (!call.stream_msg_id && current) {
+      bubbles.push(current);
+      current = "";
+    }
+    current += call.content_raw as string;
   }
+  if (current) bubbles.push(current);
   return bubbles;
 }
 
-describe("formatHeartbeat", () => {
-  it("无工具调用", () => {
-    expect(formatHeartbeat(30 * 1000, new Map())).toBe("⏱ Running for less than 1 minute (no tool calls yet)");
+function startRun(rf: RunFeedback, msgId = "msg-1"): void {
+  rf.markQQTrigger("openid-u", msgId);
+  rf.onAgentStart();
+}
+
+describe("工具格式化", () => {
+  it("主参数按字段顺序提取", () => {
+    expect(formatToolLine("bash", { command: "npm test" })).toBe("[bash] `npm test`");
+    expect(formatToolLine("read", { path: "src/foo.ts" })).toBe("[read] `src/foo.ts`");
+    expect(formatToolLine("write", { path: "a.ts", content: "x" })).toBe("[write] `a.ts`");
+    expect(formatToolLine("custom", { foo: "bar" })).toBe('[custom] `{"foo":"bar"}`');
+    expect(formatToolLine("ping", undefined)).toBe("[ping]");
   });
 
-  it("含失败数", () => {
-    const tools = new Map<string, { count: number; errors: number }>([
-      ["bash", { count: 86, errors: 3 }],
-      ["read", { count: 12, errors: 0 }],
-    ]);
-    expect(formatHeartbeat(25 * MIN, tools)).toBe(
-      "⏱ Running for 25 minutes · [🔧] [86] bash · [🔧] [12] read · 3 failed",
+  it("参数含反引号时改用双反引号", () => {
+    expect(formatToolLine("bash", { command: "echo `x`" })).toBe("[bash] `` echo `x` ``");
+  });
+
+  it("结果代码块、失败前缀与空结果", () => {
+    expect(formatToolResult("12 passed", false)).toBe("```text\n12 passed\n```\n");
+    expect(formatToolResult("boom", true)).toBe("```text\n❌ boom\n```\n");
+    expect(formatToolResult("", false)).toBe("```text\n(no output)\n```\n");
+    expect(formatToolResult("", true)).toBe("```text\n❌ (no output)\n```\n");
+  });
+
+  it("工具结果对象提取 content 文本", () => {
+    const result = {
+      content: [{ type: "text", text: "npm test\n3 passed" }],
+      structuredContent: { output: "ignored" },
+    };
+    expect(formatToolResult(result, false)).toBe("```text\nnpm test\n3 passed\n```\n");
+    const failed = { content: [{ type: "text", text: "exit code 1" }], structuredContent: { output: "ignored" } };
+    expect(formatToolResult(failed, true)).toBe("```text\n❌ exit code 1\n```\n");
+    expect(formatToolResult({ structuredContent: "fallback" }, false)).toBe("```text\nfallback\n```\n");
+    expect(formatToolResult({ structuredContent: { output: "bash output" } }, false)).toBe(
+      "```text\nbash output\n```\n",
     );
   });
 
-  it("无失败时省略失败段", () => {
-    const tools = new Map<string, { count: number; errors: number }>([
-      ["bash", { count: 86, errors: 0 }],
-      ["read", { count: 12, errors: 0 }],
-    ]);
-    expect(formatHeartbeat(65 * MIN, tools)).toBe("⏱ Running for 65 minutes · [🔧] [86] bash · [🔧] [12] read");
+  it("结果含三反引号时自动加长围栏", () => {
+    expect(formatToolResult("a\n```\nb", false)).toBe("````text\na\n```\nb\n````\n");
+  });
+
+  it("结果按行与字符截断", () => {
+    const manyLines = Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n");
+    const result = formatToolResult(manyLines, false);
+    expect(result).toContain("line 7");
+    expect(result).not.toContain("line 8");
+    expect(result).toContain("…");
   });
 });
 
-describe("RunFeedback 气泡切分", () => {
-  it("同一消息多次快照只发送一份全文，单条消息只封一个气泡", async () => {
+describe("RunFeedback 直推", () => {
+  it("思考、工具、结果、文本按块切成多个气泡", async () => {
     const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-1");
-    rf.onAgentStart();
-    await rf.onAssistantDelta("前半", "");
-    await rf.flushWindow();
-    await rf.onAssistantDelta("前半后半", "");
-    await rf.flushWindow();
+    startRun(rf);
+    rf.onAssistantDelta("", "think 1\nthink 2");
+    rf.onToolStart("bash", { command: "npm test" });
+    rf.onToolEnd("bash", false, "12 passed");
+    rf.onAssistantDelta("answer", "");
+    expect(await rf.onAssistantFinal("answer", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual([
+      "> think 1\n> think 2\n",
+      "[bash] `npm test`\n```text\n12 passed\n```\n",
+      "answer",
+    ]);
+    expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(3);
+    expect(new Set(calls.map((call) => call.stream_msg_id).filter(Boolean)).size).toBe(3);
+    expect(calls.at(-1)?.input_state).toBe(DONE_STATE);
+  });
+
+  it("思考快照按差量追加，不重复", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", "a");
+    rf.onAssistantDelta("", "ab");
+    rf.onAssistantDelta("", "abc");
+    await rf.onAssistantFinal("", false);
+    await rf.onAgentEnd();
+    expect(streamContent(calls)).toBe("> abc\n");
+  });
+
+  it("文本快照只发送一次全文", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("前半", "");
+    rf.onAssistantDelta("前半后半", "");
     expect(await rf.onAssistantFinal("前半后半", false)).toBe(true);
     await rf.onAgentEnd();
-
-    const generating = calls
-      .filter((call) => call.input_state !== DONE_STATE)
-      .map((call) => call.content_raw as string)
-      .join("");
-    expect(generating).toBe("前半后半");
-    expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(1);
-    expect(calls.at(-1)?.input_state).toBe(DONE_STATE);
+    expect(streamContent(calls)).toBe("前半后半");
   });
 
-  it("两条文本消息各成一个气泡，内容不重复", async () => {
+  it("保留纯空白的文本差量", async () => {
     const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-2");
-    rf.onAgentStart();
-    await rf.onAssistantDelta("第一条", "");
-    await rf.onAssistantFinal("第一条", false);
-    await rf.onAssistantDelta("第二条", "");
-    await rf.onAssistantFinal("第二条", false);
+    startRun(rf);
+    rf.onAssistantDelta("a", "");
+    rf.onAssistantDelta("a ", "");
+    rf.onAssistantDelta("a b", "");
+    expect(await rf.onAssistantFinal("a b", false)).toBe(true);
     await rf.onAgentEnd();
-
-    expect(collectBubbles(calls)).toEqual(["第一条", "第二条"]);
-    expect(calls.at(-1)?.input_state).toBe(DONE_STATE);
+    expect(streamContent(calls)).toBe("a b");
   });
 
-  it("活动气泡与文本气泡相互独立，文本之后的工具另起活动气泡", async () => {
+  it("保留代码块内的换行", async () => {
     const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-before-text");
-    rf.onAgentStart();
-    rf.onToolStart("bash");
-    await rf.flushWindow();
-    rf.onAssistantDelta("中间消息", "");
-    await rf.flushWindow();
-    await rf.onAssistantFinal("中间消息", false);
-    rf.onToolStart("write");
-    await rf.flushWindow();
+    startRun(rf);
+    rf.onAssistantDelta("```text\na", "");
+    rf.onAssistantDelta("```text\na\n", "");
+    rf.onAssistantDelta("```text\na\nb\n```", "");
+    expect(await rf.onAssistantFinal("```text\na\nb\n```", false)).toBe(true);
     await rf.onAgentEnd();
-
-    const bubbles = collectBubbles(calls);
-    expect(bubbles).toHaveLength(3);
-    expect(bubbles[0]).toBe("[🔧] [1] bash");
-    expect(bubbles[1]).toBe("中间消息");
-    expect(bubbles[2]).toBe("[🔧] [1] write");
+    expect(streamContent(calls)).toBe("```text\na\nb\n```");
   });
 
-  it("活动→文本交错时每个文本与每段活动各成独立气泡", async () => {
+  it("逐字符快照不丢空格与换行", async () => {
+    const final = "```text\na\nb\n```\n\n**标题**\n\n- 第一项\n- 第二项\n";
     const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-interleaved");
-    rf.onAgentStart();
-    rf.onToolStart("write");
-    await rf.flushWindow();
-    rf.onAssistantDelta("消息一", "");
-    await rf.flushWindow();
-    await rf.onAssistantFinal("消息一", false);
-    rf.onToolStart("read");
-    await rf.flushWindow();
-    rf.onAssistantDelta("消息二", "");
-    await rf.flushWindow();
-    await rf.onAssistantFinal("消息二", false);
-    rf.onToolStart("bash");
-    await rf.flushWindow();
-    rf.onAssistantDelta("最终回复", "");
-    await rf.flushWindow();
-    await rf.onAssistantFinal("最终回复", false);
+    startRun(rf);
+    for (let i = 1; i <= final.length; i++) {
+      rf.onAssistantDelta(final.slice(0, i), "");
+    }
+    expect(await rf.onAssistantFinal(final, false)).toBe(true);
     await rf.onAgentEnd();
-
-    const bubbles = collectBubbles(calls);
-    expect(bubbles).toHaveLength(6);
-    expect(bubbles[1]).toBe("消息一");
-    expect(bubbles[3]).toBe("消息二");
-    expect(bubbles[5]).toBe("最终回复");
-    expect(bubbles[0]).toBe("[🔧] [1] write");
-    expect(bubbles[2]).toBe("[🔧] [1] read");
-    expect(bubbles[4]).toBe("[🔧] [1] bash");
+    expect(streamContent(calls)).toBe(final);
   });
 
-  it("错误消息不走流接管，但会封口气泡", async () => {
+  it("思考消息结束后文本另起气泡", async () => {
     const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-3");
-    rf.onAgentStart();
-    await rf.onAssistantDelta("部分输出", "");
-    await rf.flushWindow();
-    expect(await rf.onAssistantFinal("部分输出", true)).toBe(false);
-    await rf.onAgentEnd();
-    expect(calls.at(-1)?.input_state).toBe(DONE_STATE);
-  });
-
-  it("同一条消息定稿时的残余增量不切泡", async () => {
-    const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-4");
-    rf.onAgentStart();
-    await rf.onAssistantDelta("先行", "");
-    await rf.flushWindow();
-    await rf.onAssistantFinal("先行后补", false);
-    await rf.onAgentEnd();
-    expect(collectBubbles(calls)).toEqual(["先行后补"]);
-  });
-
-  it("无文本 assistant 消息不吞后续行组，且严格按事件顺序", async () => {
-    const { rf, calls } = makeRunHarness();
-    rf.markQQTrigger("openid-u", "msg-textless");
-    rf.onAgentStart();
-    // Message 1: thinking + write (no text)
-    rf.onAssistantDelta("", "思考 1");
+    startRun(rf);
+    rf.onAssistantDelta("", "think");
     await rf.onAssistantFinal("", false);
-    rf.onToolStart("write");
-    await rf.flushWindow();
-    // Message 2: thinking + text + read
-    rf.onAssistantDelta("文件已写好", "思考 2");
-    await rf.onAssistantFinal("文件已写好", false);
-    rf.onToolStart("read");
-    // Do not flush yet: simulate read and the next message's thinking
-    // landing in the same 10s window.
-    // Message 3: thinking + bash (no text)
-    rf.onAssistantDelta("", "思考 3");
-    await rf.onAssistantFinal("", false);
-    rf.onToolStart("bash");
-    await rf.flushWindow();
-    // Message 4: final text
-    rf.onAssistantDelta("最终回复", "");
-    await rf.onAssistantFinal("最终回复", false);
+    rf.onAssistantDelta("answer", "");
+    await rf.onAssistantFinal("answer", false);
     await rf.onAgentEnd();
-
-    const bubbles = collectBubbles(calls);
-    expect(bubbles).toHaveLength(4);
-    expect((bubbles[0].match(/Thinking/g) ?? []).length).toBe(2);
-    expect(bubbles[0]).toContain("[🔧] [1] write");
-    expect(bubbles[1]).toBe("文件已写好");
-    const readAt = bubbles[2].indexOf("[🔧] [1] read");
-    const thinkingAt = bubbles[2].indexOf("[💭] Thinking...");
-    const bashAt = bubbles[2].indexOf("[🔧] [1] bash");
-    expect(readAt).toBeGreaterThanOrEqual(0);
-    expect(thinkingAt).toBeGreaterThan(readAt);
-    expect(bashAt).toBeGreaterThan(thinkingAt);
-    expect(bubbles[3]).toBe("最终回复");
+    expect(bubbleContents(calls)).toEqual(["> think\n", "answer"]);
   });
 
-  it("诊断：每个新建流式气泡只计数一次", async () => {
-    const { rf, budget } = makeRunHarness();
-    budget.observeInbound("openid-u", "msg-count");
-    rf.markQQTrigger("openid-u", "msg-count");
-    rf.onAgentStart();
-    rf.onToolStart("bash");
-    await rf.flushWindow();
-    rf.onAssistantDelta("hi", "");
-    await rf.flushWindow();
-    await rf.onAssistantFinal("hi", false);
-    rf.onToolStart("read");
-    await rf.flushWindow();
+  it("新的最终文本消息另起气泡", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("one", "");
+    await rf.onAssistantFinal("one", false);
+    rf.onAssistantDelta("two", "");
+    await rf.onAssistantFinal("two", false);
     await rf.onAgentEnd();
 
-    const snapshot = budget.snapshot();
-    expect(snapshot.streamBubbles).toBe(3);
-    expect(snapshot.streamBubblesTotal).toBe(3);
+    expect(bubbleContents(calls)).toEqual(["one\n", "two"]);
+  });
+
+  it("thinkingRelay 关闭时不输出思考块", async () => {
+    const { rf, calls } = makeRunHarness({ thinkingRelay: false });
+    startRun(rf);
+    rf.onAssistantDelta("answer", "secret");
+    expect(await rf.onAssistantFinal("answer", false)).toBe(true);
+    await rf.onAgentEnd();
+    expect(streamContent(calls)).toBe("answer");
+  });
+
+  it("超过 12k 时在换行边界主动切泡", async () => {
+    const { rf, calls, budget } = makeRunHarness();
+    startRun(rf);
+    const chunk = `${"x".repeat(1000)}\n\n`;
+    let snapshot = "";
+    for (let i = 0; i < 13; i++) {
+      snapshot += chunk;
+      rf.onAssistantDelta("", snapshot);
+    }
+    rf.onAssistantDelta("done", "");
+    expect(await rf.onAssistantFinal("done", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    const expectedThinking = "> " + "x".repeat(1000) + "\n>\n";
+    expect(bubbleContents(calls)).toEqual([expectedThinking.repeat(12), expectedThinking, "done"]);
+    expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(3);
+    expect(new Set(calls.map((call) => call.stream_msg_id).filter(Boolean)).size).toBe(3);
+    expect(budget.snapshot().streamBubblesTotal).toBe(3);
+  });
+
+  it("思考代码块未闭合时在工具前补闭合围栏", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", "```\ncode");
+    rf.onToolStart("bash", { command: "echo" });
+    rf.onToolEnd("bash", false, "ok");
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual(["> ```\n> code\n> ```\n", "[bash] `echo`\n```text\nok\n```\n"]);
+  });
+
+  it("工具调用与结果不拆泡", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", `${"z".repeat(11900)}\n\n`);
+    rf.onToolStart("bash", { command: `echo ${"y".repeat(180)}` });
+    rf.onToolEnd("bash", false, "ok");
+    await rf.onAgentEnd();
+
+    expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(2);
+    expect(bubbleContents(calls)[1]).toContain("[bash] `echo");
+    expect(bubbleContents(calls)[1]).toContain("ok");
+  });
+
+  it("超过 12k 时在工具前切泡", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", `${"q".repeat(12000)}\n\n`);
+    rf.onToolStart("bash", { command: "echo" });
+    rf.onToolEnd("bash", false, "ok");
+    await rf.onAgentEnd();
+
+    expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(2);
+    expect(bubbleContents(calls).at(-1)).toContain("[bash] `echo`");
+  });
+
+  it("顺序工具调用各自一个气泡", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "one" });
+    rf.onToolEnd("bash", false, "1");
+    rf.onToolStart("read", { path: "two" });
+    rf.onToolEnd("read", false, "2");
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual(["[bash] `one`\n```text\n1\n```\n", "[read] `two`\n```text\n2\n```\n"]);
+  });
+
+  it("并行工具在同一气泡内按完成顺序输出结果", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "one" });
+    rf.onToolStart("read", { path: "two" });
+    rf.onToolEnd("read", false, "2");
+    rf.onToolEnd("bash", false, "1");
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual(["[bash] `one`\n[read] `two`\n```text\n2\n```\n```text\n1\n```\n"]);
+  });
+
+  it("工具行内联反引号不触发围栏", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "echo ```x```" });
+    rf.onToolEnd("bash", false, "ok");
+    rf.onAssistantDelta("", "after");
+    await rf.onAgentEnd();
+
+    expect(streamContent(calls).match(/^```/gm)).toHaveLength(2);
+  });
+
+  it("空文本结果不输出 wrapper JSON", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("read", { path: "empty.txt" });
+    rf.onToolEnd("read", false, { content: [{ type: "text", text: "" }] });
+    await rf.onAgentEnd();
+
+    expect(streamContent(calls)).toContain("```text\n(no output)\n```");
+  });
+
+  it("工具失败结果内联 ❌", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "false" });
+    rf.onToolEnd("bash", true, "exit 1");
+    await rf.onAgentEnd();
+    expect(streamContent(calls)).toBe("[bash] `false`\n```text\n❌ exit 1\n```\n");
+  });
+
+  it("首次失败后同泡续写，index 与缓冲保留", async () => {
+    const { rf, calls, attempts, warns } = makeRunHarness({ failNext: 1 });
+    startRun(rf);
+    rf.onAssistantDelta("hello", "");
+    expect(await rf.onAssistantFinal("hello", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    expect(streamContent(calls)).toBe("hello");
+    expect(attempts).toHaveLength(3);
+    expect(attempts.map((attempt) => attempt.index)).toEqual([0, 1, 2]);
+    expect(calls[0]?.index).toBe(1);
+    expect(calls[0]?.stream_msg_id).toBeUndefined();
+    expect(warns).toEqual([]);
+  });
+
+  it("续写次数耗尽后熔断，最终文本不接管", async () => {
+    const { rf, calls, warns } = makeRunHarness({ alwaysFail: true });
+    startRun(rf);
+    rf.onAssistantDelta("hello", "");
+    expect(await rf.onAssistantFinal("hello", false)).toBe(false);
+    await rf.onAgentEnd();
+
+    expect(calls).toEqual([]);
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toContain("Stream unavailable");
+  });
+
+  it("无 msgId 时放弃流式，交给消息路径", async () => {
+    const { rf } = makeRunHarness();
+    rf.onAgentStart();
+    expect(rf.isQQRunActive()).toBe(false);
+    rf.onAssistantDelta("hello", "");
+    expect(await rf.onAssistantFinal("hello", false)).toBe(false);
+    await rf.onAgentEnd();
   });
 });
+
 describe("QQ run state", () => {
   it("is active only for QQ-triggered runs", async () => {
     const { rf } = makeRunHarness();

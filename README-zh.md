@@ -67,15 +67,15 @@ Summarize this file.
 
 在 pi 终端执行：
 
-| 命令                 | 说明                                   |
-| -------------------- | -------------------------------------- |
-| `/qq-login`          | 扫码登录并绑定扫码的 QQ 用户           |
-| `/qq-status`         | 显示登录、连接、模型、上下文和绑定用户 |
-| `/qq-logout`         | 退出登录并清除内存中的凭据             |
-| `/qq-test-budget`    | 显示被动回复额度和流式气泡诊断信息     |
-| `/qq-test-md [text]` | 发送 Markdown 测试消息                 |
-| `/qq-test-stream`    | 运行流式时间线诊断                     |
-| `/qq-new`            | 重置当前会话（由 QQ 侧 `/new` 调用）   |
+| 命令                 | 说明                                    |
+| -------------------- | --------------------------------------- |
+| `/qq-login`          | 扫码登录并绑定扫码的 QQ 用户            |
+| `/qq-status`         | 显示登录、连接、模型、上下文和绑定用户  |
+| `/qq-logout`         | 退出登录并清除内存中的凭据              |
+| `/qq-test-budget`    | 显示被动回复额度和流式气泡诊断信息      |
+| `/qq-test-md [text]` | 发送 Markdown 测试消息                  |
+| `/qq-test-stream`    | 运行流式时间线诊断（`resume` 验证续写） |
+| `/qq-new`            | 重置当前会话（由 QQ 侧 `/new` 调用）    |
 
 QQ 侧命令：
 
@@ -93,24 +93,18 @@ QQ 侧命令：
 
 ```json
 {
-  "markdownSupport": false,
-  "streamFlushMs": 10000,
+  "thinkingRelay": true,
   "logLevel": "silent"
 }
 ```
 
-| 配置项                 | 默认值     | 说明                                                   |
-| ---------------------- | ---------- | ------------------------------------------------------ |
-| `streamAssistant`      | `true`     | 流式回传 assistant 回复                                |
-| `markdownSupport`      | `false`    | 机器人有 QQ Markdown 权限；设为 `true` 时透传 Markdown |
-| `deliverAs`            | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
-| `imageMaxSize`         | `10485760` | QQ 图片下载上限（字节，10MB）                          |
-| `fileMaxSize`          | `52428800` | QQ 文件下载上限（字节，50MB）                          |
-| `heartbeatMinutes`     | `10`       | 长任务心跳间隔；`0` 表示关闭                           |
-| `heartbeatMaxMessages` | `3`        | 每次运行的消息心跳上限                                 |
-| `streamRelay`          | `true`     | 使用 append 模式流式气泡                               |
-| `streamFlushMs`        | `10000`    | 流式汇总帧间隔（毫秒，最小 300）                       |
-| `logLevel`             | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
+| 配置项          | 默认值     | 说明                                                   |
+| --------------- | ---------- | ------------------------------------------------------ |
+| `thinkingRelay` | `true`     | 以引用块回传思考内容；`false` 时隐藏                   |
+| `deliverAs`     | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
+| `imageMaxSize`  | `10485760` | QQ 图片下载上限（字节，10MB）                          |
+| `fileMaxSize`   | `52428800` | QQ 文件下载上限（字节，50MB）                          |
+| `logLevel`      | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
 
 启用日志后，日志写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。旧配置 `debug: true` 会映射为 `logLevel: "debug"`。
 

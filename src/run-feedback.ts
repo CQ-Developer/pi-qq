@@ -1,121 +1,174 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
-import { AppendStream } from "./append-stream";
-import { sendReply, type ReplyChannel } from "./outbound";
+import { AppendStream, type AppendStreamCheckpoint } from "./append-stream";
 import type { ReplyBudget } from "./reply-budget";
 import { log } from "./logger";
-
-/**
- * F7 long-task feedback: run-level state machine (summary frames + text bubbles).
- *
- * Scenario: user_input → thinking/tools (10–60 minutes) → assistant message, n turns.
- *
- * Bubble rules: **assistant text and thinking/tool summaries use separate bubbles.**
- * Each text message (streaming increments of one assistant message) owns a text
- * bubble; thinking/tool line groups go to an activity bubble. The first text delta
- * closes the current activity bubble; a line group closes the current text bubble.
- * The final reply is its own text bubble. Frames are sent every `streamFlushMs`
- * (default 10000ms):
- *
- *   Activity: [💭] Thinking... / [🔧] [2] bash (event order)
- *   Text: message text (streamed increments, rendered as Markdown)
- *
- * Any failed frame discards the bubble; unsent text falls back to the message path.
- */
-
-export interface ToolStat {
-  count: number;
-  errors: number;
-}
 
 export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;
   budget: ReplyBudget;
-  boundOpenid: () => string | undefined;
-  getHeartbeatMinutes: () => number;
-  getHeartbeatMaxMessages: () => number;
-  /** Stream summary frame interval in ms (minimum 300). */
-  getStreamFlushMs: () => number;
-  getStreamRelay: () => boolean;
-  makeChannel: () => ReplyChannel;
+  getThinkingRelay: () => boolean;
   onWarn: (msg: string) => void;
 }
 
-interface ToolStat2 {
-  count: number;
-  errors: number;
-}
-
-/** Current bubble: one stream message; kind selects text or activity rows. */
-interface Bubble {
-  stream: AppendStream;
-  kind: "activity" | "text";
-}
-
-type WindowLine = { kind: "thinking" } | { kind: "tool"; name: string; count: number };
+type BlockKind = "none" | "thinking" | "tool" | "text";
 
 interface RunState {
   startedAt: number;
   openid: string;
   msgId?: string;
-  /** Total tool counts (for the heartbeat line). */
-  tools: Map<string, ToolStat2>;
-  /** Line groups in this window, in event order (cleared after flush). */
-  winLines: WindowLine[];
-  /** Thinking marker for the current message (reset per message). */
-  thinkingMarked: boolean;
-  /** Current streaming text snapshot (updated by message_update). */
+  thinkingSentLen: number;
+  thinkingAtLineStart: boolean;
   snapshotText: string;
-  /** Accumulated finalized assistant text. */
   finalizedText: string;
-  /** Length of result text already sent (delta baseline across bubbles). */
   resultSentLen: number;
-  /** Previous text message finalized: close the current text bubble on the next text delta. */
-  startNewBubble: boolean;
-  /** Current bubble (null = create lazily). */
-  cur: Bubble | null;
-  /** Timestamp of the last successful append (for liveness). */
-  lastAppendAt: number;
+  lastKind: BlockKind;
+  cur: AppendStream | null;
+  pendingResume?: AppendStreamCheckpoint;
+  streamDead: boolean;
+  resumeAttempts: number;
+  pushedAny: boolean;
+  bubbleChars: number;
+  fenceOpen: boolean;
+  fenceLen: number;
+  fenceQuoted: boolean;
+  lastChar: string;
+  toolOpen: boolean;
+  toolActive: number;
+  blockClosed: boolean;
   typingTimer?: ReturnType<typeof setInterval>;
-  flushTimer?: ReturnType<typeof setInterval>;
-  heartbeatTimer?: ReturnType<typeof setInterval>;
-  messageHeartbeats: number;
 }
 
-/** Tool count line: `[🔧] [n] name`. */
-function formatToolCount(name: string, count: number): string {
-  return `[🔧] [${count}] ${name}`;
+const TYPING_INTERVAL_MS = 50_000;
+const PENDING_TTL_MS = 15_000;
+const MAX_RESUME_ATTEMPTS = 2;
+const MAX_BUBBLE_CHARS = 12_000;
+const ARG_MAX_CHARS = 200;
+const RESULT_MAX_CHARS = 600;
+const RESULT_MAX_LINES = 8;
+const ARG_KEYS = ["command", "path", "file_path", "filename", "pattern", "query", "url"];
+
+function inlineCode(text: string): string {
+  const runs = text.match(/`+/g) ?? [];
+  const ticks = "`".repeat(Math.max(1, ...runs.map((run) => run.length + 1)));
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${ticks}${pad}${text}${pad}${ticks}`;
 }
 
-/** Heartbeat text: tool totals and elapsed time only (features-v1.md decision #3). */
-export function formatHeartbeat(elapsedMs: number, tools: Map<string, ToolStat2>): string {
-  const minutes = Math.floor(elapsedMs / 60_000);
-  const elapsedText = minutes < 1 ? "less than 1 minute" : `${minutes} minute${minutes === 1 ? "" : "s"}`;
-  if (tools.size === 0) return `⏱ Running for ${elapsedText} (no tool calls yet)`;
-  const parts = [...tools.entries()].map(([name, s]) => formatToolCount(name, s.count));
-  const errors = [...tools.values()].reduce((n, s) => n + s.errors, 0);
-  const suffix = errors > 0 ? ` · ${errors} failed` : "";
-  return `⏱ Running for ${elapsedText} · ${parts.join(" · ")}${suffix}`;
+function truncateText(text: string, maxChars: number, maxLines: number): string {
+  let out = text;
+  let truncated = false;
+  const lines = out.split("\n");
+  if (lines.length > maxLines) {
+    out = lines.slice(0, maxLines).join("\n");
+    truncated = true;
+  }
+  if (out.length > maxChars) {
+    out = out.slice(0, maxChars);
+    truncated = true;
+  }
+  return truncated ? `${out}…` : out;
 }
 
-const TYPING_INTERVAL_MS = 50_000; // Platform typing window ~60s; renew early
-const PENDING_TTL_MS = 15_000; // QQ trigger TTL (older means a local run)
+function primaryArg(args: unknown): string {
+  let value: string | undefined;
+  if (typeof args === "string") {
+    value = args;
+  } else if (args && typeof args === "object") {
+    const record = args as Record<string, unknown>;
+    for (const key of ARG_KEYS) {
+      const candidate = record[key];
+      if (typeof candidate === "string" && candidate) {
+        value = candidate;
+        break;
+      }
+    }
+    if (!value) {
+      try {
+        value = JSON.stringify(args);
+      } catch {
+        value = String(args);
+      }
+    }
+  } else if (args !== undefined && args !== null) {
+    value = String(args);
+  }
+  const normalized = (value ?? "").replace(/\s+/g, " ").trim();
+  return normalized.length > ARG_MAX_CHARS ? `${normalized.slice(0, ARG_MAX_CHARS)}…` : normalized;
+}
+
+export function formatToolLine(name: string, args: unknown): string {
+  const primary = primaryArg(args);
+  return primary ? `[${name}] ${inlineCode(primary)}` : `[${name}]`;
+}
+
+function resultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (!result || typeof result !== "object") return result === undefined || result === null ? "" : String(result);
+  const record = result as Record<string, unknown>;
+  const structured = record.structuredContent;
+  if (Array.isArray(record.content)) {
+    const parts = record.content
+      .filter(
+        (block): block is { type: "text"; text: string } =>
+          !!block &&
+          typeof block === "object" &&
+          (block as Record<string, unknown>).type === "text" &&
+          typeof (block as Record<string, unknown>).text === "string",
+      )
+      .map((block) => block.text);
+    if (parts.some((part) => part.trim())) return parts.join("\n");
+    if (!structured && parts.length > 0) return "";
+  }
+  if (typeof structured === "string") return structured;
+  if (structured && typeof structured === "object") {
+    const output = (structured as Record<string, unknown>).output;
+    if (typeof output === "string") return output;
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return String(result);
+  }
+}
+
+export function formatToolResult(result: unknown, isError: boolean): string {
+  let text = resultText(result);
+  text = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+  if (!text) text = "(no output)";
+  text = truncateText(text, RESULT_MAX_CHARS, RESULT_MAX_LINES);
+  if (isError) text = `❌ ${text}`;
+  const runs = text.match(/`+/g) ?? [];
+  const fence = "`".repeat(Math.max(3, ...runs.map((run) => run.length + 1)));
+  return `${fence}text\n${text}\n${fence}\n`;
+}
+
+function quoteThinking(delta: string, run: RunState): string {
+  let out = "";
+  for (const ch of delta) {
+    if (run.thinkingAtLineStart) {
+      out += ch === "\n" ? ">" : "> ";
+      run.thinkingAtLineStart = false;
+    }
+    out += ch;
+    if (ch === "\n") run.thinkingAtLineStart = true;
+  }
+  return out;
+}
 
 export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
   private pending: { openid: string; msgId: string; at: number } | null = null;
   private run: RunState | null = null;
-  private flushQueue: Promise<boolean> = Promise.resolve(true);
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(deps: RunFeedbackDeps) {
     this.deps = deps;
   }
 
-  /** Called by inbound before injecting: mark the next run as QQ-triggered. */
   markQQTrigger(openid: string, msgId: string): void {
     this.pending = { openid, msgId, at: Date.now() };
   }
 
-  /** Whether a QQ-triggered run is active. Local pi runs have no RunFeedback state. */
   isQQRunActive(): boolean {
     return this.run !== null;
   }
@@ -123,287 +176,365 @@ export class RunFeedback {
   onAgentStart(): void {
     const pending = this.pending;
     this.pending = null;
-    if (!pending || Date.now() - pending.at > PENDING_TTL_MS) return; // Not QQ-triggered
+    if (!pending || Date.now() - pending.at > PENDING_TTL_MS) return;
     const bot = this.deps.bot();
     if (!bot) return;
 
-    const hbMinutes = this.deps.getHeartbeatMinutes();
     const run: RunState = {
       startedAt: Date.now(),
       openid: pending.openid,
       msgId: pending.msgId,
-      tools: new Map(),
-      winLines: [],
-      thinkingMarked: false,
+      thinkingSentLen: 0,
+      thinkingAtLineStart: true,
       snapshotText: "",
       finalizedText: "",
       resultSentLen: 0,
-      startNewBubble: false,
+      lastKind: "none",
       cur: null,
-      lastAppendAt: Date.now(),
-      messageHeartbeats: 0,
+      streamDead: false,
+      resumeAttempts: 0,
+      pushedAny: false,
+      bubbleChars: 0,
+      fenceOpen: false,
+      fenceLen: 0,
+      fenceQuoted: false,
+      lastChar: "",
+      toolOpen: false,
+      toolActive: 0,
+      blockClosed: false,
     };
     this.run = run;
+    this.queue = Promise.resolve();
     log.debug("run", "started", { msgId: run.msgId?.slice(0, 8) ?? "?" });
 
-    // Typing keepalive: start immediately, renew every 50s (zero quota).
     const keepTyping = () => {
       void bot.sendTyping({ scope: "c2c", targetId: run.openid }, 60).catch(() => {});
     };
     keepTyping();
     run.typingTimer = setInterval(keepTyping, TYPING_INTERVAL_MS);
-
-    // Fixed-interval summary frames (configurable in ms).
-    run.flushTimer = setInterval(
-      () => {
-        void this.flushWindow(run);
-      },
-      Math.max(this.deps.getStreamFlushMs(), 300),
-    );
-
-    // Heartbeat fallback (liveness is covered by empty-window rows).
-    if (hbMinutes > 0) {
-      run.heartbeatTimer = setInterval(() => {
-        void this.beat();
-      }, hbMinutes * 60_000);
-    }
   }
 
-  /** Tool start: record in event order; merge consecutive same-tool calls. */
-  onToolStart(toolName: string): void {
+  onToolStart(toolName: string, args?: unknown): void {
     const run = this.run;
-    if (!run) return;
-    const last = run.winLines.at(-1);
-    if (last?.kind === "tool" && last.name === toolName) {
-      last.count += 1;
-    } else {
-      run.winLines.push({ kind: "tool", name: toolName, count: 1 });
-    }
+    if (!run || run.streamDead) return;
+    const newGroup = run.toolActive === 0;
+    const newBubble = newGroup && (run.lastKind !== "none" || run.blockClosed);
+    run.toolActive += 1;
+    if (newGroup) run.toolOpen = true;
+    const prefix = this.beginBlock(run, "tool", newBubble);
+    this.push(run, `${prefix}${formatToolLine(toolName, args)}\n`, prefix.length > 0 || newBubble, false, newBubble);
   }
 
-  /** Tool end: update totals for the heartbeat line. */
-  onToolEnd(toolName: string, isError: boolean): void {
+  onToolEnd(toolName: string, isError: boolean, result?: unknown): void {
     const run = this.run;
-    if (!run) return;
-    const stat = run.tools.get(toolName) ?? { count: 0, errors: 0 };
-    stat.count += 1;
-    if (isError) stat.errors += 1;
-    run.tools.set(toolName, stat);
+    if (!run || run.streamDead) return;
+    const endTool = run.toolActive <= 1;
+    run.toolActive = Math.max(0, run.toolActive - 1);
+    const prefix = this.beginBlock(run, "tool");
+    this.push(run, `${prefix}${formatToolResult(result, isError)}`, prefix.length > 0, endTool);
   }
 
-  /** Assistant snapshot: update the window; frames are sent by flush. */
-  async onAssistantDelta(snapshotText: string, snapshotThinking: string): Promise<void> {
+  onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
     const run = this.run;
-    if (!run) return;
-    if (snapshotThinking && !run.thinkingMarked) {
-      run.thinkingMarked = true;
-      run.winLines.push({ kind: "thinking" });
+    if (!run || run.streamDead) return;
+
+    if (snapshotThinking.length > run.thinkingSentLen) {
+      const delta = snapshotThinking.slice(run.thinkingSentLen);
+      run.thinkingSentLen = snapshotThinking.length;
+      if (this.deps.getThinkingRelay()) {
+        const newBubble = this.startsNewBlock(run, "thinking");
+        const prefix = this.beginBlock(run, "thinking", newBubble);
+        this.push(run, `${prefix}${quoteThinking(delta, run)}`, prefix.length > 0 || newBubble, false, newBubble);
+      }
     }
-    run.snapshotText = snapshotText;
+
+    const full = [run.finalizedText, snapshotText].filter((part) => part.trim()).join("\n\n");
+    const delta = full.slice(run.resultSentLen);
+    if (!delta) return;
+    run.resultSentLen = full.length;
+    const newBubble = this.startsNewBlock(run, "text");
+    const prefix = this.beginBlock(run, "text", newBubble);
+    this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
   }
 
-  /**
-   * Finalize an assistant message (message_end).
-   * Returns true when the stream took over (caller skips sendReply); false falls
-   * back to the message path.
-   */
   async onAssistantFinal(text: string, isError: boolean): Promise<boolean> {
     const run = this.run;
     if (!run) return false;
 
-    if (isError) {
-      // Seal the current bubble even on error; the caller sends the error message.
-      await this.closeBubble(run);
-      return false;
-    }
-
-    run.finalizedText = [run.finalizedText, text].filter((s) => s.trim()).join("\n\n");
+    run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
     run.snapshotText = "";
-    run.thinkingMarked = false; // Reset the thinking marker for the next message
-    if (!this.deps.getStreamRelay()) return false;
+    const delta = run.finalizedText.slice(run.resultSentLen);
+    run.resultSentLen = run.finalizedText.length;
+    if (!isError && text && delta) {
+      const newBubble = this.startsNewBlock(run, "text");
+      const prefix = this.beginBlock(run, "text", newBubble);
+      this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
+    }
+    if (!isError && text) run.blockClosed = true;
 
-    // Flush remaining text first, then set the boundary for the next text message.
-    // Setting it earlier would misclassify leftover deltas as a new message.
-    const handled = await this.flushWindow(run);
-    run.startNewBubble = true;
-    return handled;
+    if (run.lastKind === "thinking" && !run.thinkingAtLineStart) {
+      this.push(run, "\n");
+      run.thinkingAtLineStart = true;
+    }
+    run.thinkingSentLen = 0;
+
+    const ok = await this.flushStream(run);
+    run.finalizedText = "";
+    run.snapshotText = "";
+    run.resultSentLen = 0;
+    if (isError) return false;
+    return ok && run.pushedAny;
   }
 
-  /** Seal the current bubble: flush the window + DONE; re-read cur after flush. */
-  private async sealBubble(run: RunState): Promise<void> {
-    await this.flushWindow(run);
-    await this.closeBubble(run);
-  }
-
-  /** Close the current bubble and send DONE; DONE failure still counts as closed. */
-  private async closeBubble(run: RunState): Promise<void> {
-    const cur = run.cur;
-    if (!cur) return;
-    run.cur = null;
-    try {
-      await cur.stream.done();
-    } catch {}
-  }
-
-  /** Run end: seal the last bubble (flush + DONE) and clear timers. */
   async onAgentEnd(): Promise<void> {
     const run = this.run;
+    if (!run) return;
+    await this.queue;
     this.clearTimers();
     this.run = null;
-    if (run) {
-      log.debug("run", "ended", {
-        msgId: run.msgId?.slice(0, 8) ?? "?",
-        elapsedMs: Date.now() - run.startedAt,
-      });
-      // Do not resend on DONE failure; content was already shown.
-      try {
-        await this.sealBubble(run);
-      } catch {}
+    log.debug("run", "ended", {
+      msgId: run.msgId?.slice(0, 8) ?? "?",
+      elapsedMs: Date.now() - run.startedAt,
+    });
+    if (!run.pushedAny) {
+      run.cur?.dispose();
+      return;
     }
+    const ok = await this.flushStream(run);
+    if (ok && run.cur && !run.streamDead) {
+      try {
+        await run.cur.done();
+      } catch (err) {
+        log.warn("stream", "DONE failed", {
+          msgId: run.msgId?.slice(0, 8) ?? "?",
+          err,
+        });
+      }
+    }
+    run.cur?.dispose();
   }
 
-  /** Cleanup for session_shutdown and other error paths. */
   dispose(): void {
     this.clearTimers();
-    this.run?.cur?.stream.dispose();
-    this.run = null; // A bubble without DONE may stay generating (append mode cannot undo).
+    this.run?.cur?.dispose();
+    this.run = null;
   }
 
-  private clearTimers(): void {
-    const run = this.run;
-    if (!run) return;
-    if (run.typingTimer) clearInterval(run.typingTimer);
-    if (run.flushTimer) clearInterval(run.flushTimer);
-    if (run.heartbeatTimer) clearInterval(run.heartbeatTimer);
-    run.typingTimer = undefined;
-    run.flushTimer = undefined;
-    run.heartbeatTimer = undefined;
-  }
-
-  /**
-   * Write window increments to bubbles: activity rows to activity bubbles, text
-   * to text bubbles. A new text message or line group switches bubbles; later
-   * deltas of the same message do not. A promise chain serializes flushes so
-   * retries cannot interleave frames.
-   */
-  flushWindow(run?: RunState): Promise<boolean> {
-    const p = this.flushQueue.then(() => this.doFlushWindow(run));
-    this.flushQueue = p.catch(() => false);
-    return p;
-  }
-
-  private async doFlushWindow(run?: RunState): Promise<boolean> {
-    const r = run ?? this.run;
-    if (!r) return false;
-    if (!this.deps.getStreamRelay()) return false;
-
-    const full = [r.finalizedText, r.snapshotText].filter((s) => s.trim()).join("\n\n");
-    const textDelta = full.slice(r.resultSentLen);
-    const textVisible = textDelta.trim().length > 0;
-
-    // Line groups (thinking/tool counts) are summarized even without text.
-    const okLines = await this.appendLineGroups(r);
-    if (!okLines) return false;
-
-    // Text gets its own bubble (whitespace-only deltas only advance the baseline).
-    if (textVisible) {
-      const okText = await this.appendText(r, textDelta);
-      if (!okText) return false;
-      // Advance the sent baseline or the next frame will append the same text again.
-      r.resultSentLen = full.length;
-      r.startNewBubble = false;
-    } else if (textDelta) {
-      r.resultSentLen = full.length;
+  private beginBlock(run: RunState, kind: BlockKind, newBubble = false): string {
+    if (newBubble) {
+      run.lastKind = kind;
+      run.blockClosed = false;
+      if (kind === "thinking") run.thinkingAtLineStart = true;
+      return "";
     }
-
-    // Reset the window
-    r.winLines = [];
-    return true;
+    if (run.lastKind === kind) return "";
+    let prefix = "";
+    if (run.lastKind !== "none") {
+      if (run.lastKind === "thinking" && !run.thinkingAtLineStart) prefix += "\n";
+      prefix += run.lastKind === "text" ? "\n\n" : "\n";
+    }
+    run.lastKind = kind;
+    run.blockClosed = false;
+    if (kind === "thinking") run.thinkingAtLineStart = true;
+    return prefix;
   }
 
-  /** Collect window rows in event order (consecutive same tools merged). */
-  private collectWindowLines(r: RunState): string[] {
-    return r.winLines.map((line) =>
-      line.kind === "thinking" ? "[💭] Thinking..." : formatToolCount(line.name, line.count),
-    );
+  private startsNewBlock(run: RunState, kind: BlockKind): boolean {
+    return run.blockClosed || (run.lastKind !== "none" && run.lastKind !== kind);
   }
 
-  /** Append activity rows; rows continue across frames. */
-  private async appendLineGroups(r: RunState, lines?: string[]): Promise<boolean> {
-    const group = lines ?? this.collectWindowLines(r);
-    if (group.length === 0) return true;
-    return this.pushAppend(r, `${group.join("\n")}\n`, "activity");
-  }
-
-  /** Append text: text messages own bubbles. */
-  private async appendText(r: RunState, text: string): Promise<boolean> {
-    // Previous text message finalized: seal it and start a new bubble.
-    if (r.startNewBubble) await this.closeBubble(r);
-    return this.pushAppend(r, text, "text");
-  }
-
-  /** Heartbeat fallback when streaming is unavailable (max N messages per run). */
-  private async beat(): Promise<void> {
-    const run = this.run;
-    if (!run) return;
-    if (this.deps.getStreamRelay()) return;
-
-    if (run.messageHeartbeats >= this.deps.getHeartbeatMaxMessages()) return;
-    const bound = this.deps.boundOpenid();
-    if (!bound) return;
-    const bot = this.deps.bot();
-    if (!bot) return;
-    run.messageHeartbeats += 1;
-    await sendReply(bot, formatHeartbeat(Date.now() - run.startedAt, run.tools), this.deps.makeChannel());
-  }
-
-  /** Append a frame (lazy bubble; close on kind change); discard on failure. */
-  private async pushAppend(run: RunState, delta: string, kind: "activity" | "text"): Promise<boolean> {
-    if (!delta) return true;
-    const bot = this.deps.bot();
-    if (!bot) return false;
+  private async closeOpenFence(run: RunState): Promise<boolean> {
+    if (!run.fenceOpen) return true;
+    const stream = this.ensureStream(run);
+    if (!stream) return false;
+    const ticks = "`".repeat(run.fenceLen);
+    const closing = `\n${run.fenceQuoted ? "> " : ""}${ticks}\n`;
     try {
-      if (run.cur && run.cur.kind !== kind) {
-        await this.closeBubble(run);
-      }
-      if (!run.cur) {
-        if (!run.msgId) return false;
-        run.cur = {
-          stream: new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
-            onError: (err) => this.handleStreamError(run, err),
-            onDebug: (message) => log.debug("stream", message, { msgId: run.msgId?.slice(0, 8) ?? "?" }),
-          }),
-          kind,
-        };
-        this.deps.budget.noteStreamBubble(run.msgId);
-      }
-      await run.cur.stream.append(delta);
-      run.lastAppendAt = Date.now();
+      await stream.append(closing);
+      run.bubbleChars += closing.length;
+      run.lastChar = "\n";
+      run.fenceOpen = false;
+      run.fenceLen = 0;
+      run.fenceQuoted = false;
       return true;
     } catch (err) {
-      this.handleStreamError(run, err as Error);
+      if (run.cur === stream) this.handleStreamError(run, err as Error);
       return false;
     }
   }
 
-  /** Stream is untrusted: discard the bubble and resend unsent text via messages. */
+  private push(run: RunState, text: string, blockBoundary = false, endTool = false, newBubble = false): void {
+    if (!text || run.streamDead) return;
+    void this.enqueue(async () => {
+      if (this.run !== run || run.streamDead) return;
+      if (blockBoundary && !(await this.closeOpenFence(run))) return;
+      if (newBubble && run.cur && run.bubbleChars > 0 && !run.pendingResume) {
+        await this.rotateStream(run);
+        if (this.run !== run || run.streamDead) return;
+      }
+      if (
+        !newBubble &&
+        run.bubbleChars >= MAX_BUBBLE_CHARS &&
+        run.cur &&
+        !run.pendingResume &&
+        !run.fenceOpen &&
+        !run.toolOpen &&
+        (blockBoundary || run.lastChar === "\n")
+      ) {
+        await this.rotateStream(run);
+        if (this.run !== run || run.streamDead) return;
+      }
+      const stream = this.ensureStream(run);
+      if (!stream) return;
+      run.pushedAny = true;
+      try {
+        await stream.append(text);
+        run.bubbleChars += text.length;
+        this.trackFences(run, text);
+        run.lastChar = text.slice(-1);
+        if (endTool) run.toolOpen = false;
+      } catch (err) {
+        if (run.cur === stream) this.handleStreamError(run, err as Error);
+      }
+    });
+  }
+
+  private trackFences(run: RunState, text: string): void {
+    const previousChar = run.lastChar;
+    for (const match of text.matchAll(/(?:^|\n)[ \t>]*(`{3,})/g)) {
+      if (match.index === 0 && previousChar && previousChar !== "\n") continue;
+      const fenceLen = match[1].length;
+      if (!run.fenceOpen) {
+        run.fenceOpen = true;
+        run.fenceLen = fenceLen;
+        run.fenceQuoted = match[0].includes(">");
+      } else if (fenceLen >= run.fenceLen) {
+        run.fenceOpen = false;
+        run.fenceLen = 0;
+        run.fenceQuoted = false;
+      }
+    }
+  }
+
+  private async rotateStream(run: RunState): Promise<void> {
+    const stream = run.cur;
+    if (!stream) return;
+    try {
+      if (run.lastChar && run.lastChar !== "\n") {
+        await stream.append("\n");
+        run.bubbleChars += 1;
+        run.lastChar = "\n";
+        run.thinkingAtLineStart = true;
+      }
+      await stream.flush();
+      await stream.done();
+    } catch (err) {
+      log.warn("stream", "bubble split failed", {
+        msgId: run.msgId?.slice(0, 8) ?? "?",
+        err,
+      });
+      if (run.cur === stream) this.handleStreamError(run, err as Error);
+      return;
+    }
+    stream.dispose();
+    if (run.cur === stream) run.cur = null;
+    run.bubbleChars = 0;
+    run.fenceOpen = false;
+    run.fenceLen = 0;
+    run.fenceQuoted = false;
+    run.lastChar = "";
+    run.thinkingAtLineStart = true;
+    log.debug("stream", "bubble split", {
+      msgId: run.msgId?.slice(0, 8) ?? "?",
+      elapsedMs: Date.now() - run.startedAt,
+    });
+  }
+
+  private enqueue(op: () => Promise<void>): Promise<void> {
+    const next = this.queue.then(op, op);
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  private ensureStream(run: RunState): AppendStream | null {
+    if (run.streamDead) return null;
+    if (run.cur) return run.cur;
+    const bot = this.deps.bot();
+    if (!bot || !run.msgId) return null;
+    const resume = run.pendingResume;
+    run.pendingResume = undefined;
+    const stream = new AppendStream(bot.messageApi, bot.getCredentials(), run.openid, run.msgId, {
+      resume,
+      onError: (err) => {
+        void this.enqueue(async () => {
+          if (this.run !== run) return;
+          if (run.cur === stream) this.handleStreamError(run, err);
+        });
+      },
+    });
+    run.cur = stream;
+    if (!resume) this.deps.budget.noteStreamBubble(run.msgId);
+    return stream;
+  }
+
+  private async flushStream(run: RunState): Promise<boolean> {
+    await this.queue;
+    if (run.streamDead) return false;
+    if (!run.cur && !run.pendingResume) return true;
+    for (let attempt = 0; attempt <= MAX_RESUME_ATTEMPTS; attempt++) {
+      const stream = this.ensureStream(run);
+      if (!stream) return false;
+      try {
+        await stream.flush();
+        await this.queue;
+        if (run.streamDead) return false;
+        if (run.cur !== stream) continue;
+        return true;
+      } catch (err) {
+        this.handleStreamError(run, err as Error);
+        if (run.streamDead) return false;
+      }
+    }
+    this.killStream(run, "resume attempts exhausted");
+    return false;
+  }
+
   private handleStreamError(run: RunState, err: Error): void {
-    const had = run.cur !== null;
+    if (run.streamDead) return;
+    const stream = run.cur;
+    const checkpoint = stream?.checkpoint() ?? null;
+    stream?.dispose();
     run.cur = null;
     log.warn("stream", "stream error", {
       msgId: run.msgId?.slice(0, 8) ?? "?",
       elapsedMs: Date.now() - run.startedAt,
       err,
     });
-    if (had) this.deps.onWarn(`Stream unavailable; falling back to text (${err.message}).`);
-    const rest = run.finalizedText.slice(run.resultSentLen);
-    if (rest) {
-      const bound = this.deps.boundOpenid();
-      const bot = this.deps.bot();
-      if (bound && bot) {
-        run.resultSentLen = run.finalizedText.length;
-        void sendReply(bot, rest, this.deps.makeChannel());
-      }
+    if (checkpoint && run.resumeAttempts < MAX_RESUME_ATTEMPTS) {
+      run.resumeAttempts += 1;
+      run.pendingResume = checkpoint;
+      return;
     }
+    this.killStream(run, err.message);
+  }
+
+  private killStream(run: RunState, reason: string): void {
+    if (run.streamDead) return;
+    run.streamDead = true;
+    run.pendingResume = undefined;
+    run.cur?.dispose();
+    run.cur = null;
+    log.warn("stream", "stream unavailable", {
+      msgId: run.msgId?.slice(0, 8) ?? "?",
+      reason,
+    });
+    this.deps.onWarn(`Stream unavailable; falling back to text (${reason}).`);
+  }
+
+  private clearTimers(): void {
+    const run = this.run;
+    if (!run) return;
+    if (run.typingTimer) clearInterval(run.typingTimer);
+    run.typingTimer = undefined;
   }
 }

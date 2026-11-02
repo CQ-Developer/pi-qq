@@ -1,20 +1,10 @@
 import { ReplyLimiter } from "@tencent-connect/qqbot-nodejs/protocol";
 
-/**
- * Passive reply budget (features-v1.md §3).
- *
- * QQ allows about 4 passive replies per inbound message (SDK ReplyLimiter default
- * 4/1h); a msgId is usable for about 5 minutes after arrival. Over-limit or stale
- * sends fall back to proactive mode. Counting reuses the SDK ReplyLimiter.
- */
-
 export type ReplyMode = "passive" | "proactive";
 
 export interface AcquireResult {
   mode: ReplyMode;
-  /** Sender of the latest inbound message; the caller falls back to the bound openid. */
   openid?: string;
-  /** Present when mode=passive. */
   msgId?: string;
 }
 
@@ -27,9 +17,7 @@ export interface BudgetSnapshot {
   remaining: number;
   totalReplies: number;
   trackedMessages: number;
-  /** Stream bubbles created for the current msgId (diagnostic only, not used by acquire). */
   streamBubbles: number;
-  /** Total stream bubbles in this process. */
   streamBubblesTotal: number;
 }
 
@@ -46,7 +34,6 @@ export class ReplyBudget {
     this.freshMs = opts?.freshMs ?? 5 * 60_000;
   }
 
-  /** Called on inbound: update the passive target and freshness start. */
   observeInbound(openid: string, msgId: string, now = Date.now()): void {
     if (this.last?.msgId !== msgId) {
       this.streamMsgId = msgId;
@@ -55,15 +42,10 @@ export class ReplyBudget {
     this.last = { openid, msgId, arrivedAt: now };
   }
 
-  /** Latest inbound target (diagnostics/passive sends). */
   get lastTarget(): { openid: string; msgId: string; arrivedAt: number } | undefined {
     return this.last;
   }
 
-  /**
-   * Pick the send mode for the next message. Passive only checks; callers must
-   * call commitPassive() after a successful passive send.
-   */
   acquire(now = Date.now()): AcquireResult {
     const last = this.last;
     if (!last) return { mode: "proactive" };
@@ -74,12 +56,10 @@ export class ReplyBudget {
     return { mode: "proactive", openid: last.openid };
   }
 
-  /** Record a successful passive send. */
   commitPassive(msgId: string): void {
     this.limiter.record(msgId);
   }
 
-  /** Diagnostic: record one new stream bubble (does not affect passive limits). */
   noteStreamBubble(msgId: string): void {
     if (this.streamMsgId !== msgId) {
       this.streamMsgId = msgId;
@@ -89,7 +69,6 @@ export class ReplyBudget {
     this.streamBubblesTotal += 1;
   }
 
-  /** Diagnostic snapshot: passive budget, target freshness, and send counts. */
   snapshot(now = Date.now()): BudgetSnapshot {
     const config = this.limiter.getConfig();
     const stats = this.limiter.getStats();

@@ -1,4 +1,3 @@
-/** Save QQ non-image attachments in the workspace, with session-scoped deduplication. */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
@@ -20,14 +19,11 @@ export interface FileFailure {
   reason: string;
 }
 
-/** fileName -> SHA-256. Paths are derived from uploadDir. */
 export type UploadIndex = Record<string, string>;
 
 export interface SaveFilesOptions {
   maxSize: number;
-  /** `<cwd>/.pi/pi-qq/<sessionId>/uploads`. */
   uploadDir: string;
-  /** Test/caller override; loaded from uploadDir when omitted. Mutated in place. */
   index?: UploadIndex;
   fetchImpl?: typeof fetch;
 }
@@ -42,7 +38,6 @@ function safePathSegment(key: string): string {
   return cleaned.slice(0, 64) || "session";
 }
 
-/** Session-scoped upload directory; no date or msgId subdirectories. */
 export function sessionUploadDir(cwd: string, sessionId: string): string {
   return join(cwd, ".pi", "pi-qq", safePathSegment(sessionId), "uploads");
 }
@@ -51,11 +46,9 @@ export function uploadIndexPath(uploadDir: string): string {
   return join(uploadDir, UPLOAD_INDEX_FILENAME);
 }
 
-/** Keep only a safe basename (no paths/control/Windows-invalid chars); truncate long stems. */
 export function sanitizeFilename(filename: string | undefined, fallback: string): string {
   const raw = basename((filename ?? "").trim());
   const cleaned = raw
-    // Control characters are rejected intentionally when normalizing a filename.
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_")
     .replace(/^[.\s]+|[.\s]+$/g, "")
@@ -122,7 +115,6 @@ async function persistUploadIndex(uploadDir: string, index: UploadIndex): Promis
   }
 }
 
-/** Load the index and drop entries whose files no longer exist. No content hashing. */
 export async function pruneUploadIndex(uploadDir: string): Promise<UploadIndex> {
   const index = await loadUploadIndex(uploadDir);
   let changed = false;
@@ -151,7 +143,6 @@ async function saveOrReuse(
   let changed = false;
 
   if (!(await isFile(target))) {
-    // A stale index entry must not make a missing file look reusable.
     if (index[filename]) {
       delete index[filename];
     }
@@ -197,7 +188,6 @@ async function saveOrReuse(
   throw new Error("Could not allocate a unique filename");
 }
 
-/** Save non-image attachments in order; one failure does not stop the others. */
 export async function saveInboundFiles(
   attachments: readonly InboundAttachmentLike[],
   options: SaveFilesOptions,
@@ -247,7 +237,6 @@ export async function saveInboundFiles(
   return { files, failures };
 }
 
-/** Combine saved paths and the original user message into the pi prompt. */
 export function formatFilePrompt(files: readonly SavedFile[], userText: string): string {
   if (files.length === 0) return userText;
 

@@ -10,7 +10,6 @@ function mask(value: string): string {
   return `${value.slice(0, 8)}…`;
 }
 
-/** Render `/qq-test-budget` output lines; pure function for tests. */
 export function formatBudgetStatus(
   snapshot: BudgetSnapshot,
   last: BudgetTarget | undefined,

@@ -1,6 +1,5 @@
 import { formatBytes } from "./format";
 
-/** Minimal QQ inbound attachment shape shared by images and files. */
 export interface InboundAttachmentLike {
   content_type: string;
   url: string;
@@ -12,7 +11,6 @@ export interface DownloadOptions {
   url: string;
   maxSize: number;
   timeoutMs: number;
-  /** Kind label used in errors, e.g. "image" or "file". */
   kind: string;
   fetchImpl?: typeof fetch;
 }
@@ -48,7 +46,6 @@ async function readBodyLimited(response: Response, limit: number, kind: string):
   return Buffer.concat(chunks, total);
 }
 
-/** Download an attachment with a timeout and streaming size cap. */
 export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
   const limit = Math.max(1, opts.maxSize);
   let parsed: URL;

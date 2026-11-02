@@ -13,12 +13,6 @@ import { formatBudgetStatus } from "./src/budget-status";
 import { configureLogger, log, previewForLog } from "./src/logger";
 import { pruneUploadIndex, sessionUploadDir } from "./src/files";
 
-/**
- * pi-qq extension entry.
- * QR login only; credentials live in process memory and are never persisted.
- */
-
-/** In-memory login state; survives extension reload/session replacement in one process. */
 interface LoginState {
   credentials: Credentials;
   allowedOpenid: string;
@@ -37,7 +31,6 @@ function setLoginState(state: LoginState | undefined): void {
   else delete store[LOGIN_STATE_KEY];
 }
 
-/** Session-level runtime state; rebuilt by a new runtime after reload/session switch. */
 let running: RunningBot | undefined;
 let lastState: BotState = "stopped";
 let stateDetail: string | undefined;
@@ -46,16 +39,7 @@ const budget = new ReplyBudget();
 const runFeedback = new RunFeedback({
   bot: () => running?.bot,
   budget,
-  boundOpenid: () => getLoginState()?.allowedOpenid,
-  getHeartbeatMinutes: () => getSettings(readConfig().config).heartbeatMinutes,
-  getHeartbeatMaxMessages: () => getSettings(readConfig().config).heartbeatMaxMessages,
-  getStreamRelay: () => getSettings(readConfig().config).streamRelay,
-  getStreamFlushMs: () => getSettings(readConfig().config).streamFlushMs,
-  makeChannel: () => ({
-    budget,
-    boundOpenid: getLoginState()?.allowedOpenid ?? "",
-    onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
-  }),
+  getThinkingRelay: () => getSettings(readConfig().config).thinkingRelay,
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
 });
 
@@ -63,8 +47,6 @@ const fmtTokens = (n: number | null): string => (n === null ? "unknown" : format
 
 export default function (pi: ExtensionAPI) {
   const maskAppId = (appId: string) => `${appId.slice(0, 4)}****`;
-
-  // Live settings reader (binding/settings changes apply immediately).
 
   const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getBoundOpenid = getAllowedOpenid;
@@ -89,8 +71,6 @@ export default function (pi: ExtensionAPI) {
     ];
   };
 
-  // —— Login and connection ——
-
   const startWithCredentials = async (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
     const settings = getSettings(readConfig().config);
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
@@ -104,7 +84,6 @@ export default function (pi: ExtensionAPI) {
       allowedOpenid,
       cwd: ctx.cwd,
       model: ctx.model?.name ?? null,
-      markdownSupport: settings.markdownSupport,
       logLevel: settings.logLevel,
       uploadDir,
       indexedFiles: Object.keys(uploadIndex).length,
@@ -112,7 +91,6 @@ export default function (pi: ExtensionAPI) {
     running = startBot({
       credentials: creds,
       allowedOpenid,
-      markdownSupport: settings.markdownSupport,
       onMessage: createInboundHandler({
         pi,
         ctx,
@@ -133,9 +111,7 @@ export default function (pi: ExtensionAPI) {
         else if (state === "blocked") ctx.ui.notify(`pi-qq ${detail ?? "connection blocked"}`, "error");
         else if (state === "stopped" && detail) ctx.ui.notify(`pi-qq ${detail}`, "warning");
       },
-      onRecoverableError: () => {
-        // Recoverable errors are handled by the SDK reconnect loop.
-      },
+      onRecoverableError: () => {},
     });
   };
 
@@ -145,8 +121,6 @@ export default function (pi: ExtensionAPI) {
     lastState = "stopped";
     stateDetail = undefined;
   };
-
-  // —— Lifecycle ——
 
   pi.on("session_start", async (_event, ctx) => {
     const { config, error } = readConfig();
@@ -177,8 +151,6 @@ export default function (pi: ExtensionAPI) {
     runFeedback.dispose();
   });
 
-  // F7 run feedback: agent lifecycle / tool counts / text streaming.
-
   pi.on("agent_start", () => {
     log.info("agent", "run started");
     runFeedback.onAgentStart();
@@ -195,7 +167,7 @@ export default function (pi: ExtensionAPI) {
       toolCallId: event.toolCallId,
       args: previewForLog(event.args),
     });
-    void runFeedback.onToolStart(event.toolName);
+    void runFeedback.onToolStart(event.toolName, event.args);
   });
 
   pi.on("tool_execution_end", (event) => {
@@ -205,7 +177,7 @@ export default function (pi: ExtensionAPI) {
       isError: event.isError,
       result: previewForLog(event.result),
     });
-    runFeedback.onToolEnd(event.toolName, event.isError);
+    runFeedback.onToolEnd(event.toolName, event.isError, event.result);
   });
 
   pi.on("message_update", (event) => {
@@ -214,15 +186,13 @@ export default function (pi: ExtensionAPI) {
     const snapshot = msg.content
       .filter((b) => b.type === "text")
       .map((b) => b.text)
-      .join("");
+      .join("\n");
     const thinking = msg.content
       .filter((b) => b.type === "thinking")
       .map((b) => b.thinking)
-      .join("");
+      .join("\n");
     void runFeedback.onAssistantDelta(snapshot, thinking);
   });
-
-  // pi → QQ: assistant message relay (QQ-triggered runs only).
 
   pi.on("message_end", async (event, ctx) => {
     const msg = event.message;
@@ -242,8 +212,6 @@ export default function (pi: ExtensionAPI) {
     });
     if (!fromQQ) return;
 
-    const { config } = readConfig();
-    const settings = getSettings(config);
     const isError = msg.stopReason === "error";
 
     let text: string;
@@ -258,18 +226,15 @@ export default function (pi: ExtensionAPI) {
     }
     if (!text) {
       log.debug("pi", "assistant message has no text", { isError });
-      // Textless assistant messages also end the feedback turn: reset thinking state
-      // and flush pending thinking rows so the next message does not swallow them.
       await runFeedback.onAssistantFinal("", isError);
       return;
     }
 
-    // F7 stream takeover: stream frames render Markdown; send raw text so lengths match.
     const streamTookOver = await runFeedback.onAssistantFinal(text, isError);
     log.debug("pi", "stream takeover decision", { streamTookOver, isError, textPreview: previewForLog(text) });
     if (streamTookOver) return;
 
-    const payload = settings.markdownSupport ? text : markdownToPlain(text);
+    const payload = markdownToPlain(text);
 
     const bound = getLoginState()?.allowedOpenid;
     if (!bound) {
@@ -286,8 +251,6 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
-  // —— Commands ——
-
   pi.registerCommand("qq-login", {
     description: "pi-qq: log in with a QR code and bind the scanning QQ user",
     handler: async (_args, ctx) => {
@@ -296,16 +259,29 @@ export default function (pi: ExtensionAPI) {
 
       stopIfRunning();
       setLoginState(undefined);
-      const result = await runQrLogin(ctx);
+      let result;
+      try {
+        result = await runQrLogin(ctx);
+      } catch (err) {
+        log.error("login", "QR login command failed", { err });
+        ctx.ui.notify("Error: QR login failed", "error");
+        return;
+      }
       if (!result) return;
       if (!result.userOpenid) {
-        ctx.ui.notify("pi-qq: QR login did not return a user openid; cannot bind.", "error");
+        log.error("login", "QR login did not return a user openid");
+        ctx.ui.notify("Error: QR login failed", "error");
         return;
       }
 
       const credentials: Credentials = { appId: result.appId, appSecret: result.appSecret };
       setLoginState({ credentials, allowedOpenid: result.userOpenid });
-      await startWithCredentials(ctx, credentials, result.userOpenid);
+      try {
+        await startWithCredentials(ctx, credentials, result.userOpenid);
+      } catch (err) {
+        log.error("login", "starting bot after login failed", { err });
+        ctx.ui.notify("Error: QQ bot start failed", "error");
+      }
     },
   });
 
@@ -344,8 +320,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // —— Diagnostic commands ——
-
   const diagTarget = () => {
     const last = budget.lastTarget;
     if (last) return { scope: "c2c" as const, targetId: last.openid, msgId: last.msgId };
@@ -376,8 +350,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("qq-test-stream", {
-    description: "pi-qq: run a streamed timeline diagnostic (thinking/tools/text)",
-    handler: async (_args, ctx) => {
+    description: "pi-qq: run a streamed timeline diagnostic (thinking/tools/text) or resume probe",
+    handler: async (args, ctx) => {
       if (!running) {
         ctx.ui.notify("pi-qq is not connected.", "warning");
         return;
@@ -389,12 +363,40 @@ export default function (pi: ExtensionAPI) {
       }
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
+        if (args?.trim() === "resume") {
+          const first = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
+          await first.append("**Resume probe** frame 1\n");
+          await first.flush();
+          const checkpoint = first.checkpoint();
+          first.dispose();
+          if (!checkpoint?.streamMsgId) {
+            ctx.ui.notify("Resume probe: frame 1 sent but stream_msg_id is missing; cannot resume.", "error");
+            return;
+          }
+          await sleep(800);
+          const second = new AppendStream(
+            running.bot.messageApi,
+            running.bot.getCredentials(),
+            last.openid,
+            last.msgId,
+            {
+              resume: checkpoint,
+            },
+          );
+          await second.append("frame 2 after resume\n");
+          await second.done();
+          ctx.ui.notify(
+            `Resume probe: frame 2 sent with index ${checkpoint.index} and stream_msg_id ${checkpoint.streamMsgId}. Check whether both frames are in the same bubble.`,
+            "info",
+          );
+          return;
+        }
         const stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
-        await stream.append("[💭] Thinking...\n[🔧] [3] bash\n[🔧] [2] read\n");
+        await stream.append("> probe thinking\n> second line\n\n[bash] `echo probe`\n```text\nprobe\n```\n");
         await sleep(1200);
         await stream.append("\n**Intermediate message**: first-turn reply.\n");
         await sleep(1200);
-        await stream.append("[🔧] [1] edit\n");
+        await stream.append("\n[read] `src/index.ts`\n```text\nprobe file\n```\n");
         await sleep(800);
         await stream.append("\n**Final reply** (streamed append)");
         let doneNote = "DONE succeeded";

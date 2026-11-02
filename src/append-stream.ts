@@ -6,32 +6,22 @@ import type {
   StreamMessageRequest,
 } from "@tencent-connect/qqbot-nodejs/protocol";
 
-/**
- * Minimal append-mode (input_mode="append") stream sender.
- *
- * The SDK StreamSession hardcodes input_mode="replace"; in 2026-10 the platform
- * rejected it with "submitted message content cannot be modified". In append mode
- * each content_raw frame carries only the **new** text, matching the platform rule
- * that already-submitted content is immutable.
- *
- * Two built-in safeguards (aligned with SDK StreamSession best practices):
- * 1. Throttle: token increments are buffered and merged into frames per throttle
- *    window (default 500ms, minimum 300ms) to avoid flooding the API.
- * 2. Rate-limit backoff: 429 / err_code 50002 retry exponentially (1s→2s→4s, max 3).
- */
-
 const MIN_INTERVAL_MS = 300;
 const RATE_LIMIT_BASE_MS = 1000;
 const MAX_RETRIES = 3;
 
+export interface AppendStreamCheckpoint {
+  msgSeq: number;
+  index: number;
+  streamMsgId?: string;
+  buffer?: string;
+}
+
 export interface AppendStreamOptions {
-  /** Minimum interval between frames; increments are merged during the window. */
   throttleMs?: number;
-  /** Rate-limit backoff base in ms (for tests). */
   retryBaseMs?: number;
-  /** Background throttle flush failure (stream is no longer trusted). */
+  resume?: AppendStreamCheckpoint;
   onError?: (err: Error) => void;
-  /** Diagnostic log via the shared logger: rate-limit retries/final failures. */
   onDebug?: (message: string) => void;
 }
 
@@ -51,18 +41,48 @@ export class AppendStream {
     private readonly openid: string,
     private readonly msgId: string,
     private readonly opts: AppendStreamOptions = {},
-  ) {}
+  ) {
+    const resume = this.opts.resume;
+    if (resume) {
+      this.msgSeq = resume.msgSeq;
+      this.index = resume.index;
+      this.streamMsgId = resume.streamMsgId;
+      this.buffer = resume.buffer ?? "";
+    }
+  }
+
+  checkpoint(): AppendStreamCheckpoint | null {
+    if (this.msgSeq === null) return null;
+    return {
+      msgSeq: this.msgSeq,
+      index: this.index,
+      streamMsgId: this.streamMsgId,
+      ...(this.buffer ? { buffer: this.buffer } : {}),
+    };
+  }
+
+  async flush(): Promise<void> {
+    if (this.doneSent) return;
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    while (this.flushing) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    if (this.doneSent) return;
+    if (this.buffer) await this.doFlush("generating");
+  }
 
   private throttleMs(): number {
     return Math.max(this.opts.throttleMs ?? 500, MIN_INTERVAL_MS);
   }
 
-  /** Append text; frames are merged by throttle window and sent in the background. */
   async append(delta: string): Promise<void> {
     if (this.doneSent || !delta) return;
     this.buffer += delta;
     const elapsed = Date.now() - this.lastFlushAt;
-    if (this.flushing) return; // The in-flight flush trailing logic will pick up the buffer.
+    if (this.flushing) return;
     if (elapsed >= this.throttleMs()) {
       await this.doFlush("generating");
       return;
@@ -75,7 +95,6 @@ export class AppendStream {
     }
   }
 
-  /** Flush remaining text and send DONE. Errors propagate to the caller. */
   async done(): Promise<void> {
     if (this.doneSent) return;
     if (this.flushTimer) {
@@ -85,12 +104,12 @@ export class AppendStream {
     while (this.flushing) {
       await new Promise((r) => setTimeout(r, 20));
     }
+    if (this.doneSent) return;
     if (this.buffer) await this.doFlush("generating");
-    await this.doFlush("done"); // DONE frames carry empty content_raw (verified).
+    await this.doFlush("done");
     this.doneSent = true;
   }
 
-  /** Stop background timers only; no DONE (for shutdown/error paths). */
   dispose(): void {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
@@ -102,13 +121,12 @@ export class AppendStream {
   private async doFlush(state: "generating" | "done"): Promise<void> {
     if (this.flushing) return;
     const content = state === "done" ? "" : this.buffer;
-    // DONE frames may be empty (generation finished); empty generating frames are skipped.
     if (!content && state === "generating") return;
     this.flushing = true;
     let failed = false;
     try {
       if (this.msgSeq === null) this.msgSeq = getNextMsgSeq(this.msgId);
-      // input_mode is outside the SDK type (replace only); the platform defines its runtime meaning.
+      const index = this.index++;
       const req = {
         input_mode: "append",
         input_state: state === "done" ? StreamInputState.DONE : StreamInputState.GENERATING,
@@ -117,19 +135,18 @@ export class AppendStream {
         event_id: this.msgId,
         msg_id: this.msgId,
         msg_seq: this.msgSeq,
-        index: this.index++,
+        index,
         ...(this.streamMsgId ? { stream_msg_id: this.streamMsgId } : {}),
       } as unknown as StreamMessageRequest;
       const resp = await this.sendWithRetry(req);
       if (resp?.id && !this.streamMsgId) this.streamMsgId = resp.id;
-      if (state === "generating") this.buffer = "";
+      if (state === "generating") this.buffer = this.buffer.slice(content.length);
       this.lastFlushAt = Date.now();
     } catch (err) {
       failed = true;
       throw err;
     } finally {
       this.flushing = false;
-      // Trailing: new data arrived during flush; schedule the next frame.
       if (!failed && state === "generating" && this.buffer && !this.doneSent && !this.flushTimer) {
         this.flushTimer = setTimeout(() => {
           this.flushTimer = null;

@@ -1,16 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-/**
- * Structured logger for pi-qq.
- *
- * One JSON record per line, one file per local day:
- *   <cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log
- *
- * The default level is silent. Logging is best-effort and must never break QQ
- * message handling. Tests can override the directory via PI_QQ_LOG_DIR.
- */
-
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
 export type LogFields = Record<string, unknown>;
 
@@ -35,12 +25,10 @@ export function normalizeLogLevel(value: unknown): LogLevel {
   return isLogLevel(value) ? value : DEFAULT_LOG_LEVEL;
 }
 
-/** Whether an event at `level` passes the configured threshold. */
 export function isLevelEnabled(configured: LogLevel, level: Exclude<LogLevel, "silent">): boolean {
   return configured !== "silent" && LEVEL_WEIGHT[level] >= LEVEL_WEIGHT[configured];
 }
 
-/** Set the active threshold and optional directory. */
 export function configureLogger(level: LogLevel, dir?: string): void {
   activeLevel = normalizeLogLevel(level);
   activeDir = dir;
@@ -58,7 +46,6 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** Local calendar date used in the log filename. */
 export function dateStamp(now = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
@@ -94,7 +81,6 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
   const fields = normalizeData(data);
   if (fields) {
     for (const [key, value] of Object.entries(fields)) {
-      // Protect the record envelope from accidental overrides.
       if (!(key in record)) record[key] = value;
     }
   }
@@ -122,9 +108,7 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
     const dir = resolveLogDir();
     mkdirSync(dir, { recursive: true });
     appendFileSync(join(dir, logFileName()), `${line}\n`, "utf8");
-  } catch {
-    // Logging is diagnostic only; never break message handling.
-  }
+  } catch {}
 }
 
 export const log = {
@@ -145,7 +129,6 @@ export const log = {
   },
 };
 
-/** Adapter for the QQ SDK's Logger interface: (message, meta?) -> record. */
 export const sdkLogger = {
   debug(message: string, meta?: Record<string, unknown>): void {
     log.debug("qqbot", message, meta);
@@ -161,7 +144,6 @@ export const sdkLogger = {
   },
 };
 
-/** Short string form for noisy tool payloads. */
 export function previewForLog(value: unknown, maxChars = 2000): string {
   let text: string;
   if (typeof value === "string") {

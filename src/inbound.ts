@@ -13,33 +13,22 @@ import { formatFilePrompt, saveInboundFiles, sessionUploadDir, type SavedFile } 
 import { log } from "./logger";
 import { isVoiceAttachment, resolveVoiceTranscript } from "./voice";
 
-/**
- * F2: QQ → pi inbound handling.
- * Chain: C2C filter → QR-bound user whitelist → QQ commands → text/image/file injection.
- * Use pi.sendUserMessage (ExtensionContext has no such API).
- */
-
 export interface InboundDeps {
   pi: ExtensionAPI;
-  /** Session context captured at session_start: ui/isIdle/abort/compact/getContextUsage. */
   ctx: ExtensionContext;
   budget: ReplyBudget;
-  /** Read settings live so changes apply immediately. */
   getAllowedOpenid: () => string | undefined;
   getBoundOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
   getImageMaxSize: () => number;
   getFileMaxSize: () => number;
-  /** Test override; defaults to saveInboundFiles. */
   saveFiles?: typeof saveInboundFiles;
   getStatusLines: () => string[];
   onWarn: (msg: string) => void;
-  /** F7: mark the next run as QQ-triggered (for typing/heartbeat/timeline). */
   markQQTrigger: (openid: string, msgId: string) => void;
 }
 
 export function createInboundHandler(deps: InboundDeps) {
-  // F10: files uploaded without text wait for the next text/voice instruction.
   let pendingFiles: SavedFile[] = [];
   const takePendingFiles = (): SavedFile[] => {
     const files = pendingFiles;
@@ -77,7 +66,6 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // Record passive reply target/freshness for outbound budget.
     deps.budget.observeInbound(msg.senderId, msg.messageId);
     log.info("inbound", "message received", {
       messageId: msg.messageId,
@@ -113,7 +101,6 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F8: voice messages use QQ built-in ASR; never download or save the audio.
     const voiceAttachments = attachments.filter(isVoiceAttachment);
     if (voiceAttachments.length > 0) {
       const transcript = resolveVoiceTranscript(voiceAttachments);
@@ -140,7 +127,6 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F3: images become ImageContent; other attachments are saved and referenced by path.
     const imageAttachments = attachments.filter(isImageAttachment);
     const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
     const failures: Array<{ filename: string; reason: string }> = [];
@@ -193,7 +179,6 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F10: a file-only message waits for the next text/voice instruction.
     if (!text && images.length === 0 && files.length > 0) {
       pendingFiles.push(...files);
       log.info("inbound", "files pending for instruction", {
@@ -204,7 +189,6 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    // F7: mark a QQ-triggered run; do not send a start confirmation.
     deps.markQQTrigger(msg.senderId, msg.messageId);
     const pending = text ? takePendingFiles() : [];
     const promptFiles = [...pending, ...files];
@@ -261,7 +245,6 @@ async function handleCommand(text: string, reply: (t: string) => Promise<void>, 
         await reply("Task is running; use /stop before resetting.");
       } else {
         await reply("Resetting the session…");
-        // Built-in /new is interactive-only; dispatch the extension command instead.
         deps.pi.sendUserMessage("/qq-new", { expandPromptTemplates: true });
       }
       break;

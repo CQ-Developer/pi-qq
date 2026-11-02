@@ -2,23 +2,16 @@ import { startQrConnect } from "@tencent-connect/qqbot-connector";
 import { generate } from "qrcode-terminal";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Credentials } from "./config";
-
-/**
- * F1: QR-code login only.
- * - TUI: show an ASCII QR code in ctx.ui.custom; Esc cancels.
- * - Non-TUI: print the QR URL and poll until the scan completes.
- * Credentials are returned to the caller and kept in memory only.
- */
+import { log } from "./logger";
 
 export interface QrLoginResult extends Credentials {
-  /** openid of the scanning user, used as the single bound QQ user */
   userOpenid?: string;
 }
 
 export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult | undefined> {
   const ac = new AbortController();
+  log.info("login", "QR login started");
 
-  // Shared QR state so polling callbacks and the TUI component stay decoupled.
   const qr = { lines: [] as string[], hint: "Fetching QR code…" };
   let requestRender: (() => void) | undefined;
   let closeOverlay: (() => void) | undefined;
@@ -34,27 +27,40 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
 
     const stopPolling = startQrConnect(
       {
-        // The connector currently returns one entry; iterate for future compatibility.
         onSuccess: ([first]) => {
+          log.info("login", "QR login succeeded", {
+            appId: first?.appId ?? null,
+            hasOpenid: Boolean(first?.userOpenid),
+          });
           finish(first ? { appId: first.appId, appSecret: first.appSecret, userOpenid: first.userOpenid } : undefined);
           closeOverlay?.();
         },
         onFailure: (err) => {
-          if (settled) return; // User cancelled (abort); no error toast.
-          ctx.ui.notify(`QR login failed: ${err.message}`, "error");
+          if (settled) return;
+          const cause = (err as { cause?: unknown }).cause;
+          log.error("login", "QR login failed", {
+            err,
+            name: err.name,
+            code: (err as NodeJS.ErrnoException).code,
+            causeName: cause instanceof Error ? cause.name : undefined,
+            causeCode: cause && typeof cause === "object" ? (cause as NodeJS.ErrnoException).code : undefined,
+            causeMessage: cause instanceof Error ? cause.message : undefined,
+          });
+          ctx.ui.notify("Error: QR login failed", "error");
           finish();
           closeOverlay?.();
         },
         onQrDisplayed: (url) => {
+          log.debug("login", "QR code displayed");
           qr.hint = "Scan with mobile QQ";
           generate(url, { small: true }, (ascii) => {
             qr.lines = ascii.split("\n").filter((line) => line.trim().length > 0);
           });
           requestRender?.();
-          // Non-TUI mode has no overlay; show the URL.
           if (ctx.mode !== "tui") ctx.ui.notify(`pi-qq QR URL: ${url}`, "info");
         },
         onQrExpired: () => {
+          log.warn("login", "QR code expired; refreshing");
           qr.hint = "QR code expired; refreshing…";
           requestRender?.();
         },
@@ -63,7 +69,6 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
     );
 
     if (ctx.mode !== "tui") {
-      // Non-TUI: no overlay or cancel affordance; wait for the scan.
       ctx.ui.notify("pi-qq: waiting for mobile QQ scan…", "info");
       return;
     }
@@ -89,7 +94,6 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
         };
       })
       .then(() => {
-        // Overlay closed by user; success/failure paths already called finish().
         if (!settled) finish();
       });
   });

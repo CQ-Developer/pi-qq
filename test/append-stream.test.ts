@@ -5,7 +5,12 @@ function makeFakeApi() {
   const calls: Array<Record<string, unknown>> = [];
   const api = {
     failNext: 0,
+    failPlainNext: 0,
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+      if (api.failPlainNext > 0) {
+        api.failPlainNext -= 1;
+        throw new Error("stream broke");
+      }
       if (api.failNext > 0) {
         api.failNext -= 1;
         const err = new Error("HTTP 429 rate limited") as Error & { status?: number };
@@ -54,5 +59,49 @@ describe("AppendStream", () => {
     expect(calls.map((call) => call.content_raw as string).join("")).toBe("限流重试片段");
     expect(debug.length).toBeGreaterThanOrEqual(2);
     expect(debug.join("\n")).toContain("rate limited");
+  });
+
+  it("flush 发送缓冲但不结束流", async () => {
+    const { api, calls } = makeFakeApi();
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 300 });
+    expect(stream.checkpoint()).toBeNull();
+    await stream.append("首帧");
+    await stream.append("缓冲内容");
+    expect(calls).toHaveLength(1);
+    await stream.flush();
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.content_raw).toBe("缓冲内容");
+    expect(calls[1]?.input_state).toBe(1);
+  });
+
+  it("发送失败时 index 与未确认缓冲保留", async () => {
+    const { api } = makeFakeApi();
+    api.failPlainNext = 1;
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 300 });
+    await expect(stream.append("未确认")).rejects.toThrow("stream broke");
+    expect(stream.checkpoint()).toMatchObject({ index: 1, buffer: "未确认" });
+  });
+
+  it("检查点续写沿用 msg_seq 与下一个 index", async () => {
+    const { api, calls } = makeFakeApi();
+    const first = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 300 });
+    await first.append("前半");
+    await first.flush();
+    const checkpoint = first.checkpoint();
+    expect(checkpoint).toEqual({ msgSeq: calls[0]?.msg_seq, index: 1, streamMsgId: "sm-1" });
+    first.dispose();
+
+    const second = new AppendStream(api as never, {} as never, "openid-x", "msg-t", {
+      throttleMs: 300,
+      resume: checkpoint ?? undefined,
+    });
+    await second.append("后半");
+    await second.done();
+
+    expect(calls.map((call) => call.content_raw as string).join("")).toBe("前半后半");
+    expect(calls[1]?.msg_seq).toBe(calls[0]?.msg_seq);
+    expect(calls[1]?.index).toBe(1);
+    expect(calls[1]?.stream_msg_id).toBe("sm-1");
+    expect(calls.at(-1)?.input_state).toBe(10);
   });
 });

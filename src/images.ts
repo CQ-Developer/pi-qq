@@ -1,4 +1,3 @@
-/** QQ image attachments to pi ImageContent: validation and timeout-limited download. */
 import { downloadLimited, type InboundAttachmentLike } from "./download";
 import { formatBytes } from "./format";
 
@@ -44,12 +43,10 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   gif: "image/gif",
 };
 
-/** Prefer content_type, fall back to extension; return injectable mime or null. */
 export function resolveImageMime(contentType: string | undefined, filename: string | undefined): string | null {
   const type = (contentType ?? "").split(";")[0].trim().toLowerCase();
   if (type) {
     if (MIME_BY_CONTENT_TYPE[type]) return MIME_BY_CONTENT_TYPE[type];
-    // Reject unsupported image/* types (e.g. svg) so a wrong extension cannot bypass validation.
     if (type.startsWith("image/")) return null;
   }
 
@@ -57,14 +54,12 @@ export function resolveImageMime(contentType: string | undefined, filename: stri
   return ext ? (MIME_BY_EXTENSION[ext] ?? null) : null;
 }
 
-/** Whether the attachment is an image (unsupported image/* is handled by the image path). */
 export function isImageAttachment(attachment: InboundAttachmentLike): boolean {
   const type = (attachment.content_type ?? "").toLowerCase();
   if (type.startsWith("image/")) return true;
   return resolveImageMime(attachment.content_type, attachment.filename) !== null;
 }
 
-/** Build pi.sendUserMessage content; keep a plain string when there are no images. */
 export function buildImageMessageContent(
   text: string,
   images: readonly ImageContentLike[],
@@ -128,7 +123,6 @@ async function downloadOne(
   }
 }
 
-/** Download images in order; one failure does not stop the others. */
 export async function resolveInboundImages(
   attachments: readonly InboundAttachmentLike[],
   maxSize: number,
