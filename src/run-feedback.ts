@@ -108,7 +108,7 @@ function primaryArg(args: unknown): string {
 
 export function formatToolLine(name: string, args: unknown): string {
   const primary = primaryArg(args);
-  return primary ? `${inlineCode(name)} ${primary}` : inlineCode(name);
+  return primary ? `*[${name}]* ${inlineCode(primary)}` : `*[${name}]*`;
 }
 
 function resultText(result: unknown): string {
