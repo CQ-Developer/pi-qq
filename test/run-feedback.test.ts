@@ -31,6 +31,7 @@ function makeRunHarness(options: { thinkingRelay?: boolean; failNext?: number; a
     budget,
     getThinkingRelay: () => options.thinkingRelay ?? true,
     onWarn: (msg: string) => warns.push(msg),
+    bubbleGapMs: 0,
   };
   return { rf: new RunFeedback(deps as never), calls, attempts, warns, budget };
 }

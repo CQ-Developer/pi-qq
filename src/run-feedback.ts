@@ -8,6 +8,7 @@ export interface RunFeedbackDeps {
   budget: ReplyBudget;
   getThinkingRelay: () => boolean;
   onWarn: (msg: string) => void;
+  bubbleGapMs?: number;
 }
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
@@ -42,6 +43,7 @@ const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
+const BUBBLE_CREATE_GAP_MS = 300;
 const ARG_MAX_CHARS = 200;
 const RESULT_MAX_CHARS = 600;
 const RESULT_MAX_LINES = 8;
@@ -438,6 +440,7 @@ export class RunFeedback {
     }
     stream.dispose();
     if (run.cur === stream) run.cur = null;
+    await new Promise((resolve) => setTimeout(resolve, this.deps.bubbleGapMs ?? BUBBLE_CREATE_GAP_MS));
     run.bubbleChars = 0;
     run.fenceOpen = false;
     run.fenceLen = 0;
