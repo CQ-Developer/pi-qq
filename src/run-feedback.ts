@@ -8,7 +8,6 @@ export interface RunFeedbackDeps {
   budget: ReplyBudget;
   getThinkingRelay: () => boolean;
   onWarn: (msg: string) => void;
-  bubbleGapMs?: number;
 }
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
@@ -43,7 +42,6 @@ const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
-const BUBBLE_CREATE_GAP_MS = 300;
 const ARG_MAX_CHARS = 200;
 const RESULT_MAX_CHARS = 600;
 const RESULT_MAX_LINES = 8;
@@ -219,6 +217,7 @@ export class RunFeedback {
   onToolStart(toolName: string, args?: unknown): void {
     const run = this.run;
     if (!run || run.streamDead) return;
+    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     const newGroup = run.toolActive === 0;
     const newBubble = newGroup && (run.lastKind !== "none" || run.blockClosed);
     run.toolActive += 1;
@@ -254,6 +253,7 @@ export class RunFeedback {
     const delta = full.slice(run.resultSentLen);
     if (!delta) return;
     run.resultSentLen = full.length;
+    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     const newBubble = this.startsNewBlock(run, "text");
     const prefix = this.beginBlock(run, "text", newBubble);
     this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
@@ -268,6 +268,7 @@ export class RunFeedback {
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
     if (!isError && text && delta) {
+      if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
       const newBubble = this.startsNewBlock(run, "text");
       const prefix = this.beginBlock(run, "text", newBubble);
       this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
@@ -291,6 +292,7 @@ export class RunFeedback {
   async onAgentEnd(): Promise<void> {
     const run = this.run;
     if (!run) return;
+    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     await this.queue;
     this.clearTimers();
     this.run = null;
@@ -363,6 +365,26 @@ export class RunFeedback {
       if (run.cur === stream) this.handleStreamError(run, err as Error);
       return false;
     }
+  }
+
+  private appendThinkingTrailer(run: RunState): void {
+    if (run.streamDead) return;
+    void this.enqueue(async () => {
+      if (this.run !== run || run.streamDead) return;
+      if (!run.cur || run.bubbleChars === 0) return;
+      if (!(await this.closeOpenFence(run))) return;
+      const stream = this.ensureStream(run);
+      if (!stream) return;
+      const trailer = run.lastChar === "\n" ? ">\n" : "\n>\n";
+      try {
+        await stream.append(trailer);
+        run.bubbleChars += trailer.length;
+        run.lastChar = "\n";
+        run.thinkingAtLineStart = true;
+      } catch (err) {
+        if (run.cur === stream) this.handleStreamError(run, err as Error);
+      }
+    });
   }
 
   private push(run: RunState, text: string, blockBoundary = false, endTool = false, newBubble = false): void {
@@ -440,7 +462,6 @@ export class RunFeedback {
     }
     stream.dispose();
     if (run.cur === stream) run.cur = null;
-    await new Promise((resolve) => setTimeout(resolve, this.deps.bubbleGapMs ?? BUBBLE_CREATE_GAP_MS));
     run.bubbleChars = 0;
     run.fenceOpen = false;
     run.fenceLen = 0;

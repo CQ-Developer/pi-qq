@@ -31,7 +31,6 @@ function makeRunHarness(options: { thinkingRelay?: boolean; failNext?: number; a
     budget,
     getThinkingRelay: () => options.thinkingRelay ?? true,
     onWarn: (msg: string) => warns.push(msg),
-    bubbleGapMs: 0,
   };
   return { rf: new RunFeedback(deps as never), calls, attempts, warns, budget };
 }
@@ -126,7 +125,7 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "> think 1\n> think 2\n",
+      "> think 1\n> think 2\n>\n",
       "[bash] `npm test`\n```text\n12 passed\n```\n",
       "answer",
     ]);
@@ -143,7 +142,7 @@ describe("RunFeedback 直推", () => {
     rf.onAssistantDelta("", "abc");
     await rf.onAssistantFinal("", false);
     await rf.onAgentEnd();
-    expect(streamContent(calls)).toBe("> abc\n");
+    expect(streamContent(calls)).toBe("> abc\n>\n");
   });
 
   it("文本快照只发送一次全文", async () => {
@@ -198,7 +197,7 @@ describe("RunFeedback 直推", () => {
     rf.onAssistantDelta("answer", "");
     await rf.onAssistantFinal("answer", false);
     await rf.onAgentEnd();
-    expect(bubbleContents(calls)).toEqual(["> think\n", "answer"]);
+    expect(bubbleContents(calls)).toEqual(["> think\n>\n", "answer"]);
   });
 
   it("新的最终文本消息另起气泡", async () => {
@@ -236,7 +235,7 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     const expectedThinking = "> " + "x".repeat(1000) + "\n>\n";
-    expect(bubbleContents(calls)).toEqual([expectedThinking.repeat(12), expectedThinking, "done"]);
+    expect(bubbleContents(calls)).toEqual([expectedThinking.repeat(12), `${expectedThinking}>\n`, "done"]);
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(3);
     expect(new Set(calls.map((call) => call.stream_msg_id).filter(Boolean)).size).toBe(3);
     expect(budget.snapshot().streamBubblesTotal).toBe(3);
@@ -250,7 +249,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("bash", false, "ok");
     await rf.onAgentEnd();
 
-    expect(bubbleContents(calls)).toEqual(["> ```\n> code\n> ```\n", "[bash] `echo`\n```text\nok\n```\n"]);
+    expect(bubbleContents(calls)).toEqual(["> ```\n> code\n> ```\n>\n", "[bash] `echo`\n```text\nok\n```\n"]);
   });
 
   it("工具调用与结果不拆泡", async () => {
