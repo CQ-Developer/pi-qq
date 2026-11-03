@@ -58,6 +58,22 @@ jobs:
             npm publish --access public --provenance
           fi
 
+      - name: Prepare release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v version="$VERSION" '
+            index($0, "## [" version "]") == 1 { in_section = 1; next }
+            in_section && /^## \[/ { exit }
+            in_section { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "No CHANGELOG.md section found for $VERSION" >&2
+            exit 1
+          fi
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^{commit}^")"
+          printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
+            "$GITHUB_REPOSITORY" "$PREVIOUS_TAG" "$GITHUB_REF_NAME" >> release-notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,6 +83,6 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag \
-              --generate-notes \
+              --notes-file release-notes.md \
               --title "pi-qq $GITHUB_REF_NAME"
           fi
