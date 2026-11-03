@@ -137,3 +137,9 @@ npm run format:check
 - 收到的图片会作为视觉输入传给模型；当前模型必须支持图片输入。
 - 保存的文件位于工作区 `.pi/` 下；如有需要，请把 `.pi/` 加入你自己的项目 `.gitignore`。
 - QQ 对每条入站消息的被动回复次数有限制。可用 `/qq-test-budget` 查看本地额度。
+
+## 交付文档
+
+- [delivery-v1.md](./doc/delivery-v1.md)
+- [delivery-v2.md](./doc/delivery-v2.md)
+- [delivery-v3.md](./doc/delivery-v3.md)

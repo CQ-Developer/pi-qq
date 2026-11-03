@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImageMessageContent,
-  formatBytes,
   formatImageFailures,
   resolveImageMime,
   resolveInboundImages,
   type ImageContentLike,
 } from "../src/images";
+import { formatBytes } from "../src/format";
 
 const sampleImage: ImageContentLike = { type: "image", data: "AAA", mimeType: "image/png" };
 

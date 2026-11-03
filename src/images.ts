@@ -1,7 +1,6 @@
 import { downloadLimited, type InboundAttachmentLike } from "./download";
 import { formatBytes } from "./format";
 
-export { formatBytes } from "./format";
 export type { InboundAttachmentLike } from "./download";
 
 export interface ImageContentLike {

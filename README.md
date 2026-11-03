@@ -137,3 +137,9 @@ npm run format:check
 - Incoming images are passed to the model as vision input; the current model must support image input.
 - Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
+
+## Delivery docs
+
+- [delivery-v1.md](./doc/delivery-v1.md)
+- [delivery-v2.md](./doc/delivery-v2.md)
+- [delivery-v3.md](./doc/delivery-v3.md)

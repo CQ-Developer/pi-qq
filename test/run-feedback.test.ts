@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { RunFeedback, formatToolLine, formatToolResult } from "../src/run-feedback";
+import { RunFeedback } from "../src/run-feedback";
+import { THINKING_HEADER, formatToolLine, formatToolResult } from "../src/run-format";
 import { ReplyBudget } from "../src/reply-budget";
 
 const DONE_STATE = 10;
-const THINKING_HEADER = "**💭 思考**\n\n";
 
 function makeRunHarness(options: { thinkingRelay?: boolean; failNext?: number; alwaysFail?: boolean } = {}) {
   const calls: Array<Record<string, unknown>> = [];
