@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Releases now attach the npm tarball and a `SHA256SUMS` file.
+
+### Changed
+
+- Log records are written asynchronously, and debug payload previews are only built when debug logging is enabled.
+- Historical delivery records moved to `doc/archive/` and are marked unmaintained.
+
 ## [1.3.1] - 2026-11-04
 
 ### Added

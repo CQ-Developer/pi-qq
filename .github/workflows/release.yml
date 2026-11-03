@@ -74,15 +74,27 @@ jobs:
           printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
             "$GITHUB_REPOSITORY" "$PREVIOUS_TAG" "$GITHUB_REF_NAME" >> release-notes.md
 
+      - name: Prepare release artifacts
+        run: |
+          ASSET_DIR="$RUNNER_TEMP/release-assets"
+          mkdir -p "$ASSET_DIR"
+          npm pack --pack-destination "$ASSET_DIR"
+          cd "$ASSET_DIR"
+          sha256sum ./*.tgz > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          ASSET_DIR="$RUNNER_TEMP/release-assets"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "GitHub Release $GITHUB_REF_NAME already exists"
+            echo "GitHub Release $GITHUB_REF_NAME already exists; uploading assets"
+            gh release upload "$GITHUB_REF_NAME" "$ASSET_DIR"/*.tgz "$ASSET_DIR"/SHA256SUMS --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag \
               --notes-file release-notes.md \
-              --title "pi-qq $GITHUB_REF_NAME"
+              --title "pi-qq $GITHUB_REF_NAME" \
+              "$ASSET_DIR"/*.tgz "$ASSET_DIR"/SHA256SUMS
           fi
