@@ -1,8 +1,7 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { sendReply, type ReplyChannel } from "./reply-sender";
 import type { ReplyBudget } from "../quota/reply-quota";
-import { formatAttachmentFailures, type AttachmentFailure } from "../attachments/attachment-failure";
+import { formatAttachmentFailures } from "../attachments/attachment-failure";
 import {
   formatAttachmentPrompt,
   saveInboundFiles,
@@ -10,30 +9,21 @@ import {
   type SavedFile,
 } from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
-import { isVoiceAttachment, resolveVoiceTranscript } from "../attachments/voice-transcript";
+import { handleInboundCommand, type InboundCommandDeps } from "./inbound-command";
+import { PendingAttachments, resolveInboundContent } from "./inbound-attachments";
 
-export interface InboundDeps {
-  pi: ExtensionAPI;
-  ctx: ExtensionContext;
+export interface InboundDeps extends InboundCommandDeps {
   budget: ReplyBudget;
   getAllowedOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
   getFileMaxSize: () => number;
   saveFiles?: typeof saveInboundFiles;
-  getStatusLines: () => string[];
   onWarn: (msg: string) => void;
   markQQTrigger: (openid: string, msgId: string) => void;
-  waitForEnd?: () => Promise<void>;
-  onStop?: () => void;
 }
 
 export function createInboundHandler(deps: InboundDeps) {
-  let pendingAttachments: SavedFile[] = [];
-  const takePendingAttachments = (): SavedFile[] => {
-    const attachments = pendingAttachments;
-    pendingAttachments = [];
-    return attachments;
-  };
+  const pending = new PendingAttachments();
 
   return async (bot: QQBot, msg: QQBotInboundMessage): Promise<void> => {
     log.debug("inbound", "message received", {
@@ -79,17 +69,16 @@ export function createInboundHandler(deps: InboundDeps) {
       onWarn: deps.onWarn,
     };
     const reply = (text: string) => sendReply(bot, text, channel);
-    const saveFiles = deps.saveFiles ?? saveInboundFiles;
 
     const contentText = (msg.content ?? "").trim();
     if (contentText.startsWith("/")) {
       const command = contentText.split(/\s+/)[0];
       log.info("inbound", "QQ command", { command });
-      if (command === "/new" && deps.ctx.isIdle() && pendingAttachments.length > 0) {
-        log.info("inbound", "cleared pending attachments for /new", { count: pendingAttachments.length });
-        pendingAttachments = [];
+      if (command === "/new" && deps.ctx.isIdle() && pending.count > 0) {
+        log.info("inbound", "cleared pending attachments for /new", { count: pending.count });
+        pending.clear();
       }
-      await handleCommand(contentText, reply, deps);
+      await handleInboundCommand(contentText, reply, deps);
       return;
     }
 
@@ -100,47 +89,17 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    let text = contentText;
-    const voiceAttachments = attachments.filter(isVoiceAttachment);
-    if (voiceAttachments.length > 0) {
-      const transcript = resolveVoiceTranscript(voiceAttachments);
-      log.info("inbound", "voice message", {
-        messageId: msg.messageId,
-        hasAsr: Boolean(transcript),
-        asrLength: transcript?.length ?? 0,
-      });
-      if (!transcript) {
-        if (!contentText) {
-          log.warn("inbound", "voice ASR returned no text", { messageId: msg.messageId });
-          await reply("Could not transcribe this voice message; please resend or type it.");
-          return;
-        }
-        log.warn("inbound", "voice ASR returned no text; using text content", { messageId: msg.messageId });
-      } else {
-        log.debug("inbound", "voice transcript", { messageId: msg.messageId, transcript });
-        text = contentText ? `${contentText}\n${transcript}` : transcript;
-      }
+    const resolved = await resolveInboundContent(msg, {
+      contentText,
+      maxSize: deps.getFileMaxSize(),
+      uploadDir: sessionUploadDir(deps.ctx.cwd, deps.ctx.sessionManager.getSessionId()),
+      saveFiles: deps.saveFiles ?? saveInboundFiles,
+    });
+    if (resolved.status === "rejected") {
+      await reply(resolved.reply);
+      return;
     }
-
-    // Voice attachments are handled above; all other attachments are stored as files.
-    const attachmentsToSave = attachments.filter((attachment) => !isVoiceAttachment(attachment));
-    const failures: AttachmentFailure[] = [];
-
-    let files: SavedFile[] = [];
-    if (attachmentsToSave.length > 0) {
-      const uploadDir = sessionUploadDir(deps.ctx.cwd, deps.ctx.sessionManager.getSessionId());
-      log.debug("inbound", "saving attachments", {
-        messageId: msg.messageId,
-        count: attachmentsToSave.length,
-        uploadDir,
-      });
-      const result = await saveFiles(attachmentsToSave, {
-        maxSize: deps.getFileMaxSize(),
-        uploadDir,
-      });
-      files = result.files;
-      failures.push(...result.failures);
-    }
+    const { text, files, failures, voiceCount } = resolved;
 
     if (failures.length > 0) {
       log.warn("inbound", "attachment failure summary", {
@@ -159,77 +118,27 @@ export function createInboundHandler(deps: InboundDeps) {
     }
 
     if (!text && files.length > 0) {
-      pendingAttachments.push(...files);
+      pending.add(files);
       log.info("inbound", "attachments pending for instruction", {
         messageId: msg.messageId,
         count: files.length,
-        pendingCount: pendingAttachments.length,
+        pendingCount: pending.count,
       });
       return;
     }
 
     deps.markQQTrigger(msg.senderId, msg.messageId);
-    const pending = text ? takePendingAttachments() : [];
-    const promptFiles = [...pending, ...files];
+    const pendingFiles = text ? pending.take() : [];
+    const promptFiles: SavedFile[] = [...pendingFiles, ...files];
     const promptText = formatAttachmentPrompt(promptFiles, text, deps.ctx.cwd);
     deps.pi.sendUserMessage(promptText, { deliverAs: deps.getDeliverAs() });
     log.info("inbound", "sent to pi", {
       messageId: msg.messageId,
       textLength: text.length,
-      voice: voiceAttachments.length > 0,
+      voice: voiceCount > 0,
       attachments: promptFiles.length,
-      pendingAttachments: pending.length,
+      pendingAttachments: pendingFiles.length,
       deliverAs: deps.getDeliverAs(),
     });
   };
-}
-
-async function handleCommand(text: string, reply: (t: string) => Promise<void>, deps: InboundDeps): Promise<void> {
-  const cmd = text.split(/\s+/)[0];
-  switch (cmd) {
-    case "/help":
-      await reply(
-        [
-          "pi-qq commands:",
-          "• /stop — abort the current task",
-          "• /compact — compact the context",
-          "• /status — show status",
-          "• /new — reset the session",
-          "• /help — this help",
-          "Other text is sent to pi.",
-        ].join("\n"),
-      );
-      break;
-    case "/stop":
-      deps.onStop?.();
-      if (deps.ctx.isIdle()) {
-        await reply("No task is running.");
-      } else {
-        deps.ctx.abort();
-        await deps.waitForEnd?.();
-        await reply("Abort requested.");
-      }
-      break;
-    case "/compact":
-      if (deps.ctx.isIdle()) {
-        deps.ctx.compact();
-        await reply("Context compaction triggered.");
-      } else {
-        await reply("Task is running; use /stop before /compact.");
-      }
-      break;
-    case "/status":
-      await reply(deps.getStatusLines().join("\n"));
-      break;
-    case "/new":
-      if (!deps.ctx.isIdle()) {
-        await reply("Task is running; use /stop before resetting.");
-      } else {
-        await reply("Resetting the session…");
-        deps.pi.sendUserMessage("/qq-new", { expandPromptTemplates: true });
-      }
-      break;
-    default:
-      await reply(`Unknown command ${cmd}; use /help.`);
-  }
 }
