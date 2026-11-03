@@ -1,6 +1,7 @@
 # pi-qq delivery-v3
 
 > Status: v3 implemented and the main path has been verified on real QQ. Final details such as long-list splitting and recovery edge cases still need one complete pass on the target client.
+> Note: later changes removed the image-specific pipeline; images now use the same save/pending path as files. See [README](../README.md) for current behavior.
 > Previous: [delivery-v1.md](./delivery-v1.md), [delivery-v2.md](./delivery-v2.md).
 
 ## 1. Scope

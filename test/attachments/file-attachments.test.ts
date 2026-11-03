@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  formatFilePrompt,
+  formatAttachmentPrompt,
   pruneUploadIndex,
   sanitizeFilename,
   saveInboundFiles,
@@ -52,23 +52,23 @@ describe("sessionUploadDir", () => {
   });
 });
 
-describe("formatFilePrompt", () => {
+describe("formatAttachmentPrompt", () => {
   const files = [{ path: "/tmp/a.zip", originalName: "a.zip", size: 1.5 * 1024 * 1024 }];
 
   it("包含路径、大小、原始名和用户消息", () => {
-    expect(formatFilePrompt(files, "分析它")).toBe(
-      "User sent the following file(s) via QQ (saved locally; use read/bash or other tools to access):\n" +
+    expect(formatAttachmentPrompt(files, "分析它")).toBe(
+      "User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):\n" +
         "- /tmp/a.zip (1.5MB, original name: a.zip)\n\n" +
         "User message:\n分析它",
     );
   });
 
-  it("无文件时保持原文", () => {
-    expect(formatFilePrompt([], "hello")).toBe("hello");
+  it("无附件时保持原文", () => {
+    expect(formatAttachmentPrompt([], "hello")).toBe("hello");
   });
 
-  it("无文本时只输出文件块", () => {
-    expect(formatFilePrompt(files, "  ")).not.toContain("User message:");
+  it("无文本时只输出附件块", () => {
+    expect(formatAttachmentPrompt(files, "  ")).not.toContain("User message:");
   });
 });
 

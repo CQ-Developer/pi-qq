@@ -14,7 +14,6 @@ describe("parseConfig", () => {
     const { config, error } = parseConfig({
       thinkingRelay: "yes",
       deliverAs: "bogus",
-      imageMaxSize: -1,
       fileMaxSize: "large",
       logLevel: "verbose",
       debug: true,
@@ -23,7 +22,6 @@ describe("parseConfig", () => {
     expect(config).toEqual({ debug: true });
     expect(error).toContain("thinkingRelay");
     expect(error).toContain("deliverAs");
-    expect(error).toContain("imageMaxSize");
     expect(error).toContain("fileMaxSize");
     expect(error).toContain("logLevel");
   });
@@ -32,7 +30,6 @@ describe("parseConfig", () => {
     const raw = {
       thinkingRelay: false,
       deliverAs: "followUp",
-      imageMaxSize: 1024,
       fileMaxSize: 2048,
       logLevel: "debug",
     } as const;
@@ -81,11 +78,11 @@ describe("getSettings", () => {
       markdownSupport: true,
       heartbeatMinutes: 10,
       heartbeatMaxMessages: 3,
+      imageMaxSize: 1024,
     } as never);
     expect(settings).toEqual({
       thinkingRelay: true,
       deliverAs: "steer",
-      imageMaxSize: 10 * 1024 * 1024,
       fileMaxSize: 50 * 1024 * 1024,
       logLevel: "silent",
     });

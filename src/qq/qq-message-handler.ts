@@ -2,14 +2,13 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { sendReply, type ReplyChannel } from "./reply-sender";
 import type { ReplyBudget } from "../quota/reply-quota";
-import {
-  buildImageMessageContent,
-  isImageAttachment,
-  resolveInboundImages,
-  type ImageContentLike,
-} from "../attachments/image-attachments";
 import { formatAttachmentFailures, type AttachmentFailure } from "../attachments/attachment-failure";
-import { formatFilePrompt, saveInboundFiles, sessionUploadDir, type SavedFile } from "../attachments/file-attachments";
+import {
+  formatAttachmentPrompt,
+  saveInboundFiles,
+  sessionUploadDir,
+  type SavedFile,
+} from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
 import { isVoiceAttachment, resolveVoiceTranscript } from "../attachments/voice-transcript";
 
@@ -19,7 +18,6 @@ export interface InboundDeps {
   budget: ReplyBudget;
   getAllowedOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
-  getImageMaxSize: () => number;
   getFileMaxSize: () => number;
   saveFiles?: typeof saveInboundFiles;
   getStatusLines: () => string[];
@@ -30,11 +28,11 @@ export interface InboundDeps {
 }
 
 export function createInboundHandler(deps: InboundDeps) {
-  let pendingFiles: SavedFile[] = [];
-  const takePendingFiles = (): SavedFile[] => {
-    const files = pendingFiles;
-    pendingFiles = [];
-    return files;
+  let pendingAttachments: SavedFile[] = [];
+  const takePendingAttachments = (): SavedFile[] => {
+    const attachments = pendingAttachments;
+    pendingAttachments = [];
+    return attachments;
   };
 
   return async (bot: QQBot, msg: QQBotInboundMessage): Promise<void> => {
@@ -87,9 +85,9 @@ export function createInboundHandler(deps: InboundDeps) {
     if (contentText.startsWith("/")) {
       const command = contentText.split(/\s+/)[0];
       log.info("inbound", "QQ command", { command });
-      if (command === "/new" && deps.ctx.isIdle() && pendingFiles.length > 0) {
-        log.info("inbound", "cleared pending files for /new", { count: pendingFiles.length });
-        pendingFiles = [];
+      if (command === "/new" && deps.ctx.isIdle() && pendingAttachments.length > 0) {
+        log.info("inbound", "cleared pending attachments for /new", { count: pendingAttachments.length });
+        pendingAttachments = [];
       }
       await handleCommand(contentText, reply, deps);
       return;
@@ -124,37 +122,19 @@ export function createInboundHandler(deps: InboundDeps) {
       }
     }
 
-    // Voice attachments are handled above; never pass them to the file downloader.
-    const nonVoiceAttachments = attachments.filter((attachment) => !isVoiceAttachment(attachment));
-    const imageAttachments = nonVoiceAttachments.filter(isImageAttachment);
-    const fileAttachments = nonVoiceAttachments.filter((attachment) => !isImageAttachment(attachment));
+    // Voice attachments are handled above; all other attachments are stored as files.
+    const attachmentsToSave = attachments.filter((attachment) => !isVoiceAttachment(attachment));
     const failures: AttachmentFailure[] = [];
 
-    let images: ImageContentLike[] = [];
-    if (imageAttachments.length > 0) {
-      const supportsImages = deps.ctx.model?.input.includes("image") ?? false;
-      if (!supportsImages) {
-        log.warn("inbound", "model does not support images; skipped", {
-          messageId: msg.messageId,
-          count: imageAttachments.length,
-        });
-        await reply(`Model does not support image input; skipped ${imageAttachments.length} image(s).`);
-      } else {
-        const result = await resolveInboundImages(imageAttachments, deps.getImageMaxSize());
-        images = result.images;
-        failures.push(...result.failures);
-      }
-    }
-
     let files: SavedFile[] = [];
-    if (fileAttachments.length > 0) {
+    if (attachmentsToSave.length > 0) {
       const uploadDir = sessionUploadDir(deps.ctx.cwd, deps.ctx.sessionManager.getSessionId());
-      log.debug("inbound", "saving files", {
+      log.debug("inbound", "saving attachments", {
         messageId: msg.messageId,
-        count: fileAttachments.length,
+        count: attachmentsToSave.length,
         uploadDir,
       });
-      const result = await saveFiles(fileAttachments, {
+      const result = await saveFiles(attachmentsToSave, {
         maxSize: deps.getFileMaxSize(),
         uploadDir,
       });
@@ -166,11 +146,11 @@ export function createInboundHandler(deps: InboundDeps) {
       log.warn("inbound", "attachment failure summary", {
         messageId: msg.messageId,
         failures,
-        successCount: images.length + files.length,
+        successCount: files.length,
       });
-      await reply(formatAttachmentFailures(failures, images.length + files.length));
+      await reply(formatAttachmentFailures(failures, files.length));
     }
-    if (!text && images.length === 0 && files.length === 0) {
+    if (!text && files.length === 0) {
       log.warn("inbound", "no injectable content after attachment handling", {
         messageId: msg.messageId,
         failures: failures.length,
@@ -178,28 +158,27 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
-    if (!text && images.length === 0 && files.length > 0) {
-      pendingFiles.push(...files);
-      log.info("inbound", "files pending for instruction", {
+    if (!text && files.length > 0) {
+      pendingAttachments.push(...files);
+      log.info("inbound", "attachments pending for instruction", {
         messageId: msg.messageId,
         count: files.length,
-        pendingCount: pendingFiles.length,
+        pendingCount: pendingAttachments.length,
       });
       return;
     }
 
     deps.markQQTrigger(msg.senderId, msg.messageId);
-    const pending = text ? takePendingFiles() : [];
+    const pending = text ? takePendingAttachments() : [];
     const promptFiles = [...pending, ...files];
-    const promptText = formatFilePrompt(promptFiles, text);
-    deps.pi.sendUserMessage(buildImageMessageContent(promptText, images), { deliverAs: deps.getDeliverAs() });
+    const promptText = formatAttachmentPrompt(promptFiles, text);
+    deps.pi.sendUserMessage(promptText, { deliverAs: deps.getDeliverAs() });
     log.info("inbound", "sent to pi", {
       messageId: msg.messageId,
       textLength: text.length,
       voice: voiceAttachments.length > 0,
-      images: images.length,
-      files: promptFiles.length,
-      pendingFiles: pending.length,
+      attachments: promptFiles.length,
+      pendingAttachments: pending.length,
       deliverAs: deps.getDeliverAs(),
     });
   };

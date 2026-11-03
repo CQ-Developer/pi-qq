@@ -246,11 +246,11 @@ export async function saveInboundFiles(
   return { files, failures };
 }
 
-export function formatFilePrompt(files: readonly SavedFile[], userText: string): string {
+export function formatAttachmentPrompt(files: readonly SavedFile[], userText: string): string {
   if (files.length === 0) return userText;
 
   const lines = [
-    "User sent the following file(s) via QQ (saved locally; use read/bash or other tools to access):",
+    "User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):",
     ...files.map((file) => `- ${file.path} (${formatBytes(file.size)}, original name: ${file.originalName})`),
   ];
   const text = userText.trim();

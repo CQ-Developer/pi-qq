@@ -112,7 +112,6 @@ export default function (pi: ExtensionAPI) {
         budget,
         getAllowedOpenid,
         getDeliverAs,
-        getImageMaxSize: () => activeSettings.imageMaxSize,
         getFileMaxSize: () => activeSettings.fileMaxSize,
         getStatusLines,
         onWarn: onWarn(ctx),

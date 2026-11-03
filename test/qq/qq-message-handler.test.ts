@@ -1,17 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createInboundHandler } from "../../src/qq/qq-message-handler";
 import { ReplyBudget } from "../../src/quota/reply-quota";
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 function makeInboundHarness(
   isIdle: boolean,
   opts: {
     content?: string;
     attachments?: unknown[];
-    modelInput?: string[];
     saveFiles?: (attachments: unknown, options: unknown) => Promise<unknown>;
   } = {},
 ) {
@@ -30,7 +25,7 @@ function makeInboundHarness(
     ui: { notify: () => {} },
     cwd: "/workspace/pi-qq-test",
     sessionManager: { getSessionId: () => "session-test" },
-    model: { input: opts.modelInput ?? ["text"] },
+    model: { input: ["text"] },
   };
   const deps = {
     pi: {
@@ -42,7 +37,6 @@ function makeInboundHarness(
     budget: new ReplyBudget(),
     getAllowedOpenid: () => "openid-u",
     getDeliverAs: () => "steer",
-    getImageMaxSize: () => 1024,
     getFileMaxSize: () => 50 * 1024 * 1024,
     saveFiles: opts.saveFiles,
     getStatusLines: () => [],
@@ -69,29 +63,50 @@ function makeInboundHarness(
   return { run, sent, userMessages, triggers: () => triggers, stops: () => stops };
 }
 
-describe("inbound images", () => {
-  it("injects text before the image for a desktop message+picture", async () => {
-    const png = Uint8Array.from([137, 80, 78, 71]);
-    vi.stubGlobal(
-      "fetch",
-      (async () => new Response(png, { headers: { "content-type": "image/png" } })) as typeof fetch,
-    );
+describe("inbound image attachments", () => {
+  const savedImage = { path: "/tmp/pi-qq-files/photo.png", originalName: "photo.png", size: 123 };
+  const imageAttachment = {
+    content_type: "image/png",
+    url: "https://example.com/photo.png",
+    filename: "photo.png",
+  };
 
+  it("saves an image-only message and waits for the next instruction", async () => {
+    let received: unknown[] | undefined;
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [imageAttachment],
+      saveFiles: async (attachments) => {
+        received = attachments as unknown[];
+        return { files: [savedImage], failures: [] };
+      },
+    });
+
+    await harness.run();
+    expect(received).toHaveLength(1);
+    expect(harness.userMessages).toEqual([]);
+    expect(harness.triggers()).toBe(0);
+
+    await harness.run({ content: "看看这张图", attachments: [] });
+    const content = harness.userMessages[0]?.content as string;
+    expect(content).toContain(savedImage.path);
+    expect(content).toContain("User message:\n看看这张图");
+    expect(harness.triggers()).toBe(1);
+  });
+
+  it("saves an image sent with text and sends the path immediately", async () => {
     const harness = makeInboundHarness(true, {
       content: "看看这张图",
-      attachments: [
-        { content_type: "image/png", url: "https://example.com/a.png", filename: "a.png", size: png.length },
-      ],
-      modelInput: ["text", "image"],
+      attachments: [imageAttachment],
+      saveFiles: async () => ({ files: [savedImage], failures: [] }),
     });
 
     await harness.run();
     expect(harness.triggers()).toBe(1);
-    const content = harness.userMessages[0]?.content as Array<{ type: string; text?: string; data?: string }>;
-    expect(Array.isArray(content)).toBe(true);
-    expect(content[0]).toEqual({ type: "text", text: "看看这张图" });
-    expect(content[1]?.type).toBe("image");
-    expect(content[1]?.data).toBe(Buffer.from(png).toString("base64"));
+    const content = harness.userMessages[0]?.content as string;
+    expect(typeof content).toBe("string");
+    expect(content).toContain(savedImage.path);
+    expect(content).toContain("User message:\n看看这张图");
   });
 });
 
@@ -203,11 +218,13 @@ describe("inbound voice", () => {
   });
 });
 
-describe("inbound pending files", () => {
+describe("inbound pending attachments", () => {
   const fileA = { content_type: "application/zip", url: "https://example.com/a.zip", filename: "a.zip" };
   const fileB = { content_type: "application/zip", url: "https://example.com/b.zip", filename: "b.zip" };
+  const image = { content_type: "image/png", url: "https://example.com/photo.png", filename: "photo.png" };
   const savedA = { path: "/tmp/a.zip", originalName: "a.zip", size: 10 };
   const savedB = { path: "/tmp/b.zip", originalName: "b.zip", size: 20 };
+  const savedImage = { path: "/tmp/photo.png", originalName: "photo.png", size: 30 };
 
   it("waits after a file-only message and injects on the next text", async () => {
     let saveCalls = 0;
@@ -234,7 +251,7 @@ describe("inbound pending files", () => {
     expect(content).toContain("User message:\n分析这个文件");
   });
 
-  it("merges multiple pending files into the next instruction", async () => {
+  it("merges multiple pending attachments into the next instruction", async () => {
     const savedByName = new Map([
       ["a.zip", savedA],
       ["b.zip", savedB],
@@ -259,7 +276,32 @@ describe("inbound pending files", () => {
     expect(content).toContain("处理这两个文件");
   });
 
-  it("uses a voice transcript as the instruction for pending files", async () => {
+  it("merges pending images and files into one instruction", async () => {
+    const savedByName = new Map([
+      ["photo.png", savedImage],
+      ["a.zip", savedA],
+    ]);
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [image],
+      saveFiles: async (attachments) => ({
+        files: (attachments as Array<{ filename: string }>).map((file) => savedByName.get(file.filename)!),
+        failures: [],
+      }),
+    });
+
+    await harness.run();
+    await harness.run({ attachments: [fileA] });
+    await harness.run({ content: "处理这些附件", attachments: [] });
+
+    expect(harness.triggers()).toBe(1);
+    const content = harness.userMessages[0]?.content as string;
+    expect(content).toContain(savedImage.path);
+    expect(content).toContain(savedA.path);
+    expect(content).toContain("处理这些附件");
+  });
+
+  it("uses a voice transcript as the instruction for pending attachments", async () => {
     const harness = makeInboundHarness(true, {
       content: "",
       attachments: [fileA],
@@ -284,7 +326,7 @@ describe("inbound pending files", () => {
     expect(content).toContain("处理这个文件");
   });
 
-  it("clears pending files on /new", async () => {
+  it("clears pending attachments on /new", async () => {
     const harness = makeInboundHarness(true, {
       content: "",
       attachments: [fileA],

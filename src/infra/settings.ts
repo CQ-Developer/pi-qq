@@ -6,7 +6,6 @@ import { normalizeLogLevel, type LogLevel } from "./file-logger";
 export interface PiQQSettings {
   thinkingRelay?: boolean;
   deliverAs?: "steer" | "followUp";
-  imageMaxSize?: number;
   fileMaxSize?: number;
   logLevel?: LogLevel;
   debug?: boolean;
@@ -59,10 +58,6 @@ export function parseConfig(raw: unknown): ReadConfigResult {
     if (raw.deliverAs === "steer" || raw.deliverAs === "followUp") config.deliverAs = raw.deliverAs;
     else errors.push('deliverAs must be "steer" or "followUp"');
   }
-  if (raw.imageMaxSize !== undefined) {
-    if (isPositiveSize(raw.imageMaxSize)) config.imageMaxSize = raw.imageMaxSize;
-    else errors.push("imageMaxSize must be a positive finite number");
-  }
   if (raw.fileMaxSize !== undefined) {
     if (isPositiveSize(raw.fileMaxSize)) config.fileMaxSize = raw.fileMaxSize;
     else errors.push("fileMaxSize must be a positive finite number");
@@ -102,7 +97,6 @@ export function getSettings(config: PiQQSettings): ResolvedSettings {
   return {
     thinkingRelay: config.thinkingRelay ?? true,
     deliverAs: config.deliverAs ?? "steer",
-    imageMaxSize: config.imageMaxSize ?? 10 * 1024 * 1024,
     fileMaxSize: config.fileMaxSize ?? 50 * 1024 * 1024,
     logLevel,
   };

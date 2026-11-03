@@ -1,6 +1,7 @@
 # pi-qq delivery-v3
 
 > 状态：v3 已实现并完成主链路真机验证；按块切泡、错误恢复、列表切分等最终细节仍需在目标 QQ 客户端做一次完整复验。
+> 说明：后续变更删除了图片专用链路，图片与文件共用保存/pending 流程。当前行为见 [README-zh.md](../README-zh.md)。
 > 前序版本：[delivery-v1-zh.md](./delivery-v1-zh.md)、[delivery-v2-zh.md](./delivery-v2-zh.md)。
 
 ## 1. 交付范围

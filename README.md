@@ -30,8 +30,8 @@ Send a QQ private message to the bot to start a task.
 
 - **Text**: normal chat message.
 - **Voice**: QQ built-in ASR text is sent to pi directly; the audio is not downloaded or saved. If ASR returns no text, the bot asks you to resend or type it.
-- **Images**: sent to pi as vision input.
-- **Files**: saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/` and wait for your next instruction.
+- **Images**: saved with files under `.pi/pi-qq/<sessionId>/uploads/`; if the message has no instruction, pi waits for your next message.
+- **Files**: saved under `.pi/pi-qq/<sessionId>/uploads/` and wait for your next instruction.
 
 QQ client support for mixed messages varies. Mobile QQ generally sends one message type at a time; desktop QQ can send text with an image. When a client includes text or voice together with attachments, pi-qq processes them in the same prompt.
 
@@ -43,20 +43,21 @@ QQ client support for mixed messages varies. Mobile QQ generally sends one messa
 - **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
 - **Error recovery**: after a model error, automatic retry runs within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.
 
-### Files
+### Files and images
 
-A file-only message does **not** start pi. The file is saved, and pi waits for your next text or voice instruction before processing it.
+An attachment-only message does **not** start pi. Files and images are saved, and pi waits for your next text or voice instruction before processing them.
 
-- Upload one or more files, then send a text or voice message describing what to do.
+- Send one or more files or images, then send a text or voice message describing what to do.
 - The next text/voice message is used as the instruction; the saved path(s), size, and original filename are added to that prompt.
-- Multiple files uploaded before the instruction are combined into one prompt.
-- `/new` clears files waiting for an instruction.
+- Multiple attachments uploaded before the instruction are combined into one prompt.
+- Images are viewed through pi's `read` tool, so the current model must support image input to see them.
+- `/new` clears attachments waiting for an instruction.
 - Uploads are scoped to the current pi session. If you upload the same filename with identical content, pi reuses the existing file; the same filename with different content is saved as `name-1.ext`; different filenames with identical content are kept as separate files.
 
-Example file prompt seen by pi:
+Example attachment prompt seen by pi:
 
 ```text
-User sent the following file via QQ (saved locally; use read/bash or other tools to access it):
+User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):
 - /home/chen/project/myproj/.pi/pi-qq/<sessionId>/uploads/report.pdf (1.4MB, original name: report.pdf)
 
 User message:
@@ -113,9 +114,10 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 | --------------- | ---------- | ------------------------------------------------------------ |
 | `thinkingRelay` | `true`     | Relay thinking as plain text with a `💭 思考` header         |
 | `deliverAs`     | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
-| `imageMaxSize`  | `10485760` | QQ image download limit in bytes (10MB)                      |
-| `fileMaxSize`   | `52428800` | QQ file download limit in bytes (50MB)                       |
+| `fileMaxSize`   | `52428800` | QQ attachment download limit in bytes (50MB)                 |
 | `logLevel`      | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
+
+The old `imageMaxSize` key is ignored; images share the `fileMaxSize` limit.
 
 When enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads. Legacy `debug: true` maps to `logLevel: "debug"`.
 
@@ -147,6 +149,6 @@ npm run format:check
 
 - Only C2C (QQ private chat) is supported.
 - Runs triggered by inbound QQ messages are relayed to QQ, as are automatic retry runs after model errors. Unrelated tasks started directly in pi stay local.
-- Incoming images are passed to the model as vision input; the current model must support image input.
-- Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
+- Incoming images are saved as files and read through pi's `read` tool; the current model must support image input to see them.
+- Saved attachments are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
