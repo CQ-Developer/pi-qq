@@ -134,6 +134,16 @@ describe("RunFeedback 直推", () => {
     expect(calls.at(-1)?.input_state).toBe(DONE_STATE);
   });
 
+  it("思考中的空行也保留引用前缀", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", "line one\n\nline two");
+    await rf.onAssistantFinal("", false);
+    await rf.onAgentEnd();
+
+    expect(streamContent(calls)).toBe("> line one\n>\n> line two\n>\n");
+  });
+
   it("思考快照按差量追加，不重复", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);

@@ -303,10 +303,6 @@ export class RunFeedback {
     }
     if (!isError && text) run.blockClosed = true;
 
-    if (run.lastKind === "thinking" && !run.thinkingAtLineStart) {
-      this.push(run, "\n");
-      run.thinkingAtLineStart = true;
-    }
     run.thinkingSentLen = 0;
 
     const ok = await this.flushStream(run);
