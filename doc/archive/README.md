@@ -1,0 +1,18 @@
+# Archived delivery records
+
+These documents record how pi-qq was delivered at each milestone. They are
+historical snapshots, not current documentation.
+
+- They may reference modules, settings, or behaviors that have since been
+  removed (for example the image-specific pipeline and `imageMaxSize`).
+- Do not update them to match current behavior; write current documentation in
+  `README.md`, `README-zh.md`, and `CHANGELOG.md` instead.
+- File and line details in these records are intentionally frozen.
+
+# 归档交付记录
+
+本目录保存 pi-qq 各里程碑的交付记录，仅作历史快照，不是当前文档。
+
+- 文中可能引用已删除的模块、配置或行为（例如图片专用链路和 `imageMaxSize`）。
+- 不要把这些文档更新为当前行为；现行说明请写入 `README.md`、`README-zh.md` 和 `CHANGELOG.md`。
+- 文件与行号等细节按当时状态保留。

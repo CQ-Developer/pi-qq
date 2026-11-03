@@ -1,7 +1,8 @@
 # pi-qq delivery-v2
 
+> **Archived record.** Content reflects the delivery at that time and may reference removed modules or settings. See [README](../../README.md) for current behavior.
 > Status: v2 delivered; this is a historical record.
-> Current behavior is documented in [README](../README.md); previous: [delivery-v1.md](./delivery-v1.md); next: [delivery-v3.md](./delivery-v3.md).
+> Previous: [delivery-v1.md](./delivery-v1.md); next: [delivery-v3.md](./delivery-v3.md).
 
 ## 1. Scope
 

@@ -1,7 +1,8 @@
 # pi-qq delivery-v2
 
+> **归档记录。** 内容反映当时的交付状态，可能引用已删除的模块或配置；当前行为见 [README-zh.md](../../README-zh.md)。
 > 状态：v2 已交付，本文为历史记录。
-> 当前行为以 [README-zh.md](../README-zh.md) 为准；前序版本：[delivery-v1-zh.md](./delivery-v1-zh.md)；后续版本：[delivery-v3-zh.md](./delivery-v3-zh.md)。
+> 前序版本：[delivery-v1-zh.md](./delivery-v1-zh.md)；后续版本：[delivery-v3-zh.md](./delivery-v3-zh.md)。
 
 ## 1. 交付范围
 
