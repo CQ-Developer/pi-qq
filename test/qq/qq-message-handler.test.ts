@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInboundHandler } from "../../src/qq/qq-message-handler";
 import { ReplyBudget } from "../../src/quota/reply-quota";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function makeInboundHarness(
   isIdle: boolean,
@@ -64,6 +68,32 @@ function makeInboundHarness(
     );
   return { run, sent, userMessages, triggers: () => triggers, stops: () => stops };
 }
+
+describe("inbound images", () => {
+  it("injects text before the image for a desktop message+picture", async () => {
+    const png = Uint8Array.from([137, 80, 78, 71]);
+    vi.stubGlobal(
+      "fetch",
+      (async () => new Response(png, { headers: { "content-type": "image/png" } })) as typeof fetch,
+    );
+
+    const harness = makeInboundHarness(true, {
+      content: "看看这张图",
+      attachments: [
+        { content_type: "image/png", url: "https://example.com/a.png", filename: "a.png", size: png.length },
+      ],
+      modelInput: ["text", "image"],
+    });
+
+    await harness.run();
+    expect(harness.triggers()).toBe(1);
+    const content = harness.userMessages[0]?.content as Array<{ type: string; text?: string; data?: string }>;
+    expect(Array.isArray(content)).toBe(true);
+    expect(content[0]).toEqual({ type: "text", text: "看看这张图" });
+    expect(content[1]?.type).toBe("image");
+    expect(content[1]?.data).toBe(Buffer.from(png).toString("base64"));
+  });
+});
 
 describe("inbound files", () => {
   const saved = { path: "/tmp/pi-qq-files/x.zip", originalName: "x.zip", size: 1234 };

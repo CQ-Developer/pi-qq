@@ -33,6 +33,8 @@ Send a QQ private message to the bot to start a task.
 - **Images**: sent to pi as vision input.
 - **Files**: saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/` and wait for your next instruction.
 
+QQ client support for mixed messages varies. Mobile QQ generally sends one message type at a time; desktop QQ can send text with an image. When a client includes text or voice together with attachments, pi-qq processes them in the same prompt.
+
 ### QQ output format
 
 - **Thinking**: its own bubble, plain text, with `**💭 思考**` as the first line. When a long thought continues in a new bubble at a 12k line boundary, the header is repeated.
@@ -69,7 +71,7 @@ Voice messages use QQ's built-in ASR (`asr_refer_text`). The transcript is sent 
 - No local or external speech-to-text service is used.
 - If QQ ASR returns no text, the bot replies `Could not transcribe this voice message; please resend or type it.` and does not start a pi run.
 - Voice and text are separate QQ messages; send them one after another when needed.
-- Files or images carried in the same message are processed together with the transcript.
+- If a client sends files or images together with a voice message, they are processed with the transcript.
 - To inspect the raw ASR result, set `logLevel` to `debug`; the log includes `asr_refer_text` and attachment metadata.
 
 ## Commands
