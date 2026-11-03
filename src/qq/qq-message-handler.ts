@@ -171,7 +171,7 @@ export function createInboundHandler(deps: InboundDeps) {
     deps.markQQTrigger(msg.senderId, msg.messageId);
     const pending = text ? takePendingAttachments() : [];
     const promptFiles = [...pending, ...files];
-    const promptText = formatAttachmentPrompt(promptFiles, text);
+    const promptText = formatAttachmentPrompt(promptFiles, text, deps.ctx.cwd);
     deps.pi.sendUserMessage(promptText, { deliverAs: deps.getDeliverAs() });
     log.info("inbound", "sent to pi", {
       messageId: msg.messageId,

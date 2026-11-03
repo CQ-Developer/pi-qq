@@ -48,7 +48,7 @@ QQ 客户端对混合消息的支持不同：手机 QQ 通常一次只发一种�
 **只发送附件不会启动 pi。** 文件和图片会先保存，pi 等待下一条文字或语音指令后再处理。
 
 - 先上传一个或多个文件或图片，再发送文字或语音说明要做什么。
-- 下一条文字/语音会作为指令；保存路径、文件大小和原始文件名会加入该提示词。
+- 下一条文字/语音会作为指令；保存路径会加入该提示词。
 - 指令到达前上传的多个附件会合并到同一个提示词中。
 - 图片通过 pi 的 `read` 工具查看，因此当前模型必须支持图片输入才能看到内容。
 - `/new` 会清空等待指令的附件。
@@ -57,10 +57,10 @@ QQ 客户端对混合消息的支持不同：手机 QQ 通常一次只发一种�
 pi 看到的附件提示词示例：
 
 ```text
-User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):
-- /home/chen/project/myproj/.pi/pi-qq/<sessionId>/uploads/report.pdf (1.4MB, original name: report.pdf)
+# Attachments:
+- .pi/pi-qq/<sessionId>/uploads/report.pdf
 
-User message:
+# User message:
 Summarize this file.
 ```
 

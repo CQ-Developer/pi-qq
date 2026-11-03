@@ -48,7 +48,7 @@ QQ client support for mixed messages varies. Mobile QQ generally sends one messa
 An attachment-only message does **not** start pi. Files and images are saved, and pi waits for your next text or voice instruction before processing them.
 
 - Send one or more files or images, then send a text or voice message describing what to do.
-- The next text/voice message is used as the instruction; the saved path(s), size, and original filename are added to that prompt.
+- The next text/voice message is used as the instruction; the saved path(s) are added to that prompt.
 - Multiple attachments uploaded before the instruction are combined into one prompt.
 - Images are viewed through pi's `read` tool, so the current model must support image input to see them.
 - `/new` clears attachments waiting for an instruction.
@@ -57,10 +57,10 @@ An attachment-only message does **not** start pi. Files and images are saved, an
 Example attachment prompt seen by pi:
 
 ```text
-User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):
-- /home/chen/project/myproj/.pi/pi-qq/<sessionId>/uploads/report.pdf (1.4MB, original name: report.pdf)
+# Attachments:
+- .pi/pi-qq/<sessionId>/uploads/report.pdf
 
-User message:
+# User message:
 Summarize this file.
 ```
 

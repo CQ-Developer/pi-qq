@@ -53,22 +53,25 @@ describe("sessionUploadDir", () => {
 });
 
 describe("formatAttachmentPrompt", () => {
-  const files = [{ path: "/tmp/a.zip", originalName: "a.zip", size: 1.5 * 1024 * 1024 }];
+  const cwd = "/workspace";
+  const files = [{ path: "/workspace/.pi/pi-qq/session-1/uploads/report.pdf" }];
 
-  it("包含路径、大小、原始名和用户消息", () => {
-    expect(formatAttachmentPrompt(files, "分析它")).toBe(
-      "User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):\n" +
-        "- /tmp/a.zip (1.5MB, original name: a.zip)\n\n" +
-        "User message:\n分析它",
+  it("uses a concise attachment list and a relative path", () => {
+    expect(formatAttachmentPrompt(files, "分析它", cwd)).toBe(
+      "# Attachments:\n- .pi/pi-qq/session-1/uploads/report.pdf\n\n# User message:\n分析它",
     );
   });
 
+  it("keeps an absolute path when it is outside the workspace", () => {
+    expect(formatAttachmentPrompt([{ path: "/tmp/a.zip" }], "分析它", cwd)).toContain("- /tmp/a.zip");
+  });
+
   it("无附件时保持原文", () => {
-    expect(formatAttachmentPrompt([], "hello")).toBe("hello");
+    expect(formatAttachmentPrompt([], "hello", cwd)).toBe("hello");
   });
 
   it("无文本时只输出附件块", () => {
-    expect(formatAttachmentPrompt(files, "  ")).not.toContain("User message:");
+    expect(formatAttachmentPrompt(files, "  ", cwd)).not.toContain("# User message:");
   });
 });
 
@@ -86,7 +89,6 @@ describe("saveInboundFiles", () => {
       expect(result.failures).toEqual([]);
       expect(result.files).toHaveLength(1);
       expect(result.files[0]?.path).toBe(join(uploadDir, "test.zip"));
-      expect(result.files[0]?.originalName).toBe("test.zip");
       expect((await readFile(result.files[0]!.path)).equals(Buffer.from(zip))).toBe(true);
       expect(await readIndex(uploadDir)).toEqual({ "test.zip": sha256Hex(Buffer.from(zip)) });
     } finally {
@@ -94,7 +96,7 @@ describe("saveInboundFiles", () => {
     }
   });
 
-  it("keeps the original display name while sanitizing the path", async () => {
+  it("sanitizes the path", async () => {
     const base = await mkdtemp(join(tmpdir(), "pi-qq-files-"));
     const uploadDir = join(base, "uploads");
     try {
@@ -104,7 +106,6 @@ describe("saveInboundFiles", () => {
       );
 
       expect(result.files[0]?.path).toBe(join(uploadDir, "a_b_.txt"));
-      expect(result.files[0]?.originalName).toBe("a:b?.txt");
     } finally {
       await rm(base, { recursive: true, force: true });
     }
@@ -136,7 +137,6 @@ describe("saveInboundFiles", () => {
 
       expect(first.files[0]?.path).toBe(join(uploadDir, "a.txt"));
       expect(second.files[0]?.path).toBe(join(uploadDir, "a-1.txt"));
-      expect(second.files[0]?.originalName).toBe("a.txt");
       expect(await readIndex(uploadDir)).toEqual({
         "a.txt": sha256Hex(Buffer.from("first")),
         "a-1.txt": sha256Hex(Buffer.from("second")),

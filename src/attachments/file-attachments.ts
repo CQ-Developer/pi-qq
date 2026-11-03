@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, relative } from "node:path";
 import { downloadLimited, type InboundAttachmentLike } from "./attachment-download";
 import type { AttachmentFailure } from "./attachment-failure";
 import { formatBytes } from "../infra/display-format";
@@ -8,12 +8,9 @@ import { log } from "../infra/file-logger";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const UPLOAD_INDEX_FILENAME = ".index.json";
-const MAX_DISPLAY_NAME_CHARS = 200;
 
 export interface SavedFile {
   path: string;
-  originalName: string;
-  size: number;
 }
 
 export type UploadIndex = Record<string, string>;
@@ -56,16 +53,6 @@ export function sanitizeFilename(filename: string | undefined, fallback: string)
   const stem = cleaned.slice(0, cleaned.length - ext.length);
   const maxStemLength = Math.max(1, 120 - ext.length);
   return `${stem.slice(0, maxStemLength)}${ext}`;
-}
-
-function displayFilename(filename: string | undefined, fallback: string): string {
-  const raw = basename((filename ?? "").trim())
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!raw || raw === "." || raw === "..") return fallback;
-  return raw.length > MAX_DISPLAY_NAME_CHARS ? raw.slice(0, MAX_DISPLAY_NAME_CHARS) : raw;
 }
 
 function withSuffix(filename: string, suffix: number): string {
@@ -142,7 +129,6 @@ async function hashExistingFile(path: string): Promise<string> {
 async function saveOrReuse(
   uploadDir: string,
   filename: string,
-  originalName: string,
   body: Buffer,
   index: UploadIndex,
 ): Promise<{ file: SavedFile; changed: boolean }> {
@@ -156,7 +142,7 @@ async function saveOrReuse(
     }
     await writeFile(target, body, { flag: "wx" });
     index[filename] = hash;
-    return { file: { path: target, originalName, size: body.byteLength }, changed: true };
+    return { file: { path: target }, changed: true };
   }
 
   let existingHash = index[filename];
@@ -166,7 +152,7 @@ async function saveOrReuse(
     changed = true;
   }
   if (existingHash === hash) {
-    return { file: { path: target, originalName, size: body.byteLength }, changed };
+    return { file: { path: target }, changed };
   }
 
   for (let suffix = 1; suffix < 100; suffix++) {
@@ -180,7 +166,7 @@ async function saveOrReuse(
         changed = true;
       }
       if (candidateHash === hash) {
-        return { file: { path: candidatePath, originalName, size: body.byteLength }, changed };
+        return { file: { path: candidatePath }, changed };
       }
       continue;
     }
@@ -190,7 +176,7 @@ async function saveOrReuse(
     }
     await writeFile(candidatePath, body, { flag: "wx" });
     index[candidate] = hash;
-    return { file: { path: candidatePath, originalName, size: body.byteLength }, changed: true };
+    return { file: { path: candidatePath }, changed: true };
   }
 
   throw new Error("Could not allocate a unique filename");
@@ -219,7 +205,6 @@ export async function saveInboundFiles(
 
   for (const [position, attachment] of attachments.entries()) {
     const fallback = `file-${position + 1}`;
-    const originalName = displayFilename(attachment.filename, fallback);
     const filename = sanitizeFilename(attachment.filename, fallback);
     if (typeof attachment.size === "number" && attachment.size > limit) {
       failures.push({ filename, reason: `file too large (${formatBytes(attachment.size)} > ${formatBytes(limit)})` });
@@ -234,7 +219,7 @@ export async function saveInboundFiles(
         kind: "file",
         fetchImpl,
       });
-      const result = await saveOrReuse(uploadDir, filename, originalName, body, index);
+      const result = await saveOrReuse(uploadDir, filename, body, index);
       indexChanged ||= result.changed;
       addFile(result.file);
     } catch (err) {
@@ -246,14 +231,17 @@ export async function saveInboundFiles(
   return { files, failures };
 }
 
-export function formatAttachmentPrompt(files: readonly SavedFile[], userText: string): string {
+export function formatAttachmentPrompt(files: readonly SavedFile[], userText: string, cwd: string): string {
   if (files.length === 0) return userText;
 
   const lines = [
-    "User sent the following attachment(s) via QQ (saved locally; use read/bash or other tools to access):",
-    ...files.map((file) => `- ${file.path} (${formatBytes(file.size)}, original name: ${file.originalName})`),
+    "# Attachments:",
+    ...files.map((file) => {
+      const displayPath = relative(cwd, file.path);
+      return `- ${displayPath && !displayPath.startsWith("..") ? displayPath : file.path}`;
+    }),
   ];
   const text = userText.trim();
-  if (text) lines.push("", "User message:", text);
+  if (text) lines.push("", "# User message:", text);
   return lines.join("\n");
 }

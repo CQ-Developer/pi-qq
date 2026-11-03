@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { createInboundHandler } from "../../src/qq/qq-message-handler";
 import { ReplyBudget } from "../../src/quota/reply-quota";
 
+const UPLOAD_DIR = "/workspace/pi-qq-test/.pi/pi-qq/session-test/uploads";
+const savedAttachment = (name: string) => ({ path: `${UPLOAD_DIR}/${name}` });
+const relativeAttachment = (name: string) => `.pi/pi-qq/session-test/uploads/${name}`;
+
 function makeInboundHarness(
   isIdle: boolean,
   opts: {
@@ -64,7 +68,7 @@ function makeInboundHarness(
 }
 
 describe("inbound image attachments", () => {
-  const savedImage = { path: "/tmp/pi-qq-files/photo.png", originalName: "photo.png", size: 123 };
+  const savedImage = savedAttachment("photo.png");
   const imageAttachment = {
     content_type: "image/png",
     url: "https://example.com/photo.png",
@@ -89,8 +93,8 @@ describe("inbound image attachments", () => {
 
     await harness.run({ content: "看看这张图", attachments: [] });
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(savedImage.path);
-    expect(content).toContain("User message:\n看看这张图");
+    expect(content).toContain(relativeAttachment("photo.png"));
+    expect(content).toContain("# User message:\n看看这张图");
     expect(harness.triggers()).toBe(1);
   });
 
@@ -105,13 +109,13 @@ describe("inbound image attachments", () => {
     expect(harness.triggers()).toBe(1);
     const content = harness.userMessages[0]?.content as string;
     expect(typeof content).toBe("string");
-    expect(content).toContain(savedImage.path);
-    expect(content).toContain("User message:\n看看这张图");
+    expect(content).toContain(relativeAttachment("photo.png"));
+    expect(content).toContain("# User message:\n看看这张图");
   });
 });
 
 describe("inbound files", () => {
-  const saved = { path: "/tmp/pi-qq-files/x.zip", originalName: "x.zip", size: 1234 };
+  const saved = savedAttachment("x.zip");
   const attachment = { content_type: "application/zip", url: "https://example.com/x.zip", filename: "x.zip" };
 
   it("保存文件并把路径与用户消息一起注入提示词", async () => {
@@ -132,9 +136,8 @@ describe("inbound files", () => {
     expect(receivedOptions?.uploadDir).toBe("/workspace/pi-qq-test/.pi/pi-qq/session-test/uploads");
     expect(harness.userMessages).toHaveLength(1);
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(saved.path);
-    expect(content).toContain("original name: x.zip");
-    expect(content).toContain("User message:\n分析这个文件");
+    expect(content).toContain(relativeAttachment("x.zip"));
+    expect(content).toContain("# User message:\n分析这个文件");
     expect(harness.triggers()).toBe(1);
   });
 
@@ -151,8 +154,8 @@ describe("inbound files", () => {
 
     await harness.run({ content: "处理这个文件", attachments: [] });
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(saved.path);
-    expect(content).toContain("User message:\n处理这个文件");
+    expect(content).toContain(relativeAttachment("x.zip"));
+    expect(content).toContain("# User message:\n处理这个文件");
     expect(harness.triggers()).toBe(1);
   });
 });
@@ -197,7 +200,7 @@ describe("inbound voice", () => {
   });
 
   it("processes files alongside a voice transcript", async () => {
-    const savedFile = { path: "/tmp/pi-qq-files/x.zip", originalName: "x.zip", size: 1234 };
+    const savedFile = savedAttachment("x.zip");
     let downloaded: Array<{ filename?: string }> = [];
     const harness = makeInboundHarness(true, {
       content: "",
@@ -213,7 +216,7 @@ describe("inbound voice", () => {
     expect(downloaded[0]?.filename).toBe("x.zip");
     expect(harness.triggers()).toBe(1);
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(savedFile.path);
+    expect(content).toContain(relativeAttachment("x.zip"));
     expect(content).toContain("测试。");
   });
 });
@@ -222,9 +225,9 @@ describe("inbound pending attachments", () => {
   const fileA = { content_type: "application/zip", url: "https://example.com/a.zip", filename: "a.zip" };
   const fileB = { content_type: "application/zip", url: "https://example.com/b.zip", filename: "b.zip" };
   const image = { content_type: "image/png", url: "https://example.com/photo.png", filename: "photo.png" };
-  const savedA = { path: "/tmp/a.zip", originalName: "a.zip", size: 10 };
-  const savedB = { path: "/tmp/b.zip", originalName: "b.zip", size: 20 };
-  const savedImage = { path: "/tmp/photo.png", originalName: "photo.png", size: 30 };
+  const savedA = savedAttachment("a.zip");
+  const savedB = savedAttachment("b.zip");
+  const savedImage = savedAttachment("photo.png");
 
   it("waits after a file-only message and injects on the next text", async () => {
     let saveCalls = 0;
@@ -247,8 +250,8 @@ describe("inbound pending attachments", () => {
     expect(harness.triggers()).toBe(1);
     expect(harness.userMessages).toHaveLength(1);
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(savedA.path);
-    expect(content).toContain("User message:\n分析这个文件");
+    expect(content).toContain(relativeAttachment("a.zip"));
+    expect(content).toContain("# User message:\n分析这个文件");
   });
 
   it("merges multiple pending attachments into the next instruction", async () => {
@@ -271,8 +274,8 @@ describe("inbound pending attachments", () => {
 
     expect(harness.triggers()).toBe(1);
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(savedA.path);
-    expect(content).toContain(savedB.path);
+    expect(content).toContain(relativeAttachment("a.zip"));
+    expect(content).toContain(relativeAttachment("b.zip"));
     expect(content).toContain("处理这两个文件");
   });
 
@@ -296,8 +299,8 @@ describe("inbound pending attachments", () => {
 
     expect(harness.triggers()).toBe(1);
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(savedImage.path);
-    expect(content).toContain(savedA.path);
+    expect(content).toContain(relativeAttachment("photo.png"));
+    expect(content).toContain(relativeAttachment("a.zip"));
     expect(content).toContain("处理这些附件");
   });
 
@@ -322,7 +325,7 @@ describe("inbound pending attachments", () => {
 
     expect(harness.triggers()).toBe(1);
     const content = harness.userMessages[0]?.content as string;
-    expect(content).toContain(savedA.path);
+    expect(content).toContain(relativeAttachment("a.zip"));
     expect(content).toContain("处理这个文件");
   });
 
@@ -339,7 +342,7 @@ describe("inbound pending attachments", () => {
 
     const content = harness.userMessages.at(-1)?.content as string;
     expect(content).toBe("分析");
-    expect(content).not.toContain(savedA.path);
+    expect(content).not.toContain(relativeAttachment("a.zip"));
     expect(harness.triggers()).toBe(1);
   });
 });
