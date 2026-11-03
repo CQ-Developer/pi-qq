@@ -61,6 +61,23 @@ const ARG_MAX_CHARS = 200;
 const RESULT_MAX_CHARS = 600;
 const RESULT_MAX_LINES = 8;
 const ARG_KEYS = ["command", "path", "file_path", "filename", "pattern", "query", "url"];
+const TOOL_ICONS: Record<string, string> = {
+  bash: "💻",
+  read: "📖",
+  write: "📝",
+  edit: "✏️",
+  grep: "🔎",
+  search: "🔍",
+  find: "🗂️",
+  ls: "📁",
+  list: "📋",
+  web: "🌐",
+  fetch: "📡",
+  delete: "🗑️",
+  remove: "❌",
+  todo: "✅",
+  test: "🧪",
+};
 
 function inlineCode(text: string): string {
   const runs = text.match(/`+/g) ?? [];
@@ -113,7 +130,8 @@ function primaryArg(args: unknown): string {
 
 export function formatToolLine(name: string, args: unknown): string {
   const primary = primaryArg(args);
-  return primary ? `**${name}**\n\n${inlineCode(primary)}` : `**${name}**`;
+  const label = `${TOOL_ICONS[name.toLowerCase()] ?? "🔧"} ${name}`;
+  return primary ? `**${label}**\n\n${inlineCode(primary)}` : `**${label}**`;
 }
 
 function resultText(result: unknown): string {

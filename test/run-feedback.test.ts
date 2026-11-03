@@ -69,15 +69,15 @@ function startRun(rf: RunFeedback, msgId = "msg-1"): void {
 
 describe("工具格式化", () => {
   it("主参数按字段顺序提取", () => {
-    expect(formatToolLine("bash", { command: "npm test" })).toBe("**bash**\n\n`npm test`");
-    expect(formatToolLine("read", { path: "src/foo.ts" })).toBe("**read**\n\n`src/foo.ts`");
-    expect(formatToolLine("write", { path: "a.ts", content: "x" })).toBe("**write**\n\n`a.ts`");
-    expect(formatToolLine("custom", { foo: "bar" })).toBe('**custom**\n\n`{"foo":"bar"}`');
-    expect(formatToolLine("ping", undefined)).toBe("**ping**");
+    expect(formatToolLine("bash", { command: "npm test" })).toBe("**💻 bash**\n\n`npm test`");
+    expect(formatToolLine("read", { path: "src/foo.ts" })).toBe("**📖 read**\n\n`src/foo.ts`");
+    expect(formatToolLine("write", { path: "a.ts", content: "x" })).toBe("**📝 write**\n\n`a.ts`");
+    expect(formatToolLine("custom", { foo: "bar" })).toBe('**🔧 custom**\n\n`{"foo":"bar"}`');
+    expect(formatToolLine("ping", undefined)).toBe("**🔧 ping**");
   });
 
   it("参数含反引号时改用双反引号", () => {
-    expect(formatToolLine("bash", { command: "echo `x`" })).toBe("**bash**\n\n`` echo `x` ``");
+    expect(formatToolLine("bash", { command: "echo `x`" })).toBe("**💻 bash**\n\n`` echo `x` ``");
   });
 
   it("结果代码块、失败前缀与空结果", () => {
@@ -127,7 +127,7 @@ describe("RunFeedback 直推", () => {
 
     expect(bubbleContents(calls)).toEqual([
       `${THINKING_HEADER}think 1\nthink 2\n`,
-      "**bash**\n\n`npm test`\n\n```text\n12 passed\n```\n",
+      "**💻 bash**\n\n`npm test`\n\n```text\n12 passed\n```\n",
       "answer",
     ]);
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(3);
@@ -266,7 +266,7 @@ describe("RunFeedback 直推", () => {
 
     expect(bubbleContents(calls)).toEqual([
       THINKING_HEADER + "```\ncode\n```\n",
-      "**bash**\n\n`echo`\n\n```text\nok\n```\n",
+      "**💻 bash**\n\n`echo`\n\n```text\nok\n```\n",
     ]);
   });
 
@@ -279,7 +279,7 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(2);
-    expect(bubbleContents(calls)[1]).toContain("**bash**\n\n`echo");
+    expect(bubbleContents(calls)[1]).toContain("**💻 bash**\n\n`echo");
     expect(bubbleContents(calls)[1]).toContain("ok");
   });
 
@@ -292,7 +292,7 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(2);
-    expect(bubbleContents(calls).at(-1)).toContain("**bash**\n\n`echo");
+    expect(bubbleContents(calls).at(-1)).toContain("**💻 bash**\n\n`echo");
   });
 
   it("工具未完成时后续思考延后，不打乱工具顺序", async () => {
@@ -306,8 +306,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "**bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**bash**\n\n`two`\n\n```text\n2\n```\n",
+      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
+      "**💻 bash**\n\n`two`\n\n```text\n2\n```\n",
       `${THINKING_HEADER}after tools`,
     ]);
   });
@@ -354,8 +354,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "**bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**bash**\n\n`two`\n\n```text\n2\n```\n",
+      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
+      "**💻 bash**\n\n`two`\n\n```text\n2\n```\n",
     ]);
   });
 
@@ -369,8 +369,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "**bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**read**\n\n`two`\n\n```text\n2\n```\n",
+      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
+      "**📖 read**\n\n`two`\n\n```text\n2\n```\n",
     ]);
   });
 
@@ -384,8 +384,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "**bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**read**\n\n`two`\n\n```text\n2\n```\n",
+      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
+      "**📖 read**\n\n`two`\n\n```text\n2\n```\n",
     ]);
   });
 
@@ -416,7 +416,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolStart("bash", { command: "false" });
     rf.onToolEnd("bash", true, "exit 1");
     await rf.onAgentEnd();
-    expect(streamContent(calls)).toBe("**bash**\n\n`false`\n\n```text\n❌ exit 1\n```\n");
+    expect(streamContent(calls)).toBe("**💻 bash**\n\n`false`\n\n```text\n❌ exit 1\n```\n");
   });
 
   it("首次失败后同泡续写，index 与缓冲保留", async () => {
