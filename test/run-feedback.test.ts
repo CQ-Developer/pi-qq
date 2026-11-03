@@ -312,6 +312,24 @@ describe("RunFeedback 直推", () => {
     ]);
   });
 
+  it("模型错误后自动恢复的 run 继续沿用 QQ 目标", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", "before error");
+    await rf.onAssistantFinal("⚠️ Model error: terminated", true);
+    await rf.onAgentEnd();
+
+    rf.onAgentStart();
+    await rf.onAgentEnd();
+
+    rf.onAgentStart();
+    rf.onAssistantDelta("recovered output", "");
+    expect(await rf.onAssistantFinal("recovered output", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    expect(streamContent(calls)).toContain("recovered output");
+  });
+
   it("waitForEnd 在 agent_end 收尾后 resolve", async () => {
     const { rf } = makeRunHarness();
     startRun(rf);

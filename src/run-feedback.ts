@@ -47,11 +47,13 @@ interface RunState {
   deferredThinking: string;
   deferredText: string;
   blockClosed: boolean;
+  hadError: boolean;
   typingTimer?: ReturnType<typeof setInterval>;
 }
 
 const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
+const RECOVERY_TTL_MS = 60_000;
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
 const THINKING_HEADER = "**💭 思考**\n\n";
@@ -163,6 +165,7 @@ function appendThinkingDelta(delta: string, run: RunState): string {
 export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
   private pending: { openid: string; msgId: string; at: number } | null = null;
+  private recovery: { openid: string; msgId: string; at: number } | null = null;
   private run: RunState | null = null;
   private queue: Promise<void> = Promise.resolve();
   private endPromise: Promise<void> = Promise.resolve();
@@ -174,6 +177,11 @@ export class RunFeedback {
 
   markQQTrigger(openid: string, msgId: string): void {
     this.pending = { openid, msgId, at: Date.now() };
+    this.recovery = null;
+  }
+
+  cancelRecovery(): void {
+    this.recovery = null;
   }
 
   isQQRunActive(): boolean {
@@ -188,16 +196,23 @@ export class RunFeedback {
     this.endPromise = new Promise((resolve) => {
       this.endResolve = resolve;
     });
+    const now = Date.now();
     const pending = this.pending;
     this.pending = null;
-    if (!pending || Date.now() - pending.at > PENDING_TTL_MS) return;
+    const target =
+      pending && now - pending.at <= PENDING_TTL_MS
+        ? pending
+        : this.recovery && now - this.recovery.at <= RECOVERY_TTL_MS
+          ? this.recovery
+          : undefined;
+    if (!target) return;
     const bot = this.deps.bot();
     if (!bot) return;
 
     const run: RunState = {
       startedAt: Date.now(),
-      openid: pending.openid,
-      msgId: pending.msgId,
+      openid: target.openid,
+      msgId: target.msgId,
       thinkingSentLen: 0,
       thinkingAtLineStart: true,
       snapshotText: "",
@@ -218,6 +233,7 @@ export class RunFeedback {
       deferredThinking: "",
       deferredText: "",
       blockClosed: false,
+      hadError: false,
     };
     this.run = run;
     this.queue = Promise.resolve();
@@ -307,6 +323,10 @@ export class RunFeedback {
     if (!isError && text) run.blockClosed = true;
 
     run.thinkingSentLen = 0;
+    if (isError) {
+      run.hadError = true;
+      this.recovery = { openid: run.openid, msgId: run.msgId ?? "", at: Date.now() };
+    }
 
     const ok = await this.flushStream(run);
     run.finalizedText = "";
@@ -327,6 +347,7 @@ export class RunFeedback {
     if (!this.hasPendingTools(run)) this.flushDeferred(run);
     await this.drainQueue();
     this.clearTimers();
+    if (!run.hadError && run.pushedAny) this.recovery = null;
     this.run = null;
     log.debug("run", "ended", {
       msgId: run.msgId?.slice(0, 8) ?? "?",
@@ -490,7 +511,7 @@ export class RunFeedback {
         !run.pendingResume &&
         !run.fenceOpen &&
         !run.toolOpen &&
-        (blockBoundary || run.lastChar === "\n" || thinking)
+        (blockBoundary || run.lastChar === "\n")
       ) {
         await this.rotateStream(run);
         if (this.run !== run || run.streamDead) return;

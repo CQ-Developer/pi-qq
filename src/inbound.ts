@@ -27,6 +27,7 @@ export interface InboundDeps {
   onWarn: (msg: string) => void;
   markQQTrigger: (openid: string, msgId: string) => void;
   waitForEnd?: () => Promise<void>;
+  onStop?: () => void;
 }
 
 export function createInboundHandler(deps: InboundDeps) {
@@ -226,6 +227,7 @@ async function handleCommand(text: string, reply: (t: string) => Promise<void>, 
       if (deps.ctx.isIdle()) {
         await reply("No task is running.");
       } else {
+        deps.onStop?.();
         deps.ctx.abort();
         await deps.waitForEnd?.();
         await reply("Abort requested.");

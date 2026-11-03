@@ -104,6 +104,7 @@ export default function (pi: ExtensionAPI) {
         onWarn: onWarn(ctx),
         markQQTrigger: (openid, msgId) => runFeedback.markQQTrigger(openid, msgId),
         waitForEnd: () => runFeedback.waitForEnd(),
+        onStop: () => runFeedback.cancelRecovery(),
       }),
       onStateChange: (state, detail) => {
         lastState = state;
