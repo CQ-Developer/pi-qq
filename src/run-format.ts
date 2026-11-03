@@ -49,13 +49,9 @@ function primaryArg(args: unknown): string {
     value = args;
   } else if (args && typeof args === "object") {
     const record = args as Record<string, unknown>;
-    for (const key of ARG_KEYS) {
-      const candidate = record[key];
-      if (typeof candidate === "string" && candidate) {
-        value = candidate;
-        break;
-      }
-    }
+    value = ARG_KEYS.map((key) => record[key]).find(
+      (candidate): candidate is string => typeof candidate === "string" && candidate.length > 0,
+    );
     if (!value) {
       try {
         value = JSON.stringify(args);

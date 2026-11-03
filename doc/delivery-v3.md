@@ -163,7 +163,7 @@ assistant 文本按原文流式追加，不额外加标题。文本块和工具�
 ## 7. 验证
 
 - 单元测试：**135 passed**（12 个测试文件）。
-- `npm run typecheck`、`npm run lint`、`npm run format:check` 通过。
+- TypeScript、ESLint 和 Prettier 检查通过。
 - 真机已验证：
   - C2C 登录、文本、图片、文件；
   - 思考/工具/文本按块展示；
@@ -184,16 +184,3 @@ assistant 文本按原文流式追加，不额外加标题。文本块和工具�
 - 恢复目标是 60 秒 TTL；超过窗口后不再自动续传。
 - 仅支持 C2C 私聊；登录凭据只在进程内存。
 - 最终文本在流式失败时走普通消息路径，可能重复已显示的部分，优先保证完整。
-
-## 9. 开发命令
-
-项目已安装开发依赖，直接使用 npm scripts：
-
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run format:check
-```
-
-脚本直接调用本地 `tsc`、`eslint`、`vitest`、`prettier`，不依赖 `npx` 下载或解析远程包。

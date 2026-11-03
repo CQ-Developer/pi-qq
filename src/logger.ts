@@ -18,7 +18,7 @@ let activeLevel: LogLevel = DEFAULT_LOG_LEVEL;
 let activeDir: string | undefined;
 
 function isLogLevel(value: unknown): value is LogLevel {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(LEVEL_WEIGHT, value);
+  return typeof value === "string" && Object.hasOwn(LEVEL_WEIGHT, value);
 }
 
 export function normalizeLogLevel(value: unknown): LogLevel {

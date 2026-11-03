@@ -166,6 +166,17 @@ export class RunFeedback {
     if (run.activeTool === id) this.finishTool(run, tool);
   }
 
+  private pushText(run: RunState, text: string): void {
+    const newBubble = this.startsNewBlock(run, "text");
+    const prefix = this.beginBlock(run, "text", newBubble);
+    this.push(run, `${prefix}${text}`, prefix.length > 0 || newBubble, false, newBubble);
+  }
+
+  private finishEnd(): void {
+    this.endResolve?.();
+    this.endResolve = undefined;
+  }
+
   onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
     const run = this.run;
     if (!run || run.streamDead) return;
@@ -199,9 +210,7 @@ export class RunFeedback {
       run.deferredText += delta;
       return;
     }
-    const newBubble = this.startsNewBlock(run, "text");
-    const prefix = this.beginBlock(run, "text", newBubble);
-    this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
+    this.pushText(run, delta);
   }
 
   async onAssistantFinal(text: string, isError: boolean): Promise<boolean> {
@@ -216,9 +225,7 @@ export class RunFeedback {
       if (this.hasPendingTools(run)) {
         run.deferredText += delta;
       } else {
-        const newBubble = this.startsNewBlock(run, "text");
-        const prefix = this.beginBlock(run, "text", newBubble);
-        this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
+        this.pushText(run, delta);
       }
     }
     if (!isError && text) run.blockClosed = true;
@@ -240,8 +247,7 @@ export class RunFeedback {
   async onAgentEnd(): Promise<void> {
     const run = this.run;
     if (!run) {
-      this.endResolve?.();
-      this.endResolve = undefined;
+      this.finishEnd();
       return;
     }
     await this.drainQueue();
@@ -256,8 +262,7 @@ export class RunFeedback {
     });
     if (!run.pushedAny) {
       run.cur?.dispose();
-      this.endResolve?.();
-      this.endResolve = undefined;
+      this.finishEnd();
       return;
     }
     const ok = await this.flushStream(run);
@@ -272,16 +277,14 @@ export class RunFeedback {
       }
     }
     run.cur?.dispose();
-    this.endResolve?.();
-    this.endResolve = undefined;
+    this.finishEnd();
   }
 
   dispose(): void {
     this.clearTimers();
     this.run?.cur?.dispose();
     this.run = null;
-    this.endResolve?.();
-    this.endResolve = undefined;
+    this.finishEnd();
   }
 
   private beginBlock(run: RunState, kind: BlockKind, newBubble = false): string {
@@ -350,9 +353,7 @@ export class RunFeedback {
     if (run.deferredText) {
       const text = run.deferredText;
       run.deferredText = "";
-      const newBubble = this.startsNewBlock(run, "text");
-      const prefix = this.beginBlock(run, "text", newBubble);
-      this.push(run, `${prefix}${text}`, prefix.length > 0 || newBubble, false, newBubble);
+      this.pushText(run, text);
     }
   }
 
