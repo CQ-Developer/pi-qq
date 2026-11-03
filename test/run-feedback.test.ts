@@ -125,7 +125,7 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "> think 1\n> think 2\n>\n",
+      "think 1\nthink 2\n",
       "**bash**\n\n`npm test`\n\n```text\n12 passed\n```\n",
       "answer",
     ]);
@@ -134,14 +134,14 @@ describe("RunFeedback 直推", () => {
     expect(calls.at(-1)?.input_state).toBe(DONE_STATE);
   });
 
-  it("思考中的空行也保留引用前缀", async () => {
+  it("思考中的空行保留", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);
     rf.onAssistantDelta("", "line one\n\nline two");
     await rf.onAssistantFinal("", false);
     await rf.onAgentEnd();
 
-    expect(streamContent(calls)).toBe("> line one\n>\n> line two\n>\n");
+    expect(streamContent(calls)).toBe("line one\n\nline two");
   });
 
   it("思考快照按差量追加，不重复", async () => {
@@ -152,7 +152,7 @@ describe("RunFeedback 直推", () => {
     rf.onAssistantDelta("", "abc");
     await rf.onAssistantFinal("", false);
     await rf.onAgentEnd();
-    expect(streamContent(calls)).toBe("> abc\n>\n");
+    expect(streamContent(calls)).toBe("abc");
   });
 
   it("文本快照只发送一次全文", async () => {
@@ -207,7 +207,7 @@ describe("RunFeedback 直推", () => {
     rf.onAssistantDelta("answer", "");
     await rf.onAssistantFinal("answer", false);
     await rf.onAgentEnd();
-    expect(bubbleContents(calls)).toEqual(["> think\n>\n", "answer"]);
+    expect(bubbleContents(calls)).toEqual(["think\n", "answer"]);
   });
 
   it("新的最终文本消息另起气泡", async () => {
@@ -244,8 +244,8 @@ describe("RunFeedback 直推", () => {
     expect(await rf.onAssistantFinal("done", false)).toBe(true);
     await rf.onAgentEnd();
 
-    const expectedThinking = "> " + "x".repeat(1000) + "\n>\n";
-    expect(bubbleContents(calls)).toEqual([expectedThinking.repeat(12), `${expectedThinking}>\n`, "done"]);
+    const expectedThinking = "x".repeat(1000) + "\n\n";
+    expect(bubbleContents(calls)).toEqual([expectedThinking.repeat(12), expectedThinking, "done"]);
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(3);
     expect(new Set(calls.map((call) => call.stream_msg_id).filter(Boolean)).size).toBe(3);
     expect(budget.snapshot().streamBubblesTotal).toBe(3);
@@ -259,7 +259,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("bash", false, "ok");
     await rf.onAgentEnd();
 
-    expect(bubbleContents(calls)).toEqual(["> ```\n> code\n> ```\n>\n", "**bash**\n\n`echo`\n\n```text\nok\n```\n"]);
+    expect(bubbleContents(calls)).toEqual(["```\ncode\n```\n", "**bash**\n\n`echo`\n\n```text\nok\n```\n"]);
   });
 
   it("工具调用与结果不拆泡", async () => {
@@ -300,7 +300,7 @@ describe("RunFeedback 直推", () => {
     expect(bubbleContents(calls)).toEqual([
       "**bash**\n\n`one`\n\n```text\n1\n```\n",
       "**bash**\n\n`two`\n\n```text\n2\n```\n",
-      "> after tools\n>\n",
+      "after tools",
     ]);
   });
 

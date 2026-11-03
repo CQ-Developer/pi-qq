@@ -154,17 +154,9 @@ export function formatToolResult(result: unknown, isError: boolean): string {
   return `${fence}text\n${text}\n${fence}\n`;
 }
 
-function quoteThinking(delta: string, run: RunState): string {
-  let out = "";
-  for (const ch of delta) {
-    if (run.thinkingAtLineStart) {
-      out += ch === "\n" ? ">" : "> ";
-      run.thinkingAtLineStart = false;
-    }
-    out += ch;
-    if (ch === "\n") run.thinkingAtLineStart = true;
-  }
-  return out;
+function appendThinkingDelta(delta: string, run: RunState): string {
+  run.thinkingAtLineStart = delta.endsWith("\n");
+  return delta;
 }
 
 export class RunFeedback {
@@ -269,7 +261,13 @@ export class RunFeedback {
         } else {
           const newBubble = this.startsNewBlock(run, "thinking");
           const prefix = this.beginBlock(run, "thinking", newBubble);
-          this.push(run, `${prefix}${quoteThinking(delta, run)}`, prefix.length > 0 || newBubble, false, newBubble);
+          this.push(
+            run,
+            `${prefix}${appendThinkingDelta(delta, run)}`,
+            prefix.length > 0 || newBubble,
+            false,
+            newBubble,
+          );
         }
       }
     }
@@ -282,7 +280,6 @@ export class RunFeedback {
       run.deferredText += delta;
       return;
     }
-    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     const newBubble = this.startsNewBlock(run, "text");
     const prefix = this.beginBlock(run, "text", newBubble);
     this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
@@ -300,7 +297,6 @@ export class RunFeedback {
       if (this.hasPendingTools(run)) {
         run.deferredText += delta;
       } else {
-        if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
         const newBubble = this.startsNewBlock(run, "text");
         const prefix = this.beginBlock(run, "text", newBubble);
         this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble);
@@ -325,7 +321,6 @@ export class RunFeedback {
       this.endResolve = undefined;
       return;
     }
-    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     await this.drainQueue();
     if (!this.hasPendingTools(run)) this.flushDeferred(run);
     await this.drainQueue();
@@ -408,26 +403,6 @@ export class RunFeedback {
     }
   }
 
-  private appendThinkingTrailer(run: RunState): void {
-    if (run.streamDead) return;
-    void this.enqueue(async () => {
-      if (this.run !== run || run.streamDead) return;
-      if (!run.cur || run.bubbleChars === 0) return;
-      if (!(await this.closeOpenFence(run))) return;
-      const stream = this.ensureStream(run);
-      if (!stream) return;
-      const trailer = run.lastChar === "\n" ? ">\n" : "\n>\n";
-      try {
-        await stream.append(trailer);
-        run.bubbleChars += trailer.length;
-        run.lastChar = "\n";
-        run.thinkingAtLineStart = true;
-      } catch (err) {
-        if (run.cur === stream) this.handleStreamError(run, err as Error);
-      }
-    });
-  }
-
   private hasPendingTools(run: RunState): boolean {
     return Boolean(run.activeTool) || run.tools.some((tool) => !tool.finished);
   }
@@ -439,8 +414,13 @@ export class RunFeedback {
       run.deferredThinking = "";
       const newBubble = this.startsNewBlock(run, "thinking");
       const prefix = this.beginBlock(run, "thinking", newBubble);
-      this.push(run, `${prefix}${quoteThinking(thinking, run)}`, prefix.length > 0 || newBubble, false, newBubble);
-      this.appendThinkingTrailer(run);
+      this.push(
+        run,
+        `${prefix}${appendThinkingDelta(thinking, run)}`,
+        prefix.length > 0 || newBubble,
+        false,
+        newBubble,
+      );
     }
     if (run.deferredText) {
       const text = run.deferredText;
@@ -458,7 +438,6 @@ export class RunFeedback {
     tool.started = true;
     run.activeTool = tool.id;
     run.toolOpen = true;
-    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     const newBubble = run.lastKind !== "none";
     const prefix = this.beginBlock(run, "tool", newBubble);
     this.push(
