@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
-export type LogFields = Record<string, unknown>;
+type LogFields = Record<string, unknown>;
 
 const LEVEL_WEIGHT: Record<LogLevel, number> = {
   debug: 10,
@@ -12,12 +12,12 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
   silent: 100,
 };
 
-export const DEFAULT_LOG_LEVEL: LogLevel = "silent";
+const DEFAULT_LOG_LEVEL: LogLevel = "silent";
 
 let activeLevel: LogLevel = DEFAULT_LOG_LEVEL;
 let activeDir: string | undefined;
 
-export function isLogLevel(value: unknown): value is LogLevel {
+function isLogLevel(value: unknown): value is LogLevel {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(LEVEL_WEIGHT, value);
 }
 
@@ -34,11 +34,7 @@ export function configureLogger(level: LogLevel, dir?: string): void {
   activeDir = dir;
 }
 
-export function getLogLevel(): LogLevel {
-  return activeLevel;
-}
-
-export function resolveLogDir(): string {
+function resolveLogDir(): string {
   return process.env.PI_QQ_LOG_DIR ?? activeDir ?? join(process.cwd(), ".pi", "pi-qq", "logs");
 }
 

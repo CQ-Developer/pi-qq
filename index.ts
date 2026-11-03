@@ -113,7 +113,6 @@ export default function (pi: ExtensionAPI) {
         else if (state === "blocked") ctx.ui.notify(`pi-qq ${detail ?? "connection blocked"}`, "error");
         else if (state === "stopped" && detail) ctx.ui.notify(`pi-qq ${detail}`, "warning");
       },
-      onRecoverableError: () => {},
     });
   };
 
@@ -365,43 +364,6 @@ export default function (pi: ExtensionAPI) {
       }
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
-        if (args?.trim() === "short") {
-          const variants = [
-            { label: "plain 11", content: "plain short" },
-            { label: "quote 13", content: "> quote short" },
-            { label: "quote 17 + blank", content: "> quote short\n>\n" },
-            { label: "quote 34 two lines", content: "> quote line one\n> quote line two\n" },
-            { label: "quote 48", content: "> We need build project. Need inspect cwd. Must\n" },
-            { label: "quote 50 + blank", content: "> We need build project. Need inspect cwd. Must\n>\n" },
-            { label: "plain 48", content: "We need build project. Need inspect cwd. Must\n" },
-            { label: "plain 22 zh", content: "项目骨架已就绪。接下来实现后端 API。" },
-            { label: "tool 44", content: "**💻 bash**\n\n`echo short`\n\n```text\nshort\n```\n" },
-          ];
-          const notes: string[] = [];
-          for (const [index, variant] of variants.entries()) {
-            const stream = new AppendStream(
-              running.bot.messageApi,
-              running.bot.getCredentials(),
-              last.openid,
-              last.msgId,
-            );
-            try {
-              await stream.append(variant.content);
-              await stream.done();
-              notes.push(`${index + 1}:${variant.label}:ok`);
-            } catch (err) {
-              notes.push(`${index + 1}:${variant.label}:${(err as Error).message}`);
-            } finally {
-              stream.dispose();
-            }
-            await sleep(900);
-          }
-          ctx.ui.notify(
-            `Short stream variants sent in order: ${notes.join(" | ")}. Check which bubbles render and which show unsupported.`,
-            "info",
-          );
-          return;
-        }
         if (args?.trim() === "resume") {
           const first = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
           await first.append("**Resume probe** frame 1\n");
@@ -431,7 +393,9 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         const stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
-        await stream.append("> probe thinking\n> second line\n\n**💻 bash**\n\n`echo probe`\n\n```text\nprobe\n```\n");
+        await stream.append(
+          "**💭 思考**\n\nprobe thinking\nsecond line\n\n**💻 bash**\n\n`echo probe`\n\n```text\nprobe\n```\n",
+        );
         await sleep(1200);
         await stream.append("\n**Intermediate message**: first-turn reply.\n");
         await sleep(1200);

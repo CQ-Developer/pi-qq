@@ -17,7 +17,6 @@ export interface StartBotOptions {
   allowedOpenid?: string;
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;
   onStateChange?: (state: BotState, detail?: string) => void;
-  onRecoverableError?: (err: Error) => void;
 }
 
 export interface RunningBot {
@@ -58,7 +57,6 @@ export function startBot(opts: StartBotOptions): RunningBot {
   bot.on("disconnected", ({ willReconnect }) => report(willReconnect ? "reconnecting" : "stopped"));
   bot.on("error", (err) => {
     log.error("bot", "error event", { err });
-    opts.onRecoverableError?.(err);
   });
   bot.on("message", async (_ctx, msg) => {
     log.debug("bot", "inbound message", {

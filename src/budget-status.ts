@@ -1,6 +1,6 @@
 import type { BudgetSnapshot } from "./reply-budget";
 
-export interface BudgetTarget {
+interface BudgetTarget {
   openid: string;
   msgId: string;
   arrivedAt: number;
