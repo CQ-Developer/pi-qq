@@ -103,7 +103,7 @@ export default function (pi: ExtensionAPI) {
         getStatusLines,
         onWarn: onWarn(ctx),
         markQQTrigger: (openid, msgId) => runFeedback.markQQTrigger(openid, msgId),
-        onAbort: () => runFeedback.abort(),
+        onAbort: () => runFeedback.beforeAbort(),
       }),
       onStateChange: (state, detail) => {
         lastState = state;
@@ -374,7 +374,7 @@ export default function (pi: ExtensionAPI) {
             { label: "quote 50 + blank", content: "> We need build project. Need inspect cwd. Must\n>\n" },
             { label: "plain 48", content: "We need build project. Need inspect cwd. Must\n" },
             { label: "plain 22 zh", content: "项目骨架已就绪。接下来实现后端 API。" },
-            { label: "tool 44", content: "*[bash]* `echo short`\n```text\nshort\n```\n" },
+            { label: "tool 44", content: "**bash**\n\n`echo short`\n\n```text\nshort\n```\n" },
           ];
           const notes: string[] = [];
           for (const [index, variant] of variants.entries()) {
@@ -430,11 +430,11 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         const stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
-        await stream.append("> probe thinking\n> second line\n\n*[bash]* `echo probe`\n```text\nprobe\n```\n");
+        await stream.append("> probe thinking\n> second line\n\n**bash**\n\n`echo probe`\n\n```text\nprobe\n```\n");
         await sleep(1200);
         await stream.append("\n**Intermediate message**: first-turn reply.\n");
         await sleep(1200);
-        await stream.append("\n*[read]* `src/index.ts`\n```text\nprobe file\n```\n");
+        await stream.append("\n**read**\n\n`src/index.ts`\n\n```text\nprobe file\n```\n");
         await sleep(800);
         await stream.append("\n**Final reply** (streamed append)");
         let doneNote = "DONE succeeded";

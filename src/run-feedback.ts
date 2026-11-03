@@ -35,6 +35,7 @@ interface RunState {
   pendingResume?: AppendStreamCheckpoint;
   streamDead: boolean;
   aborted: boolean;
+  stopping: boolean;
   resumeAttempts: number;
   pushedAny: boolean;
   bubbleChars: number;
@@ -111,7 +112,7 @@ function primaryArg(args: unknown): string {
 
 export function formatToolLine(name: string, args: unknown): string {
   const primary = primaryArg(args);
-  return primary ? `*[${name}]* ${inlineCode(primary)}` : `*[${name}]*`;
+  return primary ? `**${name}**\n\n${inlineCode(primary)}` : `**${name}**`;
 }
 
 function resultText(result: unknown): string {
@@ -206,6 +207,7 @@ export class RunFeedback {
       cur: null,
       streamDead: false,
       aborted: false,
+      stopping: false,
       resumeAttempts: 0,
       pushedAny: false,
       bubbleChars: 0,
@@ -232,7 +234,7 @@ export class RunFeedback {
 
   onToolStart(toolName: string, args?: unknown, toolCallId?: string): void {
     const run = this.run;
-    if (!run || run.streamDead || run.aborted) return;
+    if (!run || run.streamDead || run.aborted || run.stopping) return;
     const id = toolCallId ?? toolName;
     if (run.tools.some((tool) => tool.id === id)) return;
     run.tools.push({ id, name: toolName, args, started: false, finished: false });
@@ -251,7 +253,7 @@ export class RunFeedback {
 
   onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
     const run = this.run;
-    if (!run || run.streamDead || run.aborted) return;
+    if (!run || run.streamDead || run.aborted || run.stopping) return;
 
     if (snapshotThinking.length > run.thinkingSentLen) {
       const delta = snapshotThinking.slice(run.thinkingSentLen);
@@ -283,7 +285,7 @@ export class RunFeedback {
 
   async onAssistantFinal(text: string, isError: boolean): Promise<boolean> {
     const run = this.run;
-    if (!run || run.aborted) return false;
+    if (!run || run.aborted || run.stopping) return false;
 
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
     run.snapshotText = "";
@@ -346,10 +348,36 @@ export class RunFeedback {
     run.cur?.dispose();
   }
 
+  async beforeAbort(): Promise<void> {
+    const run = this.run;
+    if (!run) return;
+    run.stopping = true;
+    run.deferredThinking = "";
+    run.deferredText = "";
+    for (let attempt = 0; attempt <= run.tools.length + 1; attempt++) {
+      await this.drainQueue();
+      if (run.streamDead) break;
+      if (run.activeTool) {
+        const tool = run.tools.find((candidate) => candidate.id === run.activeTool);
+        if (tool?.result && !tool.finished) {
+          this.finishTool(run, tool);
+          continue;
+        }
+        break;
+      }
+      const next = run.tools.find((candidate) => !candidate.started);
+      if (!next) break;
+      this.startNextTool(run);
+    }
+    run.aborted = true;
+    run.stopping = false;
+  }
+
   abort(): void {
     const run = this.run;
     if (!run) return;
     run.aborted = true;
+    run.stopping = false;
     run.deferredThinking = "";
     run.deferredText = "";
     run.pendingResume = undefined;
@@ -459,7 +487,7 @@ export class RunFeedback {
     const prefix = this.beginBlock(run, "tool", newBubble);
     this.push(
       run,
-      `${prefix}${formatToolLine(tool.name, tool.args)}\n`,
+      `${prefix}${formatToolLine(tool.name, tool.args)}\n\n`,
       prefix.length > 0 || newBubble,
       false,
       newBubble,
@@ -522,6 +550,9 @@ export class RunFeedback {
     for (const match of text.matchAll(/(?:^|\n)[ \t>]*(`{3,})/g)) {
       if (match.index === 0 && previousChar && previousChar !== "\n") continue;
       const fenceLen = match[1].length;
+      const lineEnd = text.indexOf("\n", match.index + match[0].length);
+      const restOfLine = text.slice(match.index + match[0].length, lineEnd < 0 ? undefined : lineEnd);
+      if (restOfLine.includes("`".repeat(fenceLen))) continue;
       if (!run.fenceOpen) {
         run.fenceOpen = true;
         run.fenceLen = fenceLen;
