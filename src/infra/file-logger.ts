@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
@@ -16,6 +16,7 @@ const DEFAULT_LOG_LEVEL: LogLevel = "silent";
 
 let activeLevel: LogLevel = DEFAULT_LOG_LEVEL;
 let activeDir: string | undefined;
+let writeQueue: Promise<void> = Promise.resolve();
 
 function isLogLevel(value: unknown): value is LogLevel {
   return typeof value === "string" && Object.hasOwn(LEVEL_WEIGHT, value);
@@ -27,6 +28,15 @@ export function normalizeLogLevel(value: unknown): LogLevel {
 
 export function isLevelEnabled(configured: LogLevel, level: Exclude<LogLevel, "silent">): boolean {
   return configured !== "silent" && LEVEL_WEIGHT[level] >= LEVEL_WEIGHT[configured];
+}
+
+export function isLogEnabled(level: Exclude<LogLevel, "silent">): boolean {
+  return isLevelEnabled(activeLevel, level);
+}
+
+/** Resolve once every queued log record has been written (or dropped). */
+export async function flushLogs(): Promise<void> {
+  await writeQueue;
 }
 
 export function configureLogger(level: LogLevel, dir?: string): void {
@@ -100,11 +110,16 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
     });
   }
 
-  try {
-    const dir = resolveLogDir();
-    mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, logFileName()), `${line}\n`, "utf8");
-  } catch {}
+  const dir = resolveLogDir();
+  const path = join(dir, logFileName());
+  writeQueue = writeQueue
+    .then(async () => {
+      try {
+        await mkdir(dir, { recursive: true });
+        await appendFile(path, `${line}\n`, "utf8");
+      } catch {}
+    })
+    .catch(() => {});
 }
 
 export const log = {

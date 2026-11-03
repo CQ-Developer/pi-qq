@@ -5,16 +5,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   configureLogger,
   dateStamp,
+  flushLogs,
   getLogFilePath,
   isLevelEnabled,
+  isLogEnabled,
   log,
   logFileName,
   normalizeLogLevel,
   previewForLog,
 } from "../../src/infra/file-logger";
 
-afterEach(() => {
+afterEach(async () => {
   configureLogger("silent");
+  await flushLogs();
 });
 
 describe("log level", () => {
@@ -35,6 +38,15 @@ describe("log level", () => {
     expect(isLevelEnabled("warn", "info")).toBe(false);
     expect(isLevelEnabled("warn", "error")).toBe(true);
     expect(isLevelEnabled("silent", "error")).toBe(false);
+  });
+
+  it("exposes the active threshold for lazy payloads", () => {
+    configureLogger("debug");
+    expect(isLogEnabled("debug")).toBe(true);
+    configureLogger("info");
+    expect(isLogEnabled("debug")).toBe(false);
+    configureLogger("silent");
+    expect(isLogEnabled("error")).toBe(false);
   });
 });
 
@@ -66,6 +78,7 @@ describe("file output", () => {
     try {
       configureLogger("debug", dir);
       log.info("test", "hello", { answer: 42, err: new Error("boom") });
+      await flushLogs();
 
       const path = getLogFilePath();
       const lines = (await readFile(path, "utf8")).trim().split("\n");
@@ -80,6 +93,7 @@ describe("file output", () => {
 
       configureLogger("silent", dir);
       log.error("test", "hidden");
+      await flushLogs();
       expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -93,6 +107,7 @@ describe("file output", () => {
     try {
       configureLogger("debug", blocked);
       expect(() => log.info("test", "hello")).not.toThrow();
+      await expect(flushLogs()).resolves.toBeUndefined();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -106,6 +121,7 @@ describe("file output", () => {
       process.env.PI_QQ_LOG_DIR = envDir;
       configureLogger("debug", configuredDir);
       log.info("test", "env override");
+      await flushLogs();
       const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim());
       expect(record.msg).toBe("env override");
     } finally {

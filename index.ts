@@ -9,7 +9,7 @@ import { markdownToPlain, sendReply } from "./src/qq/reply-sender";
 import { ReplyBudget } from "./src/quota/reply-quota";
 import { RunFeedback } from "./src/relay/run-stream-relay";
 import { formatTokenCount } from "./src/infra/display-format";
-import { configureLogger, log, previewForLog } from "./src/infra/file-logger";
+import { configureLogger, flushLogs, isLogEnabled, log, previewForLog } from "./src/infra/file-logger";
 import { pruneUploadIndex, sessionUploadDir } from "./src/attachments/file-attachments";
 
 interface LoginState {
@@ -149,9 +149,10 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("session_shutdown", () => {
+  pi.on("session_shutdown", async () => {
     log.info("session", "shutting down");
     stopIfRunning();
+    await flushLogs();
   });
 
   pi.on("agent_start", () => {
@@ -165,21 +166,25 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_execution_start", (event) => {
-    log.debug("tool", "start", {
-      toolName: event.toolName,
-      toolCallId: event.toolCallId,
-      args: previewForLog(event.args),
-    });
+    if (isLogEnabled("debug")) {
+      log.debug("tool", "start", {
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        args: previewForLog(event.args),
+      });
+    }
     void runFeedback.onToolStart(event.toolName, event.args, event.toolCallId);
   });
 
   pi.on("tool_execution_end", (event) => {
-    log.debug("tool", "end", {
-      toolName: event.toolName,
-      toolCallId: event.toolCallId,
-      isError: event.isError,
-      result: previewForLog(event.result),
-    });
+    if (isLogEnabled("debug")) {
+      log.debug("tool", "end", {
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        isError: event.isError,
+        result: previewForLog(event.result),
+      });
+    }
     runFeedback.onToolEnd(event.toolName, event.isError, event.result, event.toolCallId);
   });
 
@@ -202,17 +207,19 @@ export default function (pi: ExtensionAPI) {
     if (msg.role !== "assistant" || !running) return;
 
     const fromQQ = runFeedback.isQQRunActive();
-    log.debug("pi", "assistant message ended", {
-      fromQQ,
-      stopReason: msg.stopReason,
-      contentTypes: msg.content.map((block) => block.type),
-      textPreview: previewForLog(
-        msg.content
-          .filter((block) => block.type === "text")
-          .map((block) => block.text)
-          .join("\n"),
-      ),
-    });
+    if (isLogEnabled("debug")) {
+      log.debug("pi", "assistant message ended", {
+        fromQQ,
+        stopReason: msg.stopReason,
+        contentTypes: msg.content.map((block) => block.type),
+        textPreview: previewForLog(
+          msg.content
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("\n"),
+        ),
+      });
+    }
     if (!fromQQ) return;
 
     const isError = msg.stopReason === "error";
@@ -234,7 +241,9 @@ export default function (pi: ExtensionAPI) {
     }
 
     const streamTookOver = await runFeedback.onAssistantFinal(text, isError);
-    log.debug("pi", "stream takeover decision", { streamTookOver, isError, textPreview: previewForLog(text) });
+    if (isLogEnabled("debug")) {
+      log.debug("pi", "stream takeover decision", { streamTookOver, isError, textPreview: previewForLog(text) });
+    }
     if (streamTookOver) return;
 
     const payload = markdownToPlain(text);
