@@ -1,7 +1,7 @@
 # pi-qq delivery-v2
 
-> Status: v2 delivered.
-> Previous: [delivery-v1.md](./delivery-v1.md); next: [delivery-v3.md](./delivery-v3.md).
+> Status: v2 delivered; this is a historical record.
+> Current behavior is documented in [README](../README.md); previous: [delivery-v1.md](./delivery-v1.md); next: [delivery-v3.md](./delivery-v3.md).
 
 ## 1. Scope
 
@@ -45,7 +45,7 @@ v2 adds to v1's QQ chat, image, and file support:
 - Same name and same content reuses the existing file.
 - Same name and different content is saved as `name-1.ext`.
 - Different names with identical content are saved separately.
-- The index records path, size, hash, and original filename; stale entries are pruned on startup.
+- The index maps filenames to hashes only; paths and sizes come from the filesystem. Stale index entries are pruned on startup.
 - Pending files are independent from the index; `/new` does not delete saved indexed files.
 
 ## 3. Settings

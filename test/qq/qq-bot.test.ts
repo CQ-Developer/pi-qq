@@ -45,7 +45,7 @@ describe("bot message handler", () => {
         }),
     );
 
-    startBot({ credentials: { appId: "app", appSecret: "secret" }, onMessage });
+    startBot({ credentials: { appId: "app", appSecret: "secret" }, allowedOpenid: "openid-u", onMessage });
     const handler = mocks.FakeQQBot.last?.handlers.get("message");
     expect(handler).toBeDefined();
 

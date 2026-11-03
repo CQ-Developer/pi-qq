@@ -81,4 +81,9 @@ describe("chunkText", () => {
   it("等于上限时不分块", () => {
     expect(chunkText("a".repeat(TEXT_CHUNK_LIMIT)).length).toBe(1);
   });
+
+  it("非法上限会回退到安全值", () => {
+    expect(chunkText("abc", 0)).toEqual(["a", "b", "c"]);
+    expect(chunkText("abc", Number.NaN)).toEqual(["abc"]);
+  });
 });

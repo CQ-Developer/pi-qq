@@ -1,7 +1,7 @@
 # pi-qq delivery-v2
 
-> 状态：v2 已交付。
-> 前序版本：[delivery-v1-zh.md](./delivery-v1-zh.md)；后续版本：[delivery-v3-zh.md](./delivery-v3-zh.md)。
+> 状态：v2 已交付，本文为历史记录。
+> 当前行为以 [README-zh.md](../README-zh.md) 为准；前序版本：[delivery-v1-zh.md](./delivery-v1-zh.md)；后续版本：[delivery-v3-zh.md](./delivery-v3-zh.md)。
 
 ## 1. 交付范围
 
@@ -45,7 +45,7 @@ v2 在 v1 的 QQ 私聊、图片和文件能力上增加：
 - 同名同内容复用已有文件。
 - 同名不同内容保存为 `name-1.ext`。
 - 不同名同内容分别保存。
-- 索引记录路径、大小、哈希和原始文件名；启动时清理失效索引。
+- 索引只记录文件名到哈希的映射；路径和大小来自文件系统。启动时清理失效索引。
 - pending 文件与索引解耦，`/new` 不影响已保存的索引文件。
 
 ## 3. 配置

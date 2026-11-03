@@ -58,9 +58,8 @@ const RECOVERY_TTL_MS = 60_000;
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
 
-function appendThinkingDelta(delta: string, run: RunState): string {
+function trackThinkingLineStart(delta: string, run: RunState): void {
   run.thinkingAtLineStart = delta.endsWith("\n");
-  return delta;
 }
 
 export class RunFeedback {
@@ -190,14 +189,8 @@ export class RunFeedback {
         } else {
           const newBubble = this.startsNewBlock(run, "thinking");
           const prefix = this.beginBlock(run, "thinking", newBubble);
-          this.push(
-            run,
-            `${prefix}${appendThinkingDelta(delta, run)}`,
-            prefix.length > 0 || newBubble,
-            false,
-            newBubble,
-            true,
-          );
+          trackThinkingLineStart(delta, run);
+          this.push(run, `${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble, true);
         }
       }
     }
@@ -284,6 +277,8 @@ export class RunFeedback {
     this.clearTimers();
     this.run?.cur?.dispose();
     this.run = null;
+    this.pending = null;
+    this.recovery = null;
     this.finishEnd();
   }
 
@@ -341,14 +336,8 @@ export class RunFeedback {
       run.deferredThinking = "";
       const newBubble = this.startsNewBlock(run, "thinking");
       const prefix = this.beginBlock(run, "thinking", newBubble);
-      this.push(
-        run,
-        `${prefix}${appendThinkingDelta(thinking, run)}`,
-        prefix.length > 0 || newBubble,
-        false,
-        newBubble,
-        true,
-      );
+      trackThinkingLineStart(thinking, run);
+      this.push(run, `${prefix}${thinking}`, prefix.length > 0 || newBubble, false, newBubble, true);
     }
     if (run.deferredText) {
       const text = run.deferredText;
@@ -517,6 +506,7 @@ export class RunFeedback {
           if (run.cur === stream) this.handleStreamError(run, err);
         });
       },
+      onDebug: (message) => log.debug("stream", message, { msgId: run.msgId?.slice(0, 8) ?? "?" }),
     });
     run.cur = stream;
     if (!resume) this.deps.budget.noteStreamBubble(run.msgId);

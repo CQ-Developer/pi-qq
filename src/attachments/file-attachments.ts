@@ -2,21 +2,18 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { downloadLimited, type InboundAttachmentLike } from "./attachment-download";
+import type { AttachmentFailure } from "./attachment-failure";
 import { formatBytes } from "../infra/display-format";
 import { log } from "../infra/file-logger";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const UPLOAD_INDEX_FILENAME = ".index.json";
+const MAX_DISPLAY_NAME_CHARS = 200;
 
 export interface SavedFile {
   path: string;
   originalName: string;
   size: number;
-}
-
-export interface FileFailure {
-  filename: string;
-  reason: string;
 }
 
 export type UploadIndex = Record<string, string>;
@@ -30,7 +27,7 @@ export interface SaveFilesOptions {
 
 export interface SaveFilesResult {
   files: SavedFile[];
-  failures: FileFailure[];
+  failures: AttachmentFailure[];
 }
 
 function safePathSegment(key: string): string {
@@ -61,6 +58,16 @@ export function sanitizeFilename(filename: string | undefined, fallback: string)
   return `${stem.slice(0, maxStemLength)}${ext}`;
 }
 
+function displayFilename(filename: string | undefined, fallback: string): string {
+  const raw = basename((filename ?? "").trim())
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw || raw === "." || raw === "..") return fallback;
+  return raw.length > MAX_DISPLAY_NAME_CHARS ? raw.slice(0, MAX_DISPLAY_NAME_CHARS) : raw;
+}
+
 function withSuffix(filename: string, suffix: number): string {
   const ext = extname(filename);
   const stem = filename.slice(0, filename.length - ext.length);
@@ -89,7 +96,7 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-export async function loadUploadIndex(uploadDir: string): Promise<UploadIndex> {
+async function loadUploadIndex(uploadDir: string): Promise<UploadIndex> {
   try {
     const parsed = JSON.parse(await readFile(uploadIndexPath(uploadDir), "utf8")) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -135,6 +142,7 @@ async function hashExistingFile(path: string): Promise<string> {
 async function saveOrReuse(
   uploadDir: string,
   filename: string,
+  originalName: string,
   body: Buffer,
   index: UploadIndex,
 ): Promise<{ file: SavedFile; changed: boolean }> {
@@ -148,7 +156,7 @@ async function saveOrReuse(
     }
     await writeFile(target, body, { flag: "wx" });
     index[filename] = hash;
-    return { file: { path: target, originalName: filename, size: body.byteLength }, changed: true };
+    return { file: { path: target, originalName, size: body.byteLength }, changed: true };
   }
 
   let existingHash = index[filename];
@@ -158,7 +166,7 @@ async function saveOrReuse(
     changed = true;
   }
   if (existingHash === hash) {
-    return { file: { path: target, originalName: filename, size: body.byteLength }, changed };
+    return { file: { path: target, originalName, size: body.byteLength }, changed };
   }
 
   for (let suffix = 1; suffix < 100; suffix++) {
@@ -172,7 +180,7 @@ async function saveOrReuse(
         changed = true;
       }
       if (candidateHash === hash) {
-        return { file: { path: candidatePath, originalName: candidate, size: body.byteLength }, changed };
+        return { file: { path: candidatePath, originalName, size: body.byteLength }, changed };
       }
       continue;
     }
@@ -182,7 +190,7 @@ async function saveOrReuse(
     }
     await writeFile(candidatePath, body, { flag: "wx" });
     index[candidate] = hash;
-    return { file: { path: candidatePath, originalName: candidate, size: body.byteLength }, changed: true };
+    return { file: { path: candidatePath, originalName, size: body.byteLength }, changed: true };
   }
 
   throw new Error("Could not allocate a unique filename");
@@ -197,7 +205,7 @@ export async function saveInboundFiles(
   const fetchImpl = options.fetchImpl ?? fetch;
   const index = options.index ?? (await loadUploadIndex(uploadDir));
   const files: SavedFile[] = [];
-  const failures: FileFailure[] = [];
+  const failures: AttachmentFailure[] = [];
   const seenPaths = new Set<string>();
   let indexChanged = false;
 
@@ -211,6 +219,7 @@ export async function saveInboundFiles(
 
   for (const [position, attachment] of attachments.entries()) {
     const fallback = `file-${position + 1}`;
+    const originalName = displayFilename(attachment.filename, fallback);
     const filename = sanitizeFilename(attachment.filename, fallback);
     if (typeof attachment.size === "number" && attachment.size > limit) {
       failures.push({ filename, reason: `file too large (${formatBytes(attachment.size)} > ${formatBytes(limit)})` });
@@ -225,7 +234,7 @@ export async function saveInboundFiles(
         kind: "file",
         fetchImpl,
       });
-      const result = await saveOrReuse(uploadDir, filename, body, index);
+      const result = await saveOrReuse(uploadDir, filename, originalName, body, index);
       indexChanged ||= result.changed;
       addFile(result.file);
     } catch (err) {

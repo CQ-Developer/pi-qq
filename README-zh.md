@@ -116,6 +116,8 @@ QQ 侧命令：
 
 启用日志后，日志写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。旧配置 `debug: true` 会映射为 `logLevel: "debug"`。
 
+配置在 pi 会话启动时读取；修改文件后请重启 pi。未知配置项会被忽略，无效值会回退到默认值并给出提示。
+
 ## 开发
 
 需要 Node.js 22.19 或更高版本（与 pi 的要求一致）。安装依赖后运行：

@@ -10,14 +10,7 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"],
-    "typeRoots": ["./node_modules/@types", "../../.pi/agent/install/releases/1.4.0/node_modules/@types"],
-    "paths": {
-      "@earendil-works/pi-coding-agent": [
-        "./node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts",
-        "../../.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"
-      ]
-    }
+    "types": ["node"]
   },
   "include": ["index.ts", "src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
 }

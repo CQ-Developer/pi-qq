@@ -1,7 +1,7 @@
 # pi-qq delivery-v1
 
-> Status: v1 delivered; this is the baseline for later versions.
-> Later versions: [delivery-v2.md](./delivery-v2.md), [delivery-v3.md](./delivery-v3.md).
+> Status: v1 delivered; this is a historical baseline for later versions.
+> Current behavior is documented in [README](../README.md); later versions: [delivery-v2.md](./delivery-v2.md), [delivery-v3.md](./delivery-v3.md).
 
 ## 1. Scope
 
@@ -75,7 +75,7 @@ Images:
 
 Files:
 
-- Saved under `.pi/pi-qq/YYYY-MM-DD/<msgId>/`; the prompt includes the absolute path, size, and original filename.
+- Saved under `.pi/pi-qq/YYYY-MM-DD/<msgId>/`; v2+ uses the session-scoped `.pi/pi-qq/<sessionId>/uploads/`. The prompt includes the absolute path, size, and original filename.
 - Per-file timeout: 60 seconds; default limit: 50MB.
 - Filenames are sanitized; duplicates get `-1`, `-2` suffixes.
 - File contents are not injected into the model; tools read them on demand.
@@ -100,7 +100,7 @@ v1 used window summaries, tool counts, and message heartbeats to keep long runs 
 
 | Limit                                               | Mitigation                                                            |
 | --------------------------------------------------- | --------------------------------------------------------------------- |
-| About 4 passive replies per 5-minute window         | `ReplyBudget` records `msgId` quota and falls back to proactive sends |
+| About 4 passive replies per hour (SDK limiter)      | `ReplyBudget` records `msgId` quota and falls back to proactive sends |
 | Stream messages are C2C-only; throttle ≥300ms       | `AppendStream` handles batching and retries                           |
 | About 5000 characters per text message              | Automatic chunking                                                    |
 | Stream messages need a `msgId` newer than 5 minutes | Fall back to normal messages after expiry                             |

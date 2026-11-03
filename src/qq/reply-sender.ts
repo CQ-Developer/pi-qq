@@ -60,12 +60,13 @@ export function markdownToPlain(md: string): string {
 }
 
 export function chunkText(text: string, limit = TEXT_CHUNK_LIMIT): string[] {
-  if (text.length <= limit) return [text];
+  const max = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : TEXT_CHUNK_LIMIT;
+  if (text.length <= max) return [text];
   const chunks: string[] = [];
   let rest = text;
-  while (rest.length > limit) {
-    let cut = rest.lastIndexOf("\n", limit);
-    cut = cut <= 0 ? limit : cut + 1;
+  while (rest.length > max) {
+    let cut = rest.lastIndexOf("\n", max);
+    cut = cut <= 0 ? max : cut + 1;
     chunks.push(rest.slice(0, cut));
     rest = rest.slice(cut);
   }

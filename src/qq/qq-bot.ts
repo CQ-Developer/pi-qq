@@ -14,7 +14,7 @@ export type BotState = "stopped" | "starting" | "connected" | "reconnecting" | "
 
 export interface StartBotOptions {
   credentials: Credentials;
-  allowedOpenid?: string;
+  allowedOpenid: string;
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;
   onStateChange?: (state: BotState, detail?: string) => void;
 }
@@ -38,7 +38,7 @@ export function startBot(opts: StartBotOptions): RunningBot {
 
   bot.use(messageFilter({ skipSelfEcho: true }));
   bot.use(contentSanitizer({ stripBotMention: true }));
-  bot.use(accessPolicy(opts.allowedOpenid ? { c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } } : {}));
+  bot.use(accessPolicy({ c2c: { mode: "allowlist", allow: [opts.allowedOpenid] } }));
   bot.use(concurrencyGuard());
 
   const report = (state: BotState, detail?: string) => {

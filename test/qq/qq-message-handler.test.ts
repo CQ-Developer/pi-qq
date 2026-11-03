@@ -14,6 +14,7 @@ function makeInboundHarness(
   const sent: string[] = [];
   const userMessages: Array<{ content: unknown; options: unknown }> = [];
   let triggers = 0;
+  let stops = 0;
   const bot = {
     async sendText(_target: unknown, text: string) {
       sent.push(text);
@@ -36,7 +37,6 @@ function makeInboundHarness(
     ctx,
     budget: new ReplyBudget(),
     getAllowedOpenid: () => "openid-u",
-    getBoundOpenid: () => "openid-u",
     getDeliverAs: () => "steer",
     getImageMaxSize: () => 1024,
     getFileMaxSize: () => 50 * 1024 * 1024,
@@ -45,6 +45,9 @@ function makeInboundHarness(
     onWarn: () => {},
     markQQTrigger: () => {
       triggers += 1;
+    },
+    onStop: () => {
+      stops += 1;
     },
   };
   const handler = createInboundHandler(deps as never);
@@ -59,7 +62,7 @@ function makeInboundHarness(
         attachments: override.attachments ?? opts.attachments ?? [],
       } as never,
     );
-  return { run, sent, userMessages, triggers: () => triggers };
+  return { run, sent, userMessages, triggers: () => triggers, stops: () => stops };
 }
 
 describe("inbound files", () => {
@@ -245,6 +248,15 @@ describe("inbound pending files", () => {
     expect(content).toBe("分析");
     expect(content).not.toContain(savedA.path);
     expect(harness.triggers()).toBe(1);
+  });
+});
+
+describe("inbound /stop", () => {
+  it("cancels recovery even when the agent is idle", async () => {
+    const harness = makeInboundHarness(true);
+    await harness.run({ content: "/stop" });
+    expect(harness.stops()).toBe(1);
+    expect(harness.sent).toEqual(["No task is running."]);
   });
 });
 

@@ -1,7 +1,6 @@
 import { downloadLimited, type InboundAttachmentLike } from "./attachment-download";
+import type { AttachmentFailure } from "./attachment-failure";
 import { formatBytes } from "../infra/display-format";
-
-export type { InboundAttachmentLike } from "./attachment-download";
 
 export interface ImageContentLike {
   type: "image";
@@ -14,14 +13,9 @@ export interface TextContentLike {
   text: string;
 }
 
-export interface ImageFailure {
-  filename: string;
-  reason: string;
-}
-
 export interface ImageResolveResult {
   images: ImageContentLike[];
-  failures: ImageFailure[];
+  failures: AttachmentFailure[];
 }
 
 const DOWNLOAD_TIMEOUT_MS = 15_000;
@@ -70,14 +64,6 @@ export function buildImageMessageContent(
   return content;
 }
 
-export function formatImageFailures(failures: readonly ImageFailure[], successCount: number): string {
-  const title =
-    successCount > 0
-      ? `⚠️ ${failures.length} attachment(s) failed (${successCount} succeeded):`
-      : "⚠️ Attachment failed:";
-  return [title, ...failures.map((failure) => `• ${failure.filename}: ${failure.reason}`)].join("\n");
-}
-
 function attachmentLabel(filename: string | undefined, index: number): string {
   const name = filename?.trim();
   return name || `Image ${index + 1}`;
@@ -88,7 +74,7 @@ async function downloadOne(
   index: number,
   maxSize: number,
   fetchImpl: typeof fetch,
-): Promise<{ image?: ImageContentLike; failure?: ImageFailure }> {
+): Promise<{ image?: ImageContentLike; failure?: AttachmentFailure }> {
   const filename = attachmentLabel(attachment.filename, index);
   const mimeType = resolveImageMime(attachment.content_type, attachment.filename);
   if (!mimeType) {
@@ -133,7 +119,7 @@ export async function resolveInboundImages(
   );
 
   const images: ImageContentLike[] = [];
-  const failures: ImageFailure[] = [];
+  const failures: AttachmentFailure[] = [];
   for (const result of results) {
     if (result.image) images.push(result.image);
     if (result.failure) failures.push(result.failure);

@@ -133,7 +133,8 @@ The code is layered by responsibility:
 <!-- prettier-ignore -->
 | Module                       | Responsibility                                                            |
 | ---------------------------- | ------------------------------------------------------------------------- |
-| `index.ts`                   | Extension wiring, pi event subscriptions, command/diagnostic registration |
+| `index.ts`                   | Extension wiring, pi event subscriptions, login/session commands          |
+| `src/qq/qq-diagnostics.ts`      | Terminal protocol diagnostics (`/qq-test-*`)                              |
 | `src/qq/qq-message-handler.ts`  | QQ inbound routing, commands, attachments, injection into pi              |
 | `src/qq/reply-sender.ts`        | Markdown-to-text conversion, chunking, sending                            |
 | `src/relay/run-stream-relay.ts`    | Content-block orchestration, bubble lifecycle, tool queue, recovery       |
@@ -163,7 +164,7 @@ Boundary rules:
 
 ## 7. Verification
 
-- Unit tests: **135 passed** across 14 test files.
+- Unit tests at v3 delivery: **135 passed** across 14 test files.
 - TypeScript, ESLint, and Prettier checks pass.
 - Verified on real QQ:
   - C2C login, text, images, and files;

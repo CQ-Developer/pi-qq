@@ -16,7 +16,7 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
   let requestRender: (() => void) | undefined;
   let closeOverlay: (() => void) | undefined;
 
-  return await new Promise<QrLoginResult | undefined>((resolve) => {
+  return new Promise<QrLoginResult | undefined>((resolve) => {
     let settled = false;
     const finish = (result?: QrLoginResult) => {
       if (settled) return;
@@ -86,6 +86,9 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
           },
           handleInput(data: string): void {
             if (keybindings.matches(data, "tui.select.cancel") || data === "\x1b") {
+              // Mark the login settled before aborting: the connector reports an
+              // AbortError through onFailure, which must not look like a failure.
+              finish();
               ac.abort();
               done();
             }

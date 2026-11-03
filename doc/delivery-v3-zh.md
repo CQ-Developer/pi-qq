@@ -133,7 +133,8 @@ assistant 文本按原文流式追加，不额外加标题。文本块和工具�
 <!-- prettier-ignore -->
 | 模块                         | 职责                                         |
 | ---------------------------- | -------------------------------------------- |
-| `index.ts`                   | 扩展装配、pi 事件订阅、命令和诊断接线        |
+| `index.ts`                   | 扩展装配、pi 事件订阅、登录/会话命令         |
+| `src/qq/qq-diagnostics.ts`      | 终端协议诊断（`/qq-test-*`）                 |
 | `src/qq/qq-message-handler.ts`  | QQ 入站路由、命令、附件、注入 pi             |
 | `src/qq/reply-sender.ts`        | Markdown 转纯文本、分块、消息发送            |
 | `src/relay/run-stream-relay.ts`    | 内容块编排、气泡生命周期、工具队列、错误恢复 |
@@ -163,7 +164,7 @@ assistant 文本按原文流式追加，不额外加标题。文本块和工具�
 
 ## 7. 验证
 
-- 单元测试：**135 passed**（14 个测试文件）。
+- v3 交付时单元测试：**135 passed**（14 个测试文件）。
 - TypeScript、ESLint 和 Prettier 检查通过。
 - 真机已验证：
   - C2C 登录、文本、图片、文件；

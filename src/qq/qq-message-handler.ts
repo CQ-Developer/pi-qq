@@ -4,11 +4,11 @@ import { sendReply, type ReplyChannel } from "./reply-sender";
 import type { ReplyBudget } from "../quota/reply-quota";
 import {
   buildImageMessageContent,
-  formatImageFailures,
   isImageAttachment,
   resolveInboundImages,
   type ImageContentLike,
 } from "../attachments/image-attachments";
+import { formatAttachmentFailures, type AttachmentFailure } from "../attachments/attachment-failure";
 import { formatFilePrompt, saveInboundFiles, sessionUploadDir, type SavedFile } from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
 import { isVoiceAttachment, resolveVoiceTranscript } from "../attachments/voice-transcript";
@@ -18,7 +18,6 @@ export interface InboundDeps {
   ctx: ExtensionContext;
   budget: ReplyBudget;
   getAllowedOpenid: () => string | undefined;
-  getBoundOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
   getImageMaxSize: () => number;
   getFileMaxSize: () => number;
@@ -78,7 +77,7 @@ export function createInboundHandler(deps: InboundDeps) {
 
     const channel: ReplyChannel = {
       budget: deps.budget,
-      boundOpenid: deps.getBoundOpenid() ?? msg.senderId,
+      boundOpenid: deps.getAllowedOpenid() ?? msg.senderId,
       onWarn: deps.onWarn,
     };
     const reply = (text: string) => sendReply(bot, text, channel);
@@ -131,7 +130,7 @@ export function createInboundHandler(deps: InboundDeps) {
 
     const imageAttachments = attachments.filter(isImageAttachment);
     const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
-    const failures: Array<{ filename: string; reason: string }> = [];
+    const failures: AttachmentFailure[] = [];
 
     let images: ImageContentLike[] = [];
     if (imageAttachments.length > 0) {
@@ -171,7 +170,7 @@ export function createInboundHandler(deps: InboundDeps) {
         failures,
         successCount: images.length + files.length,
       });
-      await reply(formatImageFailures(failures, images.length + files.length));
+      await reply(formatAttachmentFailures(failures, images.length + files.length));
     }
     if (!text && images.length === 0 && files.length === 0) {
       log.warn("inbound", "no injectable content after attachment handling", {
@@ -224,10 +223,10 @@ async function handleCommand(text: string, reply: (t: string) => Promise<void>, 
       );
       break;
     case "/stop":
+      deps.onStop?.();
       if (deps.ctx.isIdle()) {
         await reply("No task is running.");
       } else {
-        deps.onStop?.();
         deps.ctx.abort();
         await deps.waitForEnd?.();
         await reply("Abort requested.");

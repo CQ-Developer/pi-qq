@@ -21,9 +21,13 @@ const TOOL_ICONS: Record<string, string> = {
   test: "🧪",
 };
 
-function inlineCode(text: string): string {
+function backtickFence(text: string, minimum: number): string {
   const runs = text.match(/`+/g) ?? [];
-  const ticks = "`".repeat(Math.max(1, ...runs.map((run) => run.length + 1)));
+  return "`".repeat(Math.max(minimum, ...runs.map((run) => run.length + 1)));
+}
+
+function inlineCode(text: string): string {
+  const ticks = backtickFence(text, 1);
   const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
   return `${ticks}${pad}${text}${pad}${ticks}`;
 }
@@ -108,7 +112,6 @@ export function formatToolResult(result: unknown, isError: boolean): string {
   if (!text) text = "(no output)";
   text = truncateText(text, RESULT_MAX_CHARS, RESULT_MAX_LINES);
   if (isError) text = `❌ ${text}`;
-  const runs = text.match(/`+/g) ?? [];
-  const fence = "`".repeat(Math.max(3, ...runs.map((run) => run.length + 1)));
+  const fence = backtickFence(text, 3);
   return `${fence}text\n${text}\n${fence}\n`;
 }

@@ -116,6 +116,8 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 
 When enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads. Legacy `debug: true` maps to `logLevel: "debug"`.
 
+Settings are read when a pi session starts; restart pi after editing the file. Unknown keys are ignored, and invalid values fall back to defaults with a warning.
+
 ## Development
 
 Node.js 22.19 or newer is required, matching pi. Install dependencies and run:

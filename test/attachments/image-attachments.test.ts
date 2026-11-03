@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImageMessageContent,
-  formatImageFailures,
   resolveImageMime,
   resolveInboundImages,
   type ImageContentLike,
 } from "../../src/attachments/image-attachments";
+import { formatAttachmentFailures } from "../../src/attachments/attachment-failure";
 
 const sampleImage: ImageContentLike = { type: "image", data: "AAA", mimeType: "image/png" };
 
@@ -49,15 +49,15 @@ describe("buildImageMessageContent", () => {
   });
 });
 
-describe("formatImageFailures", () => {
+describe("formatAttachmentFailures", () => {
   it("全部失败", () => {
-    expect(formatImageFailures([{ filename: "a.png", reason: "too large" }], 0)).toBe(
+    expect(formatAttachmentFailures([{ filename: "a.png", reason: "too large" }], 0)).toBe(
       "⚠️ Attachment failed:\n• a.png: too large",
     );
   });
 
   it("部分成功", () => {
-    expect(formatImageFailures([{ filename: "a.png", reason: "too large" }], 1)).toBe(
+    expect(formatAttachmentFailures([{ filename: "a.png", reason: "too large" }], 1)).toBe(
       "⚠️ 1 attachment(s) failed (1 succeeded):\n• a.png: too large",
     );
   });

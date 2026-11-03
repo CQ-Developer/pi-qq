@@ -86,8 +86,25 @@ describe("saveInboundFiles", () => {
       expect(result.failures).toEqual([]);
       expect(result.files).toHaveLength(1);
       expect(result.files[0]?.path).toBe(join(uploadDir, "test.zip"));
+      expect(result.files[0]?.originalName).toBe("test.zip");
       expect((await readFile(result.files[0]!.path)).equals(Buffer.from(zip))).toBe(true);
       expect(await readIndex(uploadDir)).toEqual({ "test.zip": sha256Hex(Buffer.from(zip)) });
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the original display name while sanitizing the path", async () => {
+    const base = await mkdtemp(join(tmpdir(), "pi-qq-files-"));
+    const uploadDir = join(base, "uploads");
+    try {
+      const result = await saveInboundFiles(
+        [{ content_type: "file", url: "https://example.com/a.txt", filename: "a:b?.txt" }],
+        { uploadDir, maxSize: 1024, fetchImpl: fetchBody("content") },
+      );
+
+      expect(result.files[0]?.path).toBe(join(uploadDir, "a_b_.txt"));
+      expect(result.files[0]?.originalName).toBe("a:b?.txt");
     } finally {
       await rm(base, { recursive: true, force: true });
     }
@@ -119,6 +136,7 @@ describe("saveInboundFiles", () => {
 
       expect(first.files[0]?.path).toBe(join(uploadDir, "a.txt"));
       expect(second.files[0]?.path).toBe(join(uploadDir, "a-1.txt"));
+      expect(second.files[0]?.originalName).toBe("a.txt");
       expect(await readIndex(uploadDir)).toEqual({
         "a.txt": sha256Hex(Buffer.from("first")),
         "a-1.txt": sha256Hex(Buffer.from("second")),

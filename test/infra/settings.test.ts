@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { getSettings } from "../../src/infra/settings";
+import { getSettings, parseConfig } from "../../src/infra/settings";
+
+describe("parseConfig", () => {
+  it("rejects non-object JSON roots", () => {
+    for (const raw of [null, [], "text", 42]) {
+      const { config, error } = parseConfig(raw);
+      expect(config).toEqual({});
+      expect(error).toContain("expected a JSON object");
+    }
+  });
+
+  it("keeps valid fields and reports invalid ones", () => {
+    const { config, error } = parseConfig({
+      thinkingRelay: "yes",
+      deliverAs: "bogus",
+      imageMaxSize: -1,
+      fileMaxSize: "large",
+      logLevel: "verbose",
+      debug: true,
+    });
+
+    expect(config).toEqual({ debug: true });
+    expect(error).toContain("thinkingRelay");
+    expect(error).toContain("deliverAs");
+    expect(error).toContain("imageMaxSize");
+    expect(error).toContain("fileMaxSize");
+    expect(error).toContain("logLevel");
+  });
+
+  it("accepts a fully valid config", () => {
+    const raw = {
+      thinkingRelay: false,
+      deliverAs: "followUp",
+      imageMaxSize: 1024,
+      fileMaxSize: 2048,
+      logLevel: "debug",
+    } as const;
+    expect(parseConfig(raw)).toEqual({ config: raw });
+  });
+});
 
 describe("logLevel settings", () => {
   it("defaults to silent", () => {

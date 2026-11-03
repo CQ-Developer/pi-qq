@@ -297,6 +297,14 @@ describe("RunFeedback 直推", () => {
     expect(settled).toBe(true);
   });
 
+  it("dispose 清除待处理目标", () => {
+    const { rf } = makeRunHarness();
+    rf.markQQTrigger("openid-u", "msg-1");
+    rf.dispose();
+    rf.onAgentStart();
+    expect(rf.isQQRunActive()).toBe(false);
+  });
+
   it("同名并行工具按 toolCallId 归属结果", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);

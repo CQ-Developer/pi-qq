@@ -108,9 +108,6 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
 }
 
 export const log = {
-  get level(): LogLevel {
-    return activeLevel;
-  },
   debug(scope: string, message: string, data?: unknown): void {
     writeRecord("debug", scope, message, data);
   },
