@@ -54,6 +54,7 @@ const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
+const THINKING_HEADER = "**💭 思考**\n\n";
 const ARG_MAX_CHARS = 200;
 const RESULT_MAX_CHARS = 600;
 const RESULT_MAX_LINES = 8;
@@ -267,6 +268,7 @@ export class RunFeedback {
             prefix.length > 0 || newBubble,
             false,
             newBubble,
+            true,
           );
         }
       }
@@ -420,6 +422,7 @@ export class RunFeedback {
         prefix.length > 0 || newBubble,
         false,
         newBubble,
+        true,
       );
     }
     if (run.deferredText) {
@@ -464,7 +467,14 @@ export class RunFeedback {
     });
   }
 
-  private push(run: RunState, text: string, blockBoundary = false, endTool = false, newBubble = false): void {
+  private push(
+    run: RunState,
+    text: string,
+    blockBoundary = false,
+    endTool = false,
+    newBubble = false,
+    thinking = false,
+  ): void {
     if (!text || run.streamDead) return;
     void this.enqueue(async () => {
       if (this.run !== run || run.streamDead) return;
@@ -480,7 +490,7 @@ export class RunFeedback {
         !run.pendingResume &&
         !run.fenceOpen &&
         !run.toolOpen &&
-        (blockBoundary || run.lastChar === "\n")
+        (blockBoundary || run.lastChar === "\n" || thinking)
       ) {
         await this.rotateStream(run);
         if (this.run !== run || run.streamDead) return;
@@ -488,11 +498,12 @@ export class RunFeedback {
       const stream = this.ensureStream(run);
       if (!stream) return;
       run.pushedAny = true;
+      const outgoing = thinking && (!run.cur || run.bubbleChars === 0) ? `${THINKING_HEADER}${text}` : text;
       try {
-        await stream.append(text);
-        run.bubbleChars += text.length;
-        this.trackFences(run, text);
-        run.lastChar = text.slice(-1);
+        await stream.append(outgoing);
+        run.bubbleChars += outgoing.length;
+        this.trackFences(run, outgoing);
+        run.lastChar = outgoing.slice(-1);
         if (endTool) run.toolOpen = false;
       } catch (err) {
         if (run.cur === stream) this.handleStreamError(run, err as Error);

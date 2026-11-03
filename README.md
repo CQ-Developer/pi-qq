@@ -100,7 +100,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. This file contains setting
 
 | Key             | Default    | Description                                                  |
 | --------------- | ---------- | ------------------------------------------------------------ |
-| `thinkingRelay` | `true`     | Relay thinking content as plain text; `false` hides it       |
+| `thinkingRelay` | `true`     | Relay thinking as plain text with a `💭 思考` header         |
 | `deliverAs`     | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
 | `imageMaxSize`  | `10485760` | QQ image download limit in bytes (10MB)                      |
 | `fileMaxSize`   | `52428800` | QQ file download limit in bytes (50MB)                       |
