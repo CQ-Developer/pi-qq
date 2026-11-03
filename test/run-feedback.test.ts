@@ -304,21 +304,18 @@ describe("RunFeedback 直推", () => {
     ]);
   });
 
-  it("abort 前先发送已完成的工具，丢弃后续思考", async () => {
-    const { rf, calls } = makeRunHarness();
+  it("waitForEnd 在 agent_end 收尾后 resolve", async () => {
+    const { rf } = makeRunHarness();
     startRun(rf);
-    rf.onToolStart("bash", { command: "one" }, "call-1");
-    rf.onToolStart("bash", { command: "two" }, "call-2");
-    rf.onToolEnd("bash", false, "1", "call-1");
-    rf.onAssistantDelta("", "later");
-    rf.onToolEnd("bash", false, "2", "call-2");
-    await rf.beforeAbort();
+    let settled = false;
+    const waiting = rf.waitForEnd().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
     await rf.onAgentEnd();
-
-    expect(bubbleContents(calls)).toEqual([
-      "**bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**bash**\n\n`two`\n\n```text\n2\n```\n",
-    ]);
+    await waiting;
+    expect(settled).toBe(true);
   });
 
   it("同名并行工具按 toolCallId 归属结果", async () => {

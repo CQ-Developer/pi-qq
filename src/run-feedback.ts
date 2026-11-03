@@ -34,8 +34,6 @@ interface RunState {
   cur: AppendStream | null;
   pendingResume?: AppendStreamCheckpoint;
   streamDead: boolean;
-  aborted: boolean;
-  stopping: boolean;
   resumeAttempts: number;
   pushedAny: boolean;
   bubbleChars: number;
@@ -174,6 +172,8 @@ export class RunFeedback {
   private pending: { openid: string; msgId: string; at: number } | null = null;
   private run: RunState | null = null;
   private queue: Promise<void> = Promise.resolve();
+  private endPromise: Promise<void> = Promise.resolve();
+  private endResolve?: () => void;
 
   constructor(deps: RunFeedbackDeps) {
     this.deps = deps;
@@ -187,7 +187,14 @@ export class RunFeedback {
     return this.run !== null;
   }
 
+  waitForEnd(): Promise<void> {
+    return this.run ? this.endPromise : Promise.resolve();
+  }
+
   onAgentStart(): void {
+    this.endPromise = new Promise((resolve) => {
+      this.endResolve = resolve;
+    });
     const pending = this.pending;
     this.pending = null;
     if (!pending || Date.now() - pending.at > PENDING_TTL_MS) return;
@@ -206,8 +213,6 @@ export class RunFeedback {
       lastKind: "none",
       cur: null,
       streamDead: false,
-      aborted: false,
-      stopping: false,
       resumeAttempts: 0,
       pushedAny: false,
       bubbleChars: 0,
@@ -234,7 +239,7 @@ export class RunFeedback {
 
   onToolStart(toolName: string, args?: unknown, toolCallId?: string): void {
     const run = this.run;
-    if (!run || run.streamDead || run.aborted || run.stopping) return;
+    if (!run || run.streamDead) return;
     const id = toolCallId ?? toolName;
     if (run.tools.some((tool) => tool.id === id)) return;
     run.tools.push({ id, name: toolName, args, started: false, finished: false });
@@ -243,7 +248,7 @@ export class RunFeedback {
 
   onToolEnd(toolName: string, isError: boolean, result?: unknown, toolCallId?: string): void {
     const run = this.run;
-    if (!run || run.streamDead || run.aborted) return;
+    if (!run || run.streamDead) return;
     const id = toolCallId ?? toolName;
     const tool = run.tools.find((candidate) => candidate.id === id);
     if (!tool) return;
@@ -253,7 +258,7 @@ export class RunFeedback {
 
   onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
     const run = this.run;
-    if (!run || run.streamDead || run.aborted || run.stopping) return;
+    if (!run || run.streamDead) return;
 
     if (snapshotThinking.length > run.thinkingSentLen) {
       const delta = snapshotThinking.slice(run.thinkingSentLen);
@@ -285,7 +290,7 @@ export class RunFeedback {
 
   async onAssistantFinal(text: string, isError: boolean): Promise<boolean> {
     const run = this.run;
-    if (!run || run.aborted || run.stopping) return false;
+    if (!run) return false;
 
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
     run.snapshotText = "";
@@ -315,10 +320,14 @@ export class RunFeedback {
 
   async onAgentEnd(): Promise<void> {
     const run = this.run;
-    if (!run) return;
-    if (!run.aborted && run.lastKind === "thinking") this.appendThinkingTrailer(run);
+    if (!run) {
+      this.endResolve?.();
+      this.endResolve = undefined;
+      return;
+    }
+    if (run.lastKind === "thinking") this.appendThinkingTrailer(run);
     await this.drainQueue();
-    if (!run.aborted && !this.hasPendingTools(run)) this.flushDeferred(run);
+    if (!this.hasPendingTools(run)) this.flushDeferred(run);
     await this.drainQueue();
     this.clearTimers();
     this.run = null;
@@ -328,6 +337,8 @@ export class RunFeedback {
     });
     if (!run.pushedAny) {
       run.cur?.dispose();
+      this.endResolve?.();
+      this.endResolve = undefined;
       return;
     }
     const ok = await this.flushStream(run);
@@ -342,47 +353,16 @@ export class RunFeedback {
       }
     }
     run.cur?.dispose();
-  }
-
-  async beforeAbort(): Promise<void> {
-    const run = this.run;
-    if (!run) return;
-    run.stopping = true;
-    run.deferredThinking = "";
-    run.deferredText = "";
-    for (let attempt = 0; attempt <= run.tools.length + 1; attempt++) {
-      await this.drainQueue();
-      if (run.streamDead) break;
-      if (run.activeTool) {
-        const tool = run.tools.find((candidate) => candidate.id === run.activeTool);
-        if (tool?.result && !tool.finished) {
-          this.finishTool(run, tool);
-          continue;
-        }
-        break;
-      }
-      const next = run.tools.find((candidate) => !candidate.started);
-      if (!next) break;
-      this.startNextTool(run);
-    }
-    run.aborted = true;
-    run.stopping = false;
-  }
-
-  abort(): void {
-    const run = this.run;
-    if (!run) return;
-    run.aborted = true;
-    run.stopping = false;
-    run.deferredThinking = "";
-    run.deferredText = "";
-    run.pendingResume = undefined;
+    this.endResolve?.();
+    this.endResolve = undefined;
   }
 
   dispose(): void {
     this.clearTimers();
     this.run?.cur?.dispose();
     this.run = null;
+    this.endResolve?.();
+    this.endResolve = undefined;
   }
 
   private beginBlock(run: RunState, kind: BlockKind, newBubble = false): string {
@@ -429,9 +409,9 @@ export class RunFeedback {
   }
 
   private appendThinkingTrailer(run: RunState): void {
-    if (run.streamDead || run.aborted) return;
+    if (run.streamDead) return;
     void this.enqueue(async () => {
-      if (this.run !== run || run.streamDead || run.aborted) return;
+      if (this.run !== run || run.streamDead) return;
       if (!run.cur || run.bubbleChars === 0) return;
       if (!(await this.closeOpenFence(run))) return;
       const stream = this.ensureStream(run);
@@ -453,7 +433,7 @@ export class RunFeedback {
   }
 
   private flushDeferred(run: RunState): void {
-    if (run.streamDead || run.aborted) return;
+    if (run.streamDead) return;
     if (run.deferredThinking) {
       const thinking = run.deferredThinking;
       run.deferredThinking = "";
@@ -472,7 +452,7 @@ export class RunFeedback {
   }
 
   private startNextTool(run: RunState): void {
-    if (run.streamDead || run.aborted || run.activeTool) return;
+    if (run.streamDead || run.activeTool) return;
     const tool = run.tools.find((candidate) => !candidate.started);
     if (!tool) return;
     tool.started = true;
@@ -497,7 +477,7 @@ export class RunFeedback {
     const prefix = this.beginBlock(run, "tool");
     this.push(run, `${prefix}${formatToolResult(tool.result.result, tool.result.isError)}`, prefix.length > 0, true);
     void this.enqueue(async () => {
-      if (this.run !== run || run.streamDead || run.aborted) return;
+      if (this.run !== run || run.streamDead) return;
       if (run.activeTool !== tool.id) return;
       run.activeTool = undefined;
       this.startNextTool(run);
@@ -506,9 +486,9 @@ export class RunFeedback {
   }
 
   private push(run: RunState, text: string, blockBoundary = false, endTool = false, newBubble = false): void {
-    if (!text || run.streamDead || run.aborted) return;
+    if (!text || run.streamDead) return;
     void this.enqueue(async () => {
-      if (this.run !== run || run.streamDead || run.aborted) return;
+      if (this.run !== run || run.streamDead) return;
       if (blockBoundary && !(await this.closeOpenFence(run))) return;
       if (newBubble && run.cur && run.bubbleChars > 0 && !run.pendingResume) {
         await this.rotateStream(run);
