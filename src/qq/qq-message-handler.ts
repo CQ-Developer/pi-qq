@@ -83,25 +83,26 @@ export function createInboundHandler(deps: InboundDeps) {
     const reply = (text: string) => sendReply(bot, text, channel);
     const saveFiles = deps.saveFiles ?? saveInboundFiles;
 
-    const text = (msg.content ?? "").trim();
-    if (text.startsWith("/")) {
-      const command = text.split(/\s+/)[0];
+    const contentText = (msg.content ?? "").trim();
+    if (contentText.startsWith("/")) {
+      const command = contentText.split(/\s+/)[0];
       log.info("inbound", "QQ command", { command });
       if (command === "/new" && deps.ctx.isIdle() && pendingFiles.length > 0) {
         log.info("inbound", "cleared pending files for /new", { count: pendingFiles.length });
         pendingFiles = [];
       }
-      await handleCommand(text, reply, deps);
+      await handleCommand(contentText, reply, deps);
       return;
     }
 
     const attachments = msg.attachments ?? [];
-    if (!text && attachments.length === 0) {
+    if (!contentText && attachments.length === 0) {
       log.warn("inbound", "unsupported message: no text and no attachments", { messageId: msg.messageId });
       await reply("Unsupported message type.");
       return;
     }
 
+    let text = contentText;
     const voiceAttachments = attachments.filter(isVoiceAttachment);
     if (voiceAttachments.length > 0) {
       const transcript = resolveVoiceTranscript(voiceAttachments);
@@ -111,25 +112,22 @@ export function createInboundHandler(deps: InboundDeps) {
         asrLength: transcript?.length ?? 0,
       });
       if (!transcript) {
-        log.warn("inbound", "voice ASR returned no text", { messageId: msg.messageId });
-        await reply("Could not transcribe this voice message; please resend or type it.");
-        return;
+        if (!contentText) {
+          log.warn("inbound", "voice ASR returned no text", { messageId: msg.messageId });
+          await reply("Could not transcribe this voice message; please resend or type it.");
+          return;
+        }
+        log.warn("inbound", "voice ASR returned no text; using text content", { messageId: msg.messageId });
+      } else {
+        log.debug("inbound", "voice transcript", { messageId: msg.messageId, transcript });
+        text = contentText ? `${contentText}\n${transcript}` : transcript;
       }
-      log.debug("inbound", "voice transcript", { messageId: msg.messageId, transcript });
-      const pending = takePendingFiles();
-      const promptText = formatFilePrompt(pending, transcript);
-      deps.markQQTrigger(msg.senderId, msg.messageId);
-      deps.pi.sendUserMessage(promptText, { deliverAs: deps.getDeliverAs() });
-      log.info("inbound", "voice sent to pi", {
-        messageId: msg.messageId,
-        asrLength: transcript.length,
-        pendingFiles: pending.length,
-      });
-      return;
     }
 
-    const imageAttachments = attachments.filter(isImageAttachment);
-    const fileAttachments = attachments.filter((attachment) => !isImageAttachment(attachment));
+    // Voice attachments are handled above; never pass them to the file downloader.
+    const nonVoiceAttachments = attachments.filter((attachment) => !isVoiceAttachment(attachment));
+    const imageAttachments = nonVoiceAttachments.filter(isImageAttachment);
+    const fileAttachments = nonVoiceAttachments.filter((attachment) => !isImageAttachment(attachment));
     const failures: AttachmentFailure[] = [];
 
     let images: ImageContentLike[] = [];
@@ -198,6 +196,7 @@ export function createInboundHandler(deps: InboundDeps) {
     log.info("inbound", "sent to pi", {
       messageId: msg.messageId,
       textLength: text.length,
+      voice: voiceAttachments.length > 0,
       images: images.length,
       files: promptFiles.length,
       pendingFiles: pending.length,

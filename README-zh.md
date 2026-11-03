@@ -69,6 +69,7 @@ Summarize this file.
 - 不使用本地或外部语音识别服务。
 - 如果 QQ ASR 没有返回文本，机器人会回复 `Could not transcribe this voice message; please resend or type it.`，并且不会启动 pi。
 - 语音和文字是两条独立的 QQ 消息；需要时按顺序发送。
+- 同一消息中携带的文件或图片会与转写文本一起处理。
 - 要查看原始 ASR 结果，可将 `logLevel` 设为 `debug`；日志会包含 `asr_refer_text` 和附件元数据。
 
 ## 命令

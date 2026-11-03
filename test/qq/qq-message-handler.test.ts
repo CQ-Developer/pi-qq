@@ -150,6 +150,27 @@ describe("inbound voice", () => {
     expect(harness.userMessages).toEqual([]);
     expect(harness.triggers()).toBe(0);
   });
+
+  it("processes files alongside a voice transcript", async () => {
+    const savedFile = { path: "/tmp/pi-qq-files/x.zip", originalName: "x.zip", size: 1234 };
+    let downloaded: Array<{ filename?: string }> = [];
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [voice, { content_type: "application/zip", url: "https://example.com/x.zip", filename: "x.zip" }],
+      saveFiles: async (attachments) => {
+        downloaded = attachments as Array<{ filename?: string }>;
+        return { files: [savedFile], failures: [] };
+      },
+    });
+
+    await harness.run();
+    expect(downloaded).toHaveLength(1);
+    expect(downloaded[0]?.filename).toBe("x.zip");
+    expect(harness.triggers()).toBe(1);
+    const content = harness.userMessages[0]?.content as string;
+    expect(content).toContain(savedFile.path);
+    expect(content).toContain("测试。");
+  });
 });
 
 describe("inbound pending files", () => {

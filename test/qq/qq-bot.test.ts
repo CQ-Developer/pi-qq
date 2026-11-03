@@ -21,13 +21,16 @@ const mocks = vi.hoisted(() => {
 
     stop(): void {}
   }
-  return { FakeQQBot };
+  return { FakeQQBot, policies: [] as unknown[] };
 });
 
 vi.mock("@tencent-connect/qqbot-nodejs", () => ({
   QQBot: mocks.FakeQQBot,
   GatewayErrorCode: { FATAL_CLOSE: "fatal", RETRY_EXHAUSTED: "retry" },
-  accessPolicy: () => async (_ctx: unknown, next: () => Promise<void>) => next(),
+  accessPolicy: (policy: unknown) => {
+    mocks.policies.push(policy);
+    return async (_ctx: unknown, next: () => Promise<void>) => next();
+  },
   concurrencyGuard: () => async (_ctx: unknown, next: () => Promise<void>) => next(),
   contentSanitizer: () => async (_ctx: unknown, next: () => Promise<void>) => next(),
   messageFilter: () => async (_ctx: unknown, next: () => Promise<void>) => next(),
@@ -36,6 +39,17 @@ vi.mock("@tencent-connect/qqbot-nodejs", () => ({
 import { startBot } from "../../src/qq/qq-bot";
 
 describe("bot message handler", () => {
+  it("always installs an allowlist for the bound openid", () => {
+    mocks.policies.length = 0;
+    const running = startBot({
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    });
+
+    expect(mocks.policies).toEqual([{ c2c: { mode: "allowlist", allow: ["openid-u"] } }]);
+    running.stop();
+  });
+
   it("awaits onMessage so the SDK concurrency guard holds its lock", async () => {
     let release!: () => void;
     const onMessage = vi.fn(

@@ -69,6 +69,7 @@ Voice messages use QQ's built-in ASR (`asr_refer_text`). The transcript is sent 
 - No local or external speech-to-text service is used.
 - If QQ ASR returns no text, the bot replies `Could not transcribe this voice message; please resend or type it.` and does not start a pi run.
 - Voice and text are separate QQ messages; send them one after another when needed.
+- Files or images carried in the same message are processed together with the transcript.
 - To inspect the raw ASR result, set `logLevel` to `debug`; the log includes `asr_refer_text` and attachment metadata.
 
 ## Commands
