@@ -2,7 +2,13 @@
 
 [English](./README.md) | 简体中文
 
-将 [pi](https://github.com/earendil-works/pi) 接入 QQ 私聊。在手机 QQ 上发送文字、语音、图片或文件，pi 在你的电脑上工作，并把结果发回 QQ。
+将 [pi](https://github.com/earendil-works/pi) 接入 QQ 私聊。在 QQ 上发送文字、语音、图片或文件，pi 在你的电脑上工作，并把结果发回 QQ。
+
+## 环境要求
+
+- Node.js 22.19 或更高版本，与 pi 保持一致。
+- 已启用 C2C 私聊能力的 QQ 机器人应用。
+- 可用的 pi 环境。
 
 ## 安装
 
@@ -30,31 +36,22 @@ pi --extension /path/to/pi-qq
 
 - **文字**：普通聊天消息。
 - **语音**：直接使用 QQ 内置 ASR 文本；音频不会下载或保存。如果 ASR 没有返回文本，机器人会提示你重发或改用文字。
-- **图片**：和文件一样保存到 `.pi/pi-qq/<sessionId>/uploads/`；如果消息中没有指令，pi 会等待你的下一条消息。
-- **文件**：保存到 `.pi/pi-qq/<sessionId>/uploads/`，并等待你的下一条指令。
+- **图片和文件**：保存到 `.pi/pi-qq/<sessionId>/uploads/`。如果消息中没有指令，pi 会等待你的下一条文字或语音消息。
 
-QQ 客户端对混合消息的支持不同：手机 QQ 通常一次只发一种类型，桌面版 QQ 可以发送“文字 + 图片”。当客户端把文字/语音和附件放在同一条消息里时，pi-qq 会把它们合并到同一个提示词中处理。
+QQ 客户端对混合消息的支持不同。手机 QQ 通常一次只发一种类型，桌面版 QQ 可以发送“文字 + 图片”。当客户端把文字/语音和附件放在同一条消息里时，pi-qq 会把它们合并到同一个提示词中处理。
 
-### QQ 输出格式
-
-- **思考**：独立气泡，纯文本，首行 `**💭 思考**`；长思考在 12k 行边界续泡时会重复标题。
-- **工具**：每次调用独立气泡，首行 `**<图标> <工具名>**`，空行，参数行内代码，空行，结果 `text` 代码块。
-- **普通消息**：原文，不加标题。
-- **工具图标**：💻 bash、📖 read、📝 write、✏️ edit、🔎 grep、🔍 search、🗂️ find、📁 ls、📋 list、🌐 web、📡 fetch、🗑️ delete、❌ remove、✅ todo、🧪 test；未配置工具使用 🔧。
-- **错误恢复**：模型错误后 60 秒内自动恢复的 run 会继续推送到原 QQ 会话；`/stop` 会等待当前工具和流收尾后再回复。
-
-### 文件与图片
+### 附件
 
 **只发送附件不会启动 pi。** 文件和图片会先保存，pi 等待下一条文字或语音指令后再处理。
 
 - 先上传一个或多个文件或图片，再发送文字或语音说明要做什么。
-- 下一条文字/语音会作为指令；保存路径会加入该提示词。
+- 下一条指令会包含保存后的附件路径。
 - 指令到达前上传的多个附件会合并到同一个提示词中。
 - 图片通过 pi 的 `read` 工具查看，因此当前模型必须支持图片输入才能看到内容。
 - `/new` 会清空等待指令的附件。
 - 附件按当前 pi 会话隔离。相同文件名且内容相同会复用已有文件；相同文件名但内容不同会保存为 `name-1.ext`；不同文件名但内容相同会分别保存。
 
-pi 看到的附件提示词示例：
+pi 看到的提示词示例：
 
 ```text
 # Attachments:
@@ -73,21 +70,27 @@ Summarize this file.
 - 如果 QQ ASR 没有返回文本，机器人会回复 `Could not transcribe this voice message; please resend or type it.`，并且不会启动 pi。
 - 语音和文字是两条独立的 QQ 消息；需要时按顺序发送。
 - 如果客户端允许语音消息同时携带文件或图片，它们会与转写文本一起处理。
-- 要查看原始 ASR 结果，可将 `logLevel` 设为 `debug`；日志会包含 `asr_refer_text` 和附件元数据。
+
+将 `logLevel` 设为 `debug` 时，日志会包含原始 `asr_refer_text` 和附件元数据。
+
+### 回复格式
+
+- **思考**：独立气泡，纯文本，首行 `**💭 思考**`。长思考可能续到新气泡，并重复标题。
+- **工具**：每次调用独立气泡，首行 `**<图标> <工具名>**`，空行，参数行内代码，空行，结果 `text` 代码块。
+- **普通消息**：原文，不加标题。
+- **工具图标**：💻 bash、📖 read、📝 write、✏️ edit、🔎 grep、🔍 search、🗂️ find、📁 ls、📋 list、🌐 web、📡 fetch、🗑️ delete、❌ remove、✅ todo、🧪 test；未配置工具使用 🔧。
+- **错误恢复**：模型错误后 60 秒内自动恢复的 run 会继续推送到原 QQ 会话；`/stop` 会等待当前工具和流收尾后再回复。
 
 ## 命令
 
 在 pi 终端执行：
 
-| 命令                 | 说明                                    |
-| -------------------- | --------------------------------------- |
-| `/qq-login`          | 扫码登录并绑定扫码的 QQ 用户            |
-| `/qq-status`         | 显示登录、连接、模型、上下文和绑定用户  |
-| `/qq-logout`         | 退出登录并清除内存中的凭据              |
-| `/qq-test-budget`    | 显示被动回复额度和流式气泡诊断信息      |
-| `/qq-test-md [text]` | 发送 Markdown 测试消息                  |
-| `/qq-test-stream`    | 运行流式时间线诊断（`resume` 验证续写） |
-| `/qq-new`            | 重置当前会话（由 QQ 侧 `/new` 调用）    |
+| 命令         | 说明                                   |
+| ------------ | -------------------------------------- |
+| `/qq-login`  | 扫码登录并绑定扫码的 QQ 用户           |
+| `/qq-status` | 显示登录、连接、模型、上下文和绑定用户 |
+| `/qq-logout` | 退出登录并清除内存中的凭据             |
+| `/qq-new`    | 重置当前会话（由 QQ 侧 `/new` 调用）   |
 
 QQ 侧命令：
 
@@ -98,6 +101,16 @@ QQ 侧命令：
 | `/compact` | 压缩当前上下文       |
 | `/status`  | 显示会话和上下文状态 |
 | `/help`    | 显示命令帮助         |
+
+### 诊断
+
+以下终端命令用于排查问题：
+
+| 命令                 | 说明                                    |
+| -------------------- | --------------------------------------- |
+| `/qq-test-budget`    | 显示被动回复额度和流式气泡诊断信息      |
+| `/qq-test-md [text]` | 发送 Markdown 测试消息                  |
+| `/qq-test-stream`    | 运行流式时间线诊断（`resume` 验证续写） |
 
 ## 设置
 
@@ -117,15 +130,11 @@ QQ 侧命令：
 | `fileMaxSize`   | `52428800` | QQ 附件下载上限（字节，50MB）                          |
 | `logLevel`      | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
 
-旧配置 `imageMaxSize` 会被忽略；图片与文件共用 `fileMaxSize` 上限。
-
-启用日志后，日志写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。旧配置 `debug: true` 会映射为 `logLevel: "debug"`。
-
 配置在 pi 会话启动时读取；修改文件后请重启 pi。未知配置项会被忽略，无效值会回退到默认值并给出提示。
 
-## 开发
+启用日志后，日志写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。
 
-需要 Node.js 22.19 或更高版本（与 pi 的要求一致）。安装依赖后运行：
+## 开发
 
 ```bash
 npm ci
@@ -135,20 +144,24 @@ npm test
 npm run format:check
 ```
 
-`eslint.config.ts` 使用 Node.js 原生 TypeScript 剥离能力加载，不需要 `jiti`。
+扩展入口是 `index.ts`。源码按职责分组：
 
-### 文件命名
-
-- 源文件使用 `<领域>-<职责>.ts`，例如 `qq-bot.ts`、`qq-message-handler.ts`、`reply-sender.ts`、`reply-quota.ts`、`stream-session.ts`、`stream-block-format.ts`、`run-stream-relay.ts`、`file-attachments.ts`。
-- 源目录按限界上下文分组：`src/qq/`、`src/relay/`、`src/attachments/`、`src/quota/`、`src/infra/`。
-- 测试文件镜像源路径和文件名：`test/<group>/<source>.test.ts`，例如 `test/relay/run-stream-relay.test.ts`。
-- 纯类型模块使用 `.d.ts` 后缀；`.d.ts` 表示 TypeScript declaration file，不包含运行时代码，例如 `qrcode-terminal.d.ts`。
-- 避免 `inbound`、`outbound`、`format`、`util`、`helpers` 这类泛化名称，应体现领域和职责。
+| 目录               | 职责                                  |
+| ------------------ | ------------------------------------- |
+| `src/qq/`          | QQ bot 生命周期、登录、入站处理和回复 |
+| `src/relay/`       | 思考/工具/文本的流式回传              |
+| `src/attachments/` | 附件下载、存储和语音转写              |
+| `src/quota/`       | 被动回复额度                          |
+| `src/infra/`       | 配置、日志和显示格式化                |
 
 ## 说明
 
 - 仅支持 C2C（QQ 私聊）。
-- QQ 入站消息触发的任务会回传 QQ；模型错误后的自动恢复 run 也会继续回传。无关的本地任务不推送 QQ。
-- 收到的图片会保存为文件，并通过 pi 的 `read` 工具查看；当前模型必须支持图片输入才能看到内容。
+- QQ 入站消息触发的任务会回传 QQ；直接在 pi 中启动的无关任务不会推送。
+- 图片会保存为文件，并通过 pi 的 `read` 工具查看；当前模型必须支持图片输入才能看到内容。
 - 保存的附件位于工作区 `.pi/` 下；如有需要，请把 `.pi/` 加入你自己的项目 `.gitignore`。
 - QQ 对每条入站消息的被动回复次数有限制。可用 `/qq-test-budget` 查看本地额度。
+
+## 许可证
+
+MIT
