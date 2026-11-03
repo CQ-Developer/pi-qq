@@ -33,6 +33,14 @@ Send a QQ private message to the bot to start a task.
 - **Images**: sent to pi as vision input.
 - **Files**: saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/` and wait for your next instruction.
 
+### QQ output format
+
+- **Thinking**: its own bubble, plain text, with `**💭 思考**` as the first line. When a long thought continues in a new bubble at a 12k line boundary, the header is repeated.
+- **Tools**: one bubble per call: `**<icon> <name>**`, blank line, inline-code argument, blank line, then the result in a `text` code block.
+- **Regular messages**: raw text with no header.
+- **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
+- **Error recovery**: after a model error, automatic retry runs within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.
+
 ### Files
 
 A file-only message does **not** start pi. The file is saved, and pi waits for your next text or voice instruction before processing it.
@@ -125,7 +133,7 @@ npm run format:check
 ## Notes
 
 - Only C2C (QQ private chat) is supported.
-- Only runs triggered by inbound QQ messages are relayed to QQ. Tasks started directly in pi stay local.
+- Runs triggered by inbound QQ messages are relayed to QQ, as are automatic retry runs after model errors. Unrelated tasks started directly in pi stay local.
 - Incoming images are passed to the model as vision input; the current model must support image input.
 - Saved files are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
