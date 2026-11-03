@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTokenCount } from "../src/format";
+import { formatBytes, formatTokenCount } from "../src/display-format";
 
 describe("formatTokenCount", () => {
   it("小于 1k", () => {
@@ -16,5 +16,11 @@ describe("formatTokenCount", () => {
 
   it("200k", () => {
     expect(formatTokenCount(200_000)).toBe("200k");
+  });
+});
+
+describe("formatBytes", () => {
+  it("MB 格式", () => {
+    expect(formatBytes(10 * 1024 * 1024)).toBe("10.0MB");
   });
 });

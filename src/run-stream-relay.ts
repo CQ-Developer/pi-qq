@@ -1,8 +1,8 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
-import { AppendStream, type AppendStreamCheckpoint } from "./append-stream";
-import type { ReplyBudget } from "./reply-budget";
-import { log } from "./logger";
-import { THINKING_HEADER, formatToolLine, formatToolResult } from "./run-format";
+import { AppendStream, type AppendStreamCheckpoint } from "./stream-session";
+import type { ReplyBudget } from "./reply-quota";
+import { log } from "./file-logger";
+import { THINKING_HEADER, formatToolLine, formatToolResult } from "./stream-block-format";
 
 export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;

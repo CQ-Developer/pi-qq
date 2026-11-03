@@ -1,4 +1,4 @@
-import { formatBytes } from "./format";
+import { formatBytes } from "./display-format";
 
 export interface InboundAttachmentLike {
   content_type: string;

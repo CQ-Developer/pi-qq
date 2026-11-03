@@ -5,8 +5,7 @@ import {
   resolveImageMime,
   resolveInboundImages,
   type ImageContentLike,
-} from "../src/images";
-import { formatBytes } from "../src/format";
+} from "../src/image-attachments";
 
 const sampleImage: ImageContentLike = { type: "image", data: "AAA", mimeType: "image/png" };
 
@@ -33,12 +32,6 @@ describe("resolveImageMime", () => {
 
   it("未知类型拒绝", () => {
     expect(resolveImageMime("text/plain", "noext")).toBeNull();
-  });
-});
-
-describe("formatBytes", () => {
-  it("MB 格式", () => {
-    expect(formatBytes(10 * 1024 * 1024)).toBe("10.0MB");
   });
 });
 

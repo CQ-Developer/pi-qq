@@ -1,4 +1,4 @@
-import type { InboundAttachmentLike } from "./download";
+import type { InboundAttachmentLike } from "./attachment-download";
 
 export interface VoiceAttachmentLike extends InboundAttachmentLike {
   asr_refer_text?: string;

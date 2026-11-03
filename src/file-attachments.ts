@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { downloadLimited, type InboundAttachmentLike } from "./download";
-import { formatBytes } from "./format";
-import { log } from "./logger";
+import { downloadLimited, type InboundAttachmentLike } from "./attachment-download";
+import { formatBytes } from "./display-format";
+import { log } from "./file-logger";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const UPLOAD_INDEX_FILENAME = ".index.json";

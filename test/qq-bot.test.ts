@@ -33,7 +33,7 @@ vi.mock("@tencent-connect/qqbot-nodejs", () => ({
   messageFilter: () => async (_ctx: unknown, next: () => Promise<void>) => next(),
 }));
 
-import { startBot } from "../src/bot";
+import { startBot } from "../src/qq-bot";
 
 describe("bot message handler", () => {
   it("awaits onMessage so the SDK concurrency guard holds its lock", async () => {

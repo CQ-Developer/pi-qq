@@ -7,8 +7,8 @@ import {
   messageFilter,
 } from "@tencent-connect/qqbot-nodejs";
 import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
-import type { Credentials } from "./config";
-import { log, sdkLogger } from "./logger";
+import type { Credentials } from "./settings";
+import { log, sdkLogger } from "./file-logger";
 
 export type BotState = "stopped" | "starting" | "connected" | "reconnecting" | "blocked";
 

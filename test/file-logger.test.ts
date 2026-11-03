@@ -11,7 +11,7 @@ import {
   logFileName,
   normalizeLogLevel,
   previewForLog,
-} from "../src/logger";
+} from "../src/file-logger";
 
 afterEach(() => {
   configureLogger("silent");

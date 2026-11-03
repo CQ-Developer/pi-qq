@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createInboundHandler } from "../src/inbound";
-import { ReplyBudget } from "../src/reply-budget";
+import { createInboundHandler } from "../src/qq-message-handler";
+import { ReplyBudget } from "../src/reply-quota";
 
 function makeInboundHarness(
   isIdle: boolean,

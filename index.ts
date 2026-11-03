@@ -1,17 +1,17 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { getSettings, readConfig, type Credentials } from "./src/config";
-import { startBot, type BotState, type RunningBot } from "./src/bot";
-import { runQrLogin } from "./src/login";
-import { createInboundHandler } from "./src/inbound";
-import { markdownToPlain, sendReply } from "./src/outbound";
-import { ReplyBudget } from "./src/reply-budget";
-import { RunFeedback } from "./src/run-feedback";
-import { AppendStream } from "./src/append-stream";
-import { formatTokenCount } from "./src/format";
-import { formatBudgetStatus } from "./src/budget-status";
-import { configureLogger, log, previewForLog } from "./src/logger";
-import { pruneUploadIndex, sessionUploadDir } from "./src/files";
+import { getSettings, readConfig, type Credentials } from "./src/settings";
+import { startBot, type BotState, type RunningBot } from "./src/qq-bot";
+import { runQrLogin } from "./src/qr-login";
+import { createInboundHandler } from "./src/qq-message-handler";
+import { markdownToPlain, sendReply } from "./src/reply-sender";
+import { ReplyBudget } from "./src/reply-quota";
+import { RunFeedback } from "./src/run-stream-relay";
+import { AppendStream } from "./src/stream-session";
+import { formatTokenCount } from "./src/display-format";
+import { formatBudgetStatus } from "./src/reply-quota-report";
+import { configureLogger, log, previewForLog } from "./src/file-logger";
+import { pruneUploadIndex, sessionUploadDir } from "./src/file-attachments";
 
 interface LoginState {
   credentials: Credentials;

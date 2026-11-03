@@ -1,99 +1,97 @@
 # pi-qq delivery-v2
 
-> 状态：v2 已交付。
-> 前序版本：[delivery-v1.md](./delivery-v1.md)；后续版本：[delivery-v3.md](./delivery-v3.md)。
+> Status: v2 delivered.
+> Previous: [delivery-v1.md](./delivery-v1.md); next: [delivery-v3.md](./delivery-v3.md).
 
-## 1. 交付范围
+## 1. Scope
 
-v2 在 v1 的 QQ 私聊、图片和文件能力上增加：
+v2 adds to v1's QQ chat, image, and file support:
 
-- F8 语音消息自动转写；
-- F9 结构化日志基础设施；
-- F10 文件消息等待下一条指令；
-- F11 文件保存路径、索引和去重。
+- F8 voice-message transcription;
+- F9 structured logging;
+- F10 file-only messages waiting for the next instruction;
+- F11 upload paths, index, and deduplication.
 
-## 2. 功能
+## 2. Features
 
-### F8 语音消息
+### F8 Voice messages
 
-- 使用 QQ 内置 ASR（`asr_refer_text`），不下载音频。
-- 转写文本作为普通用户文本交给 pi。
-- ASR 无结果时回复 `Could not transcribe this voice message; please resend or type it.`，不启动 run。
-- 不依赖本地或外部语音识别服务。
-- 原始 ASR 结果和附件元数据只在 `debug` 日志中记录。
+- Use QQ built-in ASR (`asr_refer_text`); never download the audio.
+- Send the transcript to pi as ordinary user text.
+- If ASR returns no text, reply `Could not transcribe this voice message; please resend or type it.` and do not start a run.
+- No local or external speech-to-text service is used.
+- Raw ASR results and attachment metadata are only written at `debug` level.
 
-### F9 日志
+### F9 Logging
 
-- 按天写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。
-- `PI_QQ_LOG_DIR` 可覆盖目录。
-- 阈值：`silent`、`error`、`warn`、`info`、`debug`。
-- `info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。
-- 日志 JSONL 化，错误对象带名称、消息和堆栈。
-- 旧配置 `debug: true` 映射为 `logLevel: "debug"`。
+- Write daily files to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`.
+- `PI_QQ_LOG_DIR` can override the directory.
+- Thresholds: `silent`, `error`, `warn`, `info`, `debug`.
+- `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads.
+- Logs are JSONL; errors include name, message, and stack.
+- Legacy `debug: true` maps to `logLevel: "debug"`.
 
-### F10 文件等待指令
+### F10 File-only messages
 
-- 只发送文件不会启动 pi；文件先保存并进入 pending。
-- 下一条文字或语音指令会消费 pending 文件，并在提示词中附带路径、大小和原始文件名。
-- 指令前上传多个文件会合并到同一个提示词。
-- `/new` 清空 pending。
-- 文件按当前 pi 会话隔离。
+- A file-only message does not start pi; the file is saved and becomes pending.
+- The next text or voice instruction consumes pending files and includes paths, sizes, and original filenames in the prompt.
+- Multiple files uploaded before an instruction are merged into one prompt.
+- `/new` clears pending files.
+- Pending files are scoped to the current pi session.
 
-### F11 文件存储与去重
+### F11 Upload storage and deduplication
 
-- 保存在当前工作区 `.pi/pi-qq/<sessionId>/uploads/`。
-- 同名同内容复用已有文件。
-- 同名不同内容保存为 `name-1.ext`。
-- 不同名同内容分别保存。
-- 索引记录路径、大小、哈希和原始文件名；启动时清理失效索引。
-- pending 文件与索引解耦，`/new` 不影响已保存的索引文件。
+- Saved under the current workspace at `.pi/pi-qq/<sessionId>/uploads/`.
+- Same name and same content reuses the existing file.
+- Same name and different content is saved as `name-1.ext`.
+- Different names with identical content are saved separately.
+- The index records path, size, hash, and original filename; stale entries are pruned on startup.
+- Pending files are independent from the index; `/new` does not delete saved indexed files.
 
-## 3. 配置
+## 3. Settings
 
-v2 继续使用：
+| Setting         | Default        | Description                 |
+| --------------- | -------------- | --------------------------- |
+| `thinkingRelay` | `true`         | Relay thinking text         |
+| `deliverAs`     | `"steer"`      | Queue behavior while busy   |
+| `imageMaxSize`  | 10MB           | Image download limit        |
+| `fileMaxSize`   | 50MB           | File download limit         |
+| `logLevel`      | `"silent"`     | Log threshold               |
+| `debug`         | migration only | Legacy log switch migration |
 
-| 配置            | 默认       | 说明                 |
-| --------------- | ---------- | -------------------- |
-| `thinkingRelay` | `true`     | 思考正文回传开关     |
-| `deliverAs`     | `"steer"`  | 忙碌时的消息排队方式 |
-| `imageMaxSize`  | 10MB       | 图片下载上限         |
-| `fileMaxSize`   | 50MB       | 文件下载上限         |
-| `logLevel`      | `"silent"` | 日志阈值             |
-| `debug`         | 仅迁移读取 | 旧日志开关迁移       |
+## 4. Modules and boundaries
 
-## 4. 模块与边界
+| Module                       | Responsibility                                                |
+| ---------------------------- | ------------------------------------------------------------- |
+| `src/qq-message-handler.ts`  | Unified voice/file/text inbound routing; command interception |
+| `src/voice-transcript.ts`    | ASR text extraction and availability                          |
+| `src/file-attachments.ts`    | File storage, hashes, index, pending-file prompt              |
+| `src/attachment-download.ts` | Shared download limits for images and files                   |
+| `src/image-attachments.ts`   | Image validation and vision input assembly                    |
+| `src/file-logger.ts`         | Log levels, formatting, daily file output                     |
+| `src/reply-sender.ts`        | Markdown conversion, chunking, sending                        |
+| `src/reply-quota.ts`         | Passive reply quota                                           |
 
-| 模块                  | 职责                                 |
-| --------------------- | ------------------------------------ |
-| `src/inbound.ts`      | 语音/文件/文本统一入站路由；命令拦截 |
-| `src/voice.ts`        | ASR 文本提取与可用性判断             |
-| `src/files.ts`        | 文件保存、哈希、索引、pending 提示词 |
-| `src/download.ts`     | 图片和文件共用下载约束               |
-| `src/images.ts`       | 图片校验与视觉输入组装               |
-| `src/logger.ts`       | 日志级别、格式化、按天写入           |
-| `src/outbound.ts`     | Markdown 转换、分块、发送            |
-| `src/reply-budget.ts` | 被动回复预算                         |
+Boundary rules:
 
-边界原则：
+- `qq-message-handler` only routes; it does not implement download or storage details.
+- `voice-transcript` never touches the filesystem.
+- `file-attachments` handles storage and indexing, not pi events.
+- `file-logger` does not depend on business modules.
+- All attachment downloads go through `attachment-download.ts` so timeouts and size limits do not diverge.
 
-- `inbound` 只负责路由，不自行实现下载或存储细节；
-- `voice` 不接触文件系统；
-- `files` 负责保存和索引，不负责 pi 事件；
-- `logger` 不依赖业务模块；
-- 所有附件下载都经过 `download.ts`，避免超时和大小限制分叉。
+## 5. Verification
 
-## 5. 验证
+- Voice ASR text injection, empty-ASR prompting, and no audio persistence.
+- File-only messages do not start a run; the next instruction consumes the files.
+- Multiple pending files merge; `/new` clears pending files.
+- Same-name/same-content reuse, same-name/different-content suffixing, and different-name/same-content separation.
+- Log directory, levels, JSONL fields, and legacy `debug` migration.
+- Automated tests and real QQ verification passed.
 
-- 语音 ASR 文本注入、无文本提示、音频不落盘；
-- 纯文件消息不启动 run，下一条指令消费文件；
-- 多文件合并、`/new` 清空 pending；
-- 同名同内容复用、同名不同内容加后缀、不同名同内容独立保存；
-- 日志目录、级别、JSONL 字段和旧 `debug` 迁移；
-- 自动化和实机测试通过。
+## 6. Known limitations
 
-## 6. 已知限制
-
-- 仅使用 QQ ASR，不提供本地识别兜底。
-- ASR 不返回文本时只能重发或改文字。
-- 文件等待指令按当前 pi 会话隔离。
-- 日志的 `debug` 级别会包含敏感工具参数和文件内容，只在排查问题时开启。
+- Only QQ ASR is used; there is no local speech-recognition fallback.
+- If ASR returns no text, the user must resend or type the message.
+- Pending files are scoped to the current pi session.
+- `debug` logs can contain sensitive tool payloads and file contents; enable only while troubleshooting.

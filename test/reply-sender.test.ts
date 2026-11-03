@@ -1,34 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText, markdownToPlain, TEXT_CHUNK_LIMIT } from "../src/outbound";
-import { getSettings } from "../src/config";
-
-describe("getSettings", () => {
-  it("thinkingRelay 默认开启", () => {
-    expect(getSettings({}).thinkingRelay).toBe(true);
-  });
-
-  it("thinkingRelay 可显式关闭", () => {
-    expect(getSettings({ thinkingRelay: false }).thinkingRelay).toBe(false);
-  });
-
-  it("旧配置键被忽略", () => {
-    const settings = getSettings({
-      streamFlushMs: 3000,
-      streamAssistant: true,
-      streamRelay: true,
-      markdownSupport: true,
-      heartbeatMinutes: 10,
-      heartbeatMaxMessages: 3,
-    } as never);
-    expect(settings).toEqual({
-      thinkingRelay: true,
-      deliverAs: "steer",
-      imageMaxSize: 10 * 1024 * 1024,
-      fileMaxSize: 50 * 1024 * 1024,
-      logLevel: "silent",
-    });
-  });
-});
+import { chunkText, markdownToPlain, TEXT_CHUNK_LIMIT } from "../src/reply-sender";
 
 describe("markdownToPlain", () => {
   it("标题去 #", () => {

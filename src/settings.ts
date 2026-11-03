@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { normalizeLogLevel, type LogLevel } from "./logger";
+import { normalizeLogLevel, type LogLevel } from "./file-logger";
 
 export interface PiQQSettings {
   thinkingRelay?: boolean;

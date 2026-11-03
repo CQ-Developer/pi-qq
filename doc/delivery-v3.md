@@ -1,186 +1,186 @@
 # pi-qq delivery-v3
 
-> 状态：v3 已实现并完成主链路真机验证；按块切泡、错误恢复、列表切分等最终细节仍需在目标 QQ 客户端做一次完整复验。
-> 前序版本：[delivery-v1.md](./delivery-v1.md)、[delivery-v2.md](./delivery-v2.md)。
+> Status: v3 implemented and the main path has been verified on real QQ. Final details such as long-list splitting and recovery edge cases still need one complete pass on the target client.
+> Previous: [delivery-v1.md](./delivery-v1.md), [delivery-v2.md](./delivery-v2.md).
 
-## 1. 交付范围
+## 1. Scope
 
-v3 收敛长任务回传与配置：
+v3 consolidates long-run relay and configuration:
 
-- F12：事件直推，思考、工具、文本按块回传；
-- F13：移除消息心跳；
-- F14：配置项收敛。
+- F12: event-driven relay of thinking, tools, and text by content block;
+- F13: remove message heartbeats;
+- F14: consolidate settings.
 
-## 2. 输出模型
+## 2. Output model
 
-### 2.1 每个内容块一个气泡
+### 2.1 One bubble per content block
 
-按时间顺序：
+In chronological order:
 
-1. 思考块；
-2. 每个工具调用 + 结果；
-3. 文本块；
-4. 最终消息。
+1. thinking block;
+2. each tool call + result;
+3. text block;
+4. final message.
 
-工具未完成时，后续思考/文本暂存，避免思考插入两个工具泡之间。并行工具按开始顺序逐个展示，结果通过 `toolCallId` 归属。
+While tools are pending, later thinking/text is deferred so it cannot appear between two tool bubbles. Parallel tools are shown one at a time in start order; results are correlated by `toolCallId`.
 
-### 2.2 思考格式
+### 2.2 Thinking format
 
-每个思考泡首行：
+The first line of every thinking bubble:
 
 ```text
 **💭 思考**
 ```
 
-正文为纯文本，不加 `>` 引用前缀，空行和换行原样保留。达到 12k 安全边界时主动切泡，新泡重复标题。
+The body is plain text with no `>` quote prefix; blank lines and newlines are preserved. At the 12k safety boundary the relay starts a new bubble and repeats the header.
 
-不使用引用块的原因：QQ 会把单行/空行引用块渲染为不支持的消息；纯文本 + 标题可稳定显示。
+Blockquotes are not used because QQ renders single-line/blank-line quote blocks as unsupported messages; plain text plus a header renders reliably.
 
-### 2.3 工具格式
+### 2.3 Tool format
 
 ````text
-**<图标> <工具名>**
+**<icon> <tool>**
 
-`参数`
+`argument`
 
 ```text
-输出
+output
 ````
 
 ````
 
-失败结果首行：
+Failed results start with:
 
 ```text
 ❌ ...
 ````
 
-每个工具调用独立气泡；工具名、参数和结果不拆开。
+Each tool call gets its own bubble; the tool header, argument, and result are never split.
 
-固定图标映射：
+Fixed icon map:
 
-| 工具     | 图标 | 工具       | 图标 |
-| -------- | ---- | ---------- | ---- |
-| `bash`   | 💻   | `read`     | 📖   |
-| `write`  | 📝   | `edit`     | ✏️   |
-| `grep`   | 🔎   | `search`   | 🔍   |
-| `find`   | 🗂️   | `ls`       | 📁   |
-| `list`   | 📋   | `web`      | 🌐   |
-| `fetch`  | 📡   | `delete`   | 🗑️   |
-| `remove` | ❌   | `todo`     | ✅   |
-| `test`   | 🧪   | 未配置工具 | 🔧   |
+| Tool     | Icon | Tool         | Icon |
+| -------- | ---- | ------------ | ---- |
+| `bash`   | 💻   | `read`       | 📖   |
+| `write`  | 📝   | `edit`       | ✏️   |
+| `grep`   | 🔎   | `search`     | 🔍   |
+| `find`   | 🗂️   | `ls`         | 📁   |
+| `list`   | 📋   | `web`        | 🌐   |
+| `fetch`  | 📡   | `delete`     | 🗑️   |
+| `remove` | ❌   | `todo`       | ✅   |
+| `test`   | 🧪   | unconfigured | 🔧   |
 
-图标硬编码在 `src/run-format.ts`，不增加配置项。
+Icons are hard-coded in `src/stream-block-format.ts`; no setting is added.
 
-### 2.4 文本与普通消息
+### 2.4 Text and ordinary messages
 
-assistant 文本按原文流式追加，不额外加标题。文本块和工具块之间通过气泡边界区分。
+Assistant text is appended as-is and has no extra header. Text and tool blocks are separated by bubble boundaries.
 
-## 3. 切泡与流式传输
+## 3. Bubble splitting and streaming
 
-- 每个 run 默认多泡，但每个泡只承载一个内容块。
-- 单块累计达到 `MAX_BUBBLE_CHARS = 12_000` 时，在安全边界切泡：
-  - 块边界或行首；
-  - 没有未闭合代码围栏；
-  - 没有待续写检查点；
-  - 没有进行中的工具。
-- 思考切泡优先保证列表/行结构，不在行中间强制截断。
-- 工具参数行与结果代码块始终在同一泡。
-- `AppendStream` 负责 300ms 平台下限、500ms 默认合帧、429/50002 退避和同泡续写。
-- `index` 每次发送尝试递增；失败帧的未确认缓冲用下一个 index 重发。
-- 超过 5 分钟或平台拒绝时，最终文本通过普通消息路径补发。
+- A run normally produces multiple bubbles, but each bubble carries one content block.
+- When one block reaches `MAX_BUBBLE_CHARS = 12_000`, split at a safe boundary:
+  - block boundary or line start;
+  - no open code fence;
+  - no pending resume checkpoint;
+  - no active tool.
+- Thinking splits favor line/list structure and do not truncate mid-line.
+- Tool header/argument and result always stay in the same bubble.
+- `AppendStream` enforces the 300ms platform floor, 500ms default batching, 429/50002 backoff, and same-bubble resume.
+- `index` advances after every send attempt; an unconfirmed failed frame is retried with the next index.
+- After five minutes or a platform rejection, the final text falls back to the normal message path.
 
-## 4. 中断与错误恢复
+## 4. Abort and error recovery
 
 ### 4.1 `/stop`
 
-`/stop` 的流程：
+The `/stop` flow:
 
-1. 取消错误恢复目标；
-2. abort agent；
-3. 等待 `agent_end` 完成当前流、工具结果和 DONE；
-4. 回复 `Abort requested.`。
+1. cancel the recovery target;
+2. abort the agent;
+3. wait for `agent_end` to finish the current stream, tool results, and DONE;
+4. reply `Abort requested.`
 
-因此已启动的工具结果不会因为 `/stop` 丢失，也不会在 Abort requested 之后继续冒出排队工具泡。
+Started tool results are therefore not lost, and queued tool bubbles do not appear after the abort reply.
 
-### 4.2 模型错误恢复
+### 4.2 Model error recovery
 
-- 模型错误结束时保留原 QQ 目标 60 秒。
-- pi 自动恢复/重试产生的新 run 会沿用同一 `msgId` 继续推送。
-- 没有输出的空重试不会消耗恢复目标；下一次重试仍可继续。
-- 新 QQ 消息或 `/stop` 取消恢复。
-- 恢复目标内的本地 run 也可能被回传，这是为了延续 pi 自动恢复行为的明确取舍。
+- After a model error, keep the original QQ target for 60 seconds.
+- New runs created by pi's automatic recovery/retry reuse the same `msgId`.
+- An empty retry that produces no output does not consume the recovery target; the next retry can still attach.
+- A new QQ message or `/stop` cancels recovery.
+- A local run inside the recovery window can also be relayed. This is an explicit trade-off to preserve pi's automatic recovery.
 
-## 5. 配置
+## 5. Settings
 
-`~/.pi/agent/pi-qq.json` 只保存设置，不保存凭据。
+`~/.pi/agent/pi-qq.json` stores settings only; credentials are never written there.
 
-| 配置            | 默认       | 说明                                     |
-| --------------- | ---------- | ---------------------------------------- |
-| `thinkingRelay` | `true`     | 是否回传纯文本思考块                     |
-| `deliverAs`     | `"steer"`  | 忙碌时新消息排队方式                     |
-| `imageMaxSize`  | 10MB       | 图片下载上限                             |
-| `fileMaxSize`   | 50MB       | 文件下载上限                             |
-| `logLevel`      | `"silent"` | 日志阈值                                 |
-| `debug`         | 仅迁移读取 | `debug: true` 映射为 `logLevel: "debug"` |
+| Setting         | Default        | Description                               |
+| --------------- | -------------- | ----------------------------------------- |
+| `thinkingRelay` | `true`         | Relay plain-text thinking blocks          |
+| `deliverAs`     | `"steer"`      | Queue behavior while busy                 |
+| `imageMaxSize`  | 10MB           | Image download limit                      |
+| `fileMaxSize`   | 50MB           | File download limit                       |
+| `logLevel`      | `"silent"`     | Log threshold                             |
+| `debug`         | migration only | `debug: true` maps to `logLevel: "debug"` |
 
-已删除配置：`streamRelay`、`streamFlushMs`、`streamAssistant`、`markdownSupport`、`heartbeatMinutes`、`heartbeatMaxMessages`。旧键静默忽略，不写回。
+Removed settings: `streamRelay`, `streamFlushMs`, `streamAssistant`, `markdownSupport`, `heartbeatMinutes`, `heartbeatMaxMessages`. Old keys are ignored and not written back.
 
-## 6. 模块分布与边界
+## 6. Modules and boundaries
 
-当前代码按职责分层：
+The code is layered by responsibility:
 
-| 模块                   | 职责                                         |
-| ---------------------- | -------------------------------------------- |
-| `index.ts`             | 扩展装配、pi 事件订阅、命令和诊断接线        |
-| `src/inbound.ts`       | QQ 入站路由、命令、附件、注入 pi             |
-| `src/outbound.ts`      | Markdown 转纯文本、分块、消息发送            |
-| `src/run-feedback.ts`  | 内容块编排、气泡生命周期、工具队列、错误恢复 |
-| `src/run-format.ts`    | 思考标题、工具图标、参数/结果纯格式化        |
-| `src/append-stream.ts` | 流式帧、节流、重试、续写检查点               |
-| `src/reply-budget.ts`  | 被动回复预算与 `msgId` 窗口                  |
-| `src/budget-status.ts` | 预算诊断文本                                 |
-| `src/config.ts`        | 配置读取与旧键迁移                           |
-| `src/bot.ts`           | QQBot/Gateway 生命周期和中间件               |
-| `src/login.ts`         | 扫码登录                                     |
-| `src/files.ts`         | 文件保存、索引、去重、pending                |
-| `src/images.ts`        | 图片校验与视觉输入                           |
-| `src/download.ts`      | 图片/文件通用限流下载                        |
-| `src/voice.ts`         | QQ ASR 文本提取                              |
-| `src/logger.ts`        | 结构化文件日志                               |
-| `src/format.ts`        | 字节/token 通用格式化                        |
+| Module                       | Responsibility                                                            |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `index.ts`                   | Extension wiring, pi event subscriptions, command/diagnostic registration |
+| `src/qq-message-handler.ts`  | QQ inbound routing, commands, attachments, injection into pi              |
+| `src/reply-sender.ts`        | Markdown-to-text conversion, chunking, sending                            |
+| `src/run-stream-relay.ts`    | Content-block orchestration, bubble lifecycle, tool queue, recovery       |
+| `src/stream-block-format.ts` | Thinking header, tool icons, argument/result formatting                   |
+| `src/stream-session.ts`      | Stream frames, batching, retries, resume checkpoints                      |
+| `src/reply-quota.ts`         | Passive reply quota and `msgId` window                                    |
+| `src/reply-quota-report.ts`  | Quota diagnostic text                                                     |
+| `src/settings.ts`            | Settings reading and legacy-key migration                                 |
+| `src/qq-bot.ts`              | QQBot/Gateway lifecycle and middleware                                    |
+| `src/qr-login.ts`            | QR login                                                                  |
+| `src/file-attachments.ts`    | File storage, index, deduplication, pending files                         |
+| `src/image-attachments.ts`   | Image validation and vision input                                         |
+| `src/attachment-download.ts` | Shared limited download for images/files                                  |
+| `src/voice-transcript.ts`    | QQ ASR text extraction                                                    |
+| `src/file-logger.ts`         | Structured file logging                                                   |
+| `src/display-format.ts`      | Byte/token display formatting                                             |
 
-边界原则：
+Boundary rules:
 
-- `index.ts` 不承载回传状态机；
-- `run-format.ts` 只做纯格式化，不依赖流对象；
-- `run-feedback.ts` 只做编排，不直接拼 Markdown 细节；
-- `append-stream.ts` 不感知内容块语义；
-- `inbound.ts` 不实现下载、存储或预算；
-- 所有配置通过 `config.ts`，不散落在业务模块；
-- 每个模块都有独立测试或可从入口注入依赖。
+- `index.ts` does not own the relay state machine.
+- `stream-block-format.ts` is pure formatting and does not depend on streams.
+- `run-stream-relay.ts` orchestrates and does not build Markdown details.
+- `stream-session.ts` does not know content-block semantics.
+- `qq-message-handler.ts` does not implement download, storage, or quota.
+- All configuration goes through `settings.ts`.
+- Modules are independently testable or receive dependencies from the entrypoint.
 
-## 7. 验证
+## 7. Verification
 
-- 单元测试：**135 passed**（12 个测试文件）。
-- TypeScript、ESLint 和 Prettier 检查通过。
-- 真机已验证：
-  - C2C 登录、文本、图片、文件；
-  - 思考/工具/文本按块展示；
-  - 工具行与结果同泡；
-  - 12k 切泡与标题重复；
-  - `/stop` 收尾、模型错误后的自动恢复。
-- 仍需最终复验：
-  - 目标客户端上的长列表切分；
-  - 极端长代码围栏；
-  - 错误恢复目标 TTL 接近边界的情况；
-  - 并行工具较多时的消息额度。
+- Unit tests: **135 passed** across 14 test files.
+- TypeScript, ESLint, and Prettier checks pass.
+- Verified on real QQ:
+  - C2C login, text, images, and files;
+  - thinking/tool/text rendered as separate blocks;
+  - tool header/result in the same bubble;
+  - 12k split with repeated header;
+  - `/stop` teardown and automatic recovery after model errors.
+- Still worth a final pass:
+  - long list splitting on the target client;
+  - extremely long unclosed code fences;
+  - recovery near the TTL boundary;
+  - message quota with many parallel tools.
 
-## 8. 风险与限制
+## 8. Risks and limitations
 
-- 每个内容块一泡会增加消息数；长任务需关注被动额度。
-- 12k 切泡依赖状态，极端单行/未闭合围栏仍可能落到平台自动切分。
-- 工具图标是硬编码 Emoji，不同 QQ 客户端字体可能略有差异。
-- 恢复目标是 60 秒 TTL；超过窗口后不再自动续传。
-- 仅支持 C2C 私聊；登录凭据只在进程内存。
-- 最终文本在流式失败时走普通消息路径，可能重复已显示的部分，优先保证完整。
+- One bubble per block increases message count; long runs need quota monitoring.
+- 12k splitting is stateful; extreme single-line or unclosed-fence content may still fall back to platform splitting.
+- Tool icons are hard-coded Emoji; rendering may vary by QQ client font.
+- Recovery has a 60-second TTL; it stops after the window.
+- C2C private chat only; credentials live in process memory.
+- If streaming fails, the final text uses the normal message path and may duplicate already-visible content. Completeness is prioritized.

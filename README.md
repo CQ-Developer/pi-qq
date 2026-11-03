@@ -130,6 +130,13 @@ npm run format:check
 
 `eslint.config.ts` is loaded through Node.js native TypeScript stripping; `jiti` is not required.
 
+### File naming
+
+- Source files use `<domain>-<role>.ts`, for example `qq-bot.ts`, `qq-message-handler.ts`, `reply-sender.ts`, `reply-quota.ts`, `stream-session.ts`, `stream-block-format.ts`, `run-stream-relay.ts`, and `file-attachments.ts`.
+- Test files mirror the source file name: `<source>.test.ts`.
+- Type-only modules use the `.d.ts` suffix; `.d.ts` means TypeScript declaration file and contains no runtime code. Example: `qrcode-terminal.d.ts`.
+- Avoid vague standalone names such as `inbound`, `outbound`, `format`, `util`, or `helpers`; encode the domain and responsibility instead.
+
 ## Notes
 
 - Only C2C (QQ private chat) is supported.

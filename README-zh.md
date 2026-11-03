@@ -130,6 +130,13 @@ npm run format:check
 
 `eslint.config.ts` 使用 Node.js 原生 TypeScript 剥离能力加载，不需要 `jiti`。
 
+### 文件命名
+
+- 源文件使用 `<领域>-<职责>.ts`，例如 `qq-bot.ts`、`qq-message-handler.ts`、`reply-sender.ts`、`reply-quota.ts`、`stream-session.ts`、`stream-block-format.ts`、`run-stream-relay.ts`、`file-attachments.ts`。
+- 测试文件镜像源文件名：`<source>.test.ts`。
+- 纯类型模块使用 `.d.ts` 后缀；`.d.ts` 表示 TypeScript declaration file，不包含运行时代码，例如 `qrcode-terminal.d.ts`。
+- 避免 `inbound`、`outbound`、`format`、`util`、`helpers` 这类泛化名称，应体现领域和职责。
+
 ## 说明
 
 - 仅支持 C2C（QQ 私聊）。

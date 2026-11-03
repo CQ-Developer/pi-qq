@@ -1,4 +1,4 @@
-import type { BudgetSnapshot } from "./reply-budget";
+import type { BudgetSnapshot } from "./reply-quota";
 
 interface BudgetTarget {
   openid: string;

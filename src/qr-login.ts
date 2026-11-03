@@ -1,8 +1,8 @@
 import { startQrConnect } from "@tencent-connect/qqbot-connector";
 import { generate } from "qrcode-terminal";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Credentials } from "./config";
-import { log } from "./logger";
+import type { Credentials } from "./settings";
+import { log } from "./file-logger";
 
 export interface QrLoginResult extends Credentials {
   userOpenid?: string;

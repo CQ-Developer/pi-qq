@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AppendStream } from "../src/append-stream";
+import { AppendStream } from "../src/stream-session";
 
 function makeFakeApi() {
   const calls: Array<Record<string, unknown>> = [];
