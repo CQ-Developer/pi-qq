@@ -1,17 +1,17 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { getSettings, readConfig, type Credentials } from "./src/settings";
-import { startBot, type BotState, type RunningBot } from "./src/qq-bot";
-import { runQrLogin } from "./src/qr-login";
-import { createInboundHandler } from "./src/qq-message-handler";
-import { markdownToPlain, sendReply } from "./src/reply-sender";
-import { ReplyBudget } from "./src/reply-quota";
-import { RunFeedback } from "./src/run-stream-relay";
-import { AppendStream } from "./src/stream-session";
-import { formatTokenCount } from "./src/display-format";
-import { formatBudgetStatus } from "./src/reply-quota-report";
-import { configureLogger, log, previewForLog } from "./src/file-logger";
-import { pruneUploadIndex, sessionUploadDir } from "./src/file-attachments";
+import { getSettings, readConfig, type Credentials } from "./src/infra/settings";
+import { startBot, type BotState, type RunningBot } from "./src/qq/qq-bot";
+import { runQrLogin } from "./src/qq/qr-login";
+import { createInboundHandler } from "./src/qq/qq-message-handler";
+import { markdownToPlain, sendReply } from "./src/qq/reply-sender";
+import { ReplyBudget } from "./src/quota/reply-quota";
+import { RunFeedback } from "./src/relay/run-stream-relay";
+import { AppendStream } from "./src/relay/stream-session";
+import { formatTokenCount } from "./src/infra/display-format";
+import { formatBudgetStatus } from "./src/quota/reply-quota-report";
+import { configureLogger, log, previewForLog } from "./src/infra/file-logger";
+import { pruneUploadIndex, sessionUploadDir } from "./src/attachments/file-attachments";
 
 interface LoginState {
   credentials: Credentials;

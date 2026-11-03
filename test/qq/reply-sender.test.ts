@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText, markdownToPlain, TEXT_CHUNK_LIMIT } from "../src/reply-sender";
+import { chunkText, markdownToPlain, TEXT_CHUNK_LIMIT } from "../../src/qq/reply-sender";
 
 describe("markdownToPlain", () => {
   it("标题去 #", () => {

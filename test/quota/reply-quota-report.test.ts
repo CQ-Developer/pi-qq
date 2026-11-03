@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { BudgetSnapshot } from "../src/reply-quota";
-import { formatBudgetStatus } from "../src/reply-quota-report";
+import type { BudgetSnapshot } from "../../src/quota/reply-quota";
+import { formatBudgetStatus } from "../../src/quota/reply-quota-report";
 
 const t0 = 1_700_000_000_000;
 

@@ -133,7 +133,8 @@ npm run format:check
 ### 文件命名
 
 - 源文件使用 `<领域>-<职责>.ts`，例如 `qq-bot.ts`、`qq-message-handler.ts`、`reply-sender.ts`、`reply-quota.ts`、`stream-session.ts`、`stream-block-format.ts`、`run-stream-relay.ts`、`file-attachments.ts`。
-- 测试文件镜像源文件名：`<source>.test.ts`。
+- 源目录按限界上下文分组：`src/qq/`、`src/relay/`、`src/attachments/`、`src/quota/`、`src/infra/`。
+- 测试文件镜像源路径和文件名：`test/<group>/<source>.test.ts`，例如 `test/relay/run-stream-relay.test.ts`。
 - 纯类型模块使用 `.d.ts` 后缀；`.d.ts` 表示 TypeScript declaration file，不包含运行时代码，例如 `qrcode-terminal.d.ts`。
 - 避免 `inbound`、`outbound`、`format`、`util`、`helpers` 这类泛化名称，应体现领域和职责。
 

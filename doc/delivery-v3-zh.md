@@ -70,7 +70,7 @@ v3 收敛长任务回传与配置：
 | `remove` | ❌   | `todo`     | ✅   |
 | `test`   | 🧪   | 未配置工具 | 🔧   |
 
-图标硬编码在 `src/stream-block-format.ts`，不增加配置项。
+图标硬编码在 `src/relay/stream-block-format.ts`，不增加配置项。
 
 ### 2.4 文本与普通消息
 
@@ -130,25 +130,26 @@ assistant 文本按原文流式追加，不额外加标题。文本块和工具�
 
 当前代码按职责分层：
 
+<!-- prettier-ignore -->
 | 模块                         | 职责                                         |
 | ---------------------------- | -------------------------------------------- |
 | `index.ts`                   | 扩展装配、pi 事件订阅、命令和诊断接线        |
-| `src/qq-message-handler.ts`  | QQ 入站路由、命令、附件、注入 pi             |
-| `src/reply-sender.ts`        | Markdown 转纯文本、分块、消息发送            |
-| `src/run-stream-relay.ts`    | 内容块编排、气泡生命周期、工具队列、错误恢复 |
-| `src/stream-block-format.ts` | 思考标题、工具图标、参数/结果纯格式化        |
-| `src/stream-session.ts`      | 流式帧、节流、重试、续写检查点               |
-| `src/reply-quota.ts`         | 被动回复预算与 `msgId` 窗口                  |
-| `src/reply-quota-report.ts`  | 预算诊断文本                                 |
-| `src/settings.ts`            | 配置读取与旧键迁移                           |
-| `src/qq-bot.ts`              | QQBot/Gateway 生命周期和中间件               |
-| `src/qr-login.ts`            | 扫码登录                                     |
-| `src/file-attachments.ts`    | 文件保存、索引、去重、pending                |
-| `src/image-attachments.ts`   | 图片校验与视觉输入                           |
-| `src/attachment-download.ts` | 图片/文件通用限流下载                        |
-| `src/voice-transcript.ts`    | QQ ASR 文本提取                              |
-| `src/file-logger.ts`         | 结构化文件日志                               |
-| `src/display-format.ts`      | 字节/token 通用格式化                        |
+| `src/qq/qq-message-handler.ts`  | QQ 入站路由、命令、附件、注入 pi             |
+| `src/qq/reply-sender.ts`        | Markdown 转纯文本、分块、消息发送            |
+| `src/relay/run-stream-relay.ts`    | 内容块编排、气泡生命周期、工具队列、错误恢复 |
+| `src/relay/stream-block-format.ts` | 思考标题、工具图标、参数/结果纯格式化 |
+| `src/relay/stream-session.ts`      | 流式帧、节流、重试、续写检查点               |
+| `src/quota/reply-quota.ts`         | 被动回复预算与 `msgId` 窗口                  |
+| `src/quota/reply-quota-report.ts`  | 预算诊断文本                                 |
+| `src/infra/settings.ts`            | 配置读取与旧键迁移                           |
+| `src/qq/qq-bot.ts`              | QQBot/Gateway 生命周期和中间件               |
+| `src/qq/qr-login.ts`            | 扫码登录                                     |
+| `src/attachments/file-attachments.ts`    | 文件保存、索引、去重、pending                |
+| `src/attachments/image-attachments.ts`   | 图片校验与视觉输入                           |
+| `src/attachments/attachment-download.ts` | 图片/文件通用限流下载                        |
+| `src/attachments/voice-transcript.ts`    | QQ ASR 文本提取                              |
+| `src/infra/file-logger.ts`         | 结构化文件日志                               |
+| `src/infra/display-format.ts`      | 字节/token 通用格式化                        |
 
 边界原则：
 

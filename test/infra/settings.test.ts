@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSettings } from "../src/settings";
+import { getSettings } from "../../src/infra/settings";
 
 describe("logLevel settings", () => {
   it("defaults to silent", () => {

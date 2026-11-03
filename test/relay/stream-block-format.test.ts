@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatToolLine, formatToolResult } from "../src/stream-block-format";
+import { formatToolLine, formatToolResult } from "../../src/relay/stream-block-format";
 
 describe("工具格式化", () => {
   it("主参数按字段顺序提取", () => {

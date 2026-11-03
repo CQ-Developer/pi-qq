@@ -1,7 +1,7 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { AppendStream, type AppendStreamCheckpoint } from "./stream-session";
-import type { ReplyBudget } from "./reply-quota";
-import { log } from "./file-logger";
+import type { ReplyBudget } from "../quota/reply-quota";
+import { log } from "../infra/file-logger";
 import { THINKING_HEADER, formatToolLine, formatToolResult } from "./stream-block-format";
 
 export interface RunFeedbackDeps {

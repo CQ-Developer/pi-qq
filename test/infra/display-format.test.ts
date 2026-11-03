@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatTokenCount } from "../src/display-format";
+import { formatBytes, formatTokenCount } from "../../src/infra/display-format";
 
 describe("formatTokenCount", () => {
   it("小于 1k", () => {

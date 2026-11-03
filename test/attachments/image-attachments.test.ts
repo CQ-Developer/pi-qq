@@ -5,7 +5,7 @@ import {
   resolveImageMime,
   resolveInboundImages,
   type ImageContentLike,
-} from "../src/image-attachments";
+} from "../../src/attachments/image-attachments";
 
 const sampleImage: ImageContentLike = { type: "image", data: "AAA", mimeType: "image/png" };
 

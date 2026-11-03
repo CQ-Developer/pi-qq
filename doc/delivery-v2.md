@@ -61,16 +61,17 @@ v2 adds to v1's QQ chat, image, and file support:
 
 ## 4. Modules and boundaries
 
+<!-- prettier-ignore -->
 | Module                       | Responsibility                                                |
 | ---------------------------- | ------------------------------------------------------------- |
-| `src/qq-message-handler.ts`  | Unified voice/file/text inbound routing; command interception |
-| `src/voice-transcript.ts`    | ASR text extraction and availability                          |
-| `src/file-attachments.ts`    | File storage, hashes, index, pending-file prompt              |
-| `src/attachment-download.ts` | Shared download limits for images and files                   |
-| `src/image-attachments.ts`   | Image validation and vision input assembly                    |
-| `src/file-logger.ts`         | Log levels, formatting, daily file output                     |
-| `src/reply-sender.ts`        | Markdown conversion, chunking, sending                        |
-| `src/reply-quota.ts`         | Passive reply quota                                           |
+| `src/qq/qq-message-handler.ts`  | Unified voice/file/text inbound routing; command interception |
+| `src/attachments/voice-transcript.ts`    | ASR text extraction and availability                          |
+| `src/attachments/file-attachments.ts`    | File storage, hashes, index, pending-file prompt              |
+| `src/attachments/attachment-download.ts` | Shared download limits for images and files                   |
+| `src/attachments/image-attachments.ts`   | Image validation and vision input assembly                    |
+| `src/infra/file-logger.ts`         | Log levels, formatting, daily file output                     |
+| `src/qq/reply-sender.ts`        | Markdown conversion, chunking, sending                        |
+| `src/quota/reply-quota.ts`         | Passive reply quota                                           |
 
 Boundary rules:
 

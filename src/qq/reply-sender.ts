@@ -1,6 +1,6 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
-import { ReplyBudget } from "./reply-quota";
-import { log } from "./file-logger";
+import { ReplyBudget } from "../quota/reply-quota";
+import { log } from "../infra/file-logger";
 
 export const TEXT_CHUNK_LIMIT = 4500;
 

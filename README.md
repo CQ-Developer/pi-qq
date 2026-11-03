@@ -133,7 +133,8 @@ npm run format:check
 ### File naming
 
 - Source files use `<domain>-<role>.ts`, for example `qq-bot.ts`, `qq-message-handler.ts`, `reply-sender.ts`, `reply-quota.ts`, `stream-session.ts`, `stream-block-format.ts`, `run-stream-relay.ts`, and `file-attachments.ts`.
-- Test files mirror the source file name: `<source>.test.ts`.
+- Source directories group bounded contexts: `src/qq/`, `src/relay/`, `src/attachments/`, `src/quota/`, and `src/infra/`.
+- Test files mirror the source path and file name: `test/<group>/<source>.test.ts`, for example `test/relay/run-stream-relay.test.ts`.
 - Type-only modules use the `.d.ts` suffix; `.d.ts` means TypeScript declaration file and contains no runtime code. Example: `qrcode-terminal.d.ts`.
 - Avoid vague standalone names such as `inbound`, `outbound`, `format`, `util`, or `helpers`; encode the domain and responsibility instead.
 

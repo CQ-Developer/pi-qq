@@ -124,23 +124,24 @@ QQ 侧命令：`/new`、`/stop`、`/compact`、`/status`、`/help`。
 
 ## 6. 模块与边界（v1 基线）
 
+<!-- prettier-ignore -->
 | 模块                         | 职责                                 |
 | ---------------------------- | ------------------------------------ |
 | `index.ts`                   | 扩展装配、事件订阅、命令注册         |
-| `src/settings.ts`            | 只读配置与迁移                       |
-| `src/qr-login.ts`            | 扫码登录                             |
-| `src/qq-bot.ts`              | QQBot 生命周期、Gateway 状态、中间件 |
-| `src/qq-message-handler.ts`  | 入站路由、命令、附件处理、注入 pi    |
-| `src/image-attachments.ts`   | 图片校验与 `ImageContent`            |
-| `src/file-attachments.ts`    | 文件保存、索引、提示词关联           |
-| `src/attachment-download.ts` | 图片/文件通用限流下载                |
-| `src/reply-sender.ts`        | Markdown 转换、分块、发送            |
-| `src/reply-quota.ts`         | 被动回复预算                         |
-| `src/reply-quota-report.ts`  | 预算诊断格式化                       |
-| `src/display-format.ts`      | 字节与 token 格式化                  |
-| `src/file-logger.ts`         | 文件日志                             |
-| `src/run-stream-relay.ts`    | 长任务反馈状态机                     |
-| `src/stream-session.ts`      | 流式追加、重试、续写检查点           |
+| `src/infra/settings.ts`            | 只读配置与迁移                       |
+| `src/qq/qr-login.ts`            | 扫码登录                             |
+| `src/qq/qq-bot.ts`              | QQBot 生命周期、Gateway 状态、中间件 |
+| `src/qq/qq-message-handler.ts`  | 入站路由、命令、附件处理、注入 pi    |
+| `src/attachments/image-attachments.ts`   | 图片校验与 `ImageContent`            |
+| `src/attachments/file-attachments.ts`    | 文件保存、索引、提示词关联           |
+| `src/attachments/attachment-download.ts` | 图片/文件通用限流下载                |
+| `src/qq/reply-sender.ts`        | Markdown 转换、分块、发送            |
+| `src/quota/reply-quota.ts`         | 被动回复预算                         |
+| `src/quota/reply-quota-report.ts`  | 预算诊断格式化                       |
+| `src/infra/display-format.ts`      | 字节与 token 格式化                  |
+| `src/infra/file-logger.ts`         | 文件日志                             |
+| `src/relay/run-stream-relay.ts`    | 长任务反馈状态机                     |
+| `src/relay/stream-session.ts`      | 流式追加、重试、续写检查点           |
 
 边界原则：入口只做装配；协议、存储、格式化、预算分别放在独立模块；模块通过显式参数和 `RunFeedbackDeps` 之类的接口通信。
 

@@ -1,17 +1,17 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { sendReply, type ReplyChannel } from "./reply-sender";
-import type { ReplyBudget } from "./reply-quota";
+import type { ReplyBudget } from "../quota/reply-quota";
 import {
   buildImageMessageContent,
   formatImageFailures,
   isImageAttachment,
   resolveInboundImages,
   type ImageContentLike,
-} from "./image-attachments";
-import { formatFilePrompt, saveInboundFiles, sessionUploadDir, type SavedFile } from "./file-attachments";
-import { log } from "./file-logger";
-import { isVoiceAttachment, resolveVoiceTranscript } from "./voice-transcript";
+} from "../attachments/image-attachments";
+import { formatFilePrompt, saveInboundFiles, sessionUploadDir, type SavedFile } from "../attachments/file-attachments";
+import { log } from "../infra/file-logger";
+import { isVoiceAttachment, resolveVoiceTranscript } from "../attachments/voice-transcript";
 
 export interface InboundDeps {
   pi: ExtensionAPI;

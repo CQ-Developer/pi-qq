@@ -63,16 +63,17 @@ v2 继续使用：
 
 ## 4. 模块与边界
 
+<!-- prettier-ignore -->
 | 模块                         | 职责                                 |
 | ---------------------------- | ------------------------------------ |
-| `src/qq-message-handler.ts`  | 语音/文件/文本统一入站路由；命令拦截 |
-| `src/voice-transcript.ts`    | ASR 文本提取与可用性判断             |
-| `src/file-attachments.ts`    | 文件保存、哈希、索引、pending 提示词 |
-| `src/attachment-download.ts` | 图片和文件共用下载约束               |
-| `src/image-attachments.ts`   | 图片校验与视觉输入组装               |
-| `src/file-logger.ts`         | 日志级别、格式化、按天写入           |
-| `src/reply-sender.ts`        | Markdown 转换、分块、发送            |
-| `src/reply-quota.ts`         | 被动回复预算                         |
+| `src/qq/qq-message-handler.ts`  | 语音/文件/文本统一入站路由；命令拦截 |
+| `src/attachments/voice-transcript.ts`    | ASR 文本提取与可用性判断             |
+| `src/attachments/file-attachments.ts`    | 文件保存、哈希、索引、pending 提示词 |
+| `src/attachments/attachment-download.ts` | 图片和文件共用下载约束               |
+| `src/attachments/image-attachments.ts`   | 图片校验与视觉输入组装               |
+| `src/infra/file-logger.ts`         | 日志级别、格式化、按天写入           |
+| `src/qq/reply-sender.ts`        | Markdown 转换、分块、发送            |
+| `src/quota/reply-quota.ts`         | 被动回复预算                         |
 
 边界原则：
 

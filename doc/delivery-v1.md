@@ -124,23 +124,24 @@ QQ-side commands: `/new`, `/stop`, `/compact`, `/status`, `/help`.
 
 ## 6. Modules and boundaries (v1 baseline)
 
+<!-- prettier-ignore -->
 | Module                       | Responsibility                                              |
 | ---------------------------- | ----------------------------------------------------------- |
 | `index.ts`                   | Extension wiring, event subscriptions, command registration |
-| `src/settings.ts`            | Read-only settings and migration                            |
-| `src/qr-login.ts`            | QR login                                                    |
-| `src/qq-bot.ts`              | QQBot lifecycle, Gateway state, middleware                  |
-| `src/qq-message-handler.ts`  | Inbound routing, commands, attachments, injection into pi   |
-| `src/image-attachments.ts`   | Image validation and `ImageContent`                         |
-| `src/file-attachments.ts`    | File storage, index, prompt attachment                      |
-| `src/attachment-download.ts` | Shared limited download for images/files                    |
-| `src/reply-sender.ts`        | Markdown conversion, chunking, sending                      |
-| `src/reply-quota.ts`         | Passive reply quota                                         |
-| `src/reply-quota-report.ts`  | Quota diagnostics formatting                                |
-| `src/display-format.ts`      | Byte and token formatting                                   |
-| `src/file-logger.ts`         | File logging                                                |
-| `src/run-stream-relay.ts`    | Long-task feedback state machine                            |
-| `src/stream-session.ts`      | Stream append, retries, checkpoint resume                   |
+| `src/infra/settings.ts`            | Read-only settings and migration                            |
+| `src/qq/qr-login.ts`            | QR login                                                    |
+| `src/qq/qq-bot.ts`              | QQBot lifecycle, Gateway state, middleware                  |
+| `src/qq/qq-message-handler.ts`  | Inbound routing, commands, attachments, injection into pi   |
+| `src/attachments/image-attachments.ts`   | Image validation and `ImageContent`                         |
+| `src/attachments/file-attachments.ts`    | File storage, index, prompt attachment                      |
+| `src/attachments/attachment-download.ts` | Shared limited download for images/files                    |
+| `src/qq/reply-sender.ts`        | Markdown conversion, chunking, sending                      |
+| `src/quota/reply-quota.ts`         | Passive reply quota                                         |
+| `src/quota/reply-quota-report.ts`  | Quota diagnostics formatting                                |
+| `src/infra/display-format.ts`      | Byte and token formatting                                   |
+| `src/infra/file-logger.ts`         | File logging                                                |
+| `src/relay/run-stream-relay.ts`    | Long-task feedback state machine                            |
+| `src/relay/stream-session.ts`      | Stream append, retries, checkpoint resume                   |
 
 Boundary rules: the entrypoint only wires modules; protocol, storage, formatting, and quota are separate; modules communicate through explicit parameters and interfaces such as `RunFeedbackDeps`.
 

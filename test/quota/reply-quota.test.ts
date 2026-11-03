@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ReplyBudget } from "../src/reply-quota";
+import { ReplyBudget } from "../../src/quota/reply-quota";
 
 const t0 = 1_700_000_000_000;
 

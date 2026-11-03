@@ -70,7 +70,7 @@ Fixed icon map:
 | `remove` | ❌   | `todo`       | ✅   |
 | `test`   | 🧪   | unconfigured | 🔧   |
 
-Icons are hard-coded in `src/stream-block-format.ts`; no setting is added.
+Icons are hard-coded in `src/relay/stream-block-format.ts`; no setting is added.
 
 ### 2.4 Text and ordinary messages
 
@@ -130,25 +130,26 @@ Removed settings: `streamRelay`, `streamFlushMs`, `streamAssistant`, `markdownSu
 
 The code is layered by responsibility:
 
+<!-- prettier-ignore -->
 | Module                       | Responsibility                                                            |
 | ---------------------------- | ------------------------------------------------------------------------- |
 | `index.ts`                   | Extension wiring, pi event subscriptions, command/diagnostic registration |
-| `src/qq-message-handler.ts`  | QQ inbound routing, commands, attachments, injection into pi              |
-| `src/reply-sender.ts`        | Markdown-to-text conversion, chunking, sending                            |
-| `src/run-stream-relay.ts`    | Content-block orchestration, bubble lifecycle, tool queue, recovery       |
-| `src/stream-block-format.ts` | Thinking header, tool icons, argument/result formatting                   |
-| `src/stream-session.ts`      | Stream frames, batching, retries, resume checkpoints                      |
-| `src/reply-quota.ts`         | Passive reply quota and `msgId` window                                    |
-| `src/reply-quota-report.ts`  | Quota diagnostic text                                                     |
-| `src/settings.ts`            | Settings reading and legacy-key migration                                 |
-| `src/qq-bot.ts`              | QQBot/Gateway lifecycle and middleware                                    |
-| `src/qr-login.ts`            | QR login                                                                  |
-| `src/file-attachments.ts`    | File storage, index, deduplication, pending files                         |
-| `src/image-attachments.ts`   | Image validation and vision input                                         |
-| `src/attachment-download.ts` | Shared limited download for images/files                                  |
-| `src/voice-transcript.ts`    | QQ ASR text extraction                                                    |
-| `src/file-logger.ts`         | Structured file logging                                                   |
-| `src/display-format.ts`      | Byte/token display formatting                                             |
+| `src/qq/qq-message-handler.ts`  | QQ inbound routing, commands, attachments, injection into pi              |
+| `src/qq/reply-sender.ts`        | Markdown-to-text conversion, chunking, sending                            |
+| `src/relay/run-stream-relay.ts`    | Content-block orchestration, bubble lifecycle, tool queue, recovery       |
+| `src/relay/stream-block-format.ts` | Thinking header, tool icons, argument/result formatting                   |
+| `src/relay/stream-session.ts`      | Stream frames, batching, retries, resume checkpoints                      |
+| `src/quota/reply-quota.ts`         | Passive reply quota and `msgId` window                                    |
+| `src/quota/reply-quota-report.ts`  | Quota diagnostic text                                                     |
+| `src/infra/settings.ts`            | Settings reading and legacy-key migration                                 |
+| `src/qq/qq-bot.ts`              | QQBot/Gateway lifecycle and middleware                                    |
+| `src/qq/qr-login.ts`            | QR login                                                                  |
+| `src/attachments/file-attachments.ts`    | File storage, index, deduplication, pending files                         |
+| `src/attachments/image-attachments.ts`   | Image validation and vision input                                         |
+| `src/attachments/attachment-download.ts` | Shared limited download for images/files                                  |
+| `src/attachments/voice-transcript.ts`    | QQ ASR text extraction                                                    |
+| `src/infra/file-logger.ts`         | Structured file logging                                                   |
+| `src/infra/display-format.ts`      | Byte/token display formatting                                             |
 
 Boundary rules:
 

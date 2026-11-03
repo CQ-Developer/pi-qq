@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isVoiceAttachment, resolveVoiceTranscript, type VoiceAttachmentLike } from "../src/voice-transcript";
+import {
+  isVoiceAttachment,
+  resolveVoiceTranscript,
+  type VoiceAttachmentLike,
+} from "../../src/attachments/voice-transcript";
 
 function voice(asr_refer_text?: string, filename = "voice.amr"): VoiceAttachmentLike {
   return {

@@ -10,8 +10,8 @@ import {
   sessionUploadDir,
   sha256Hex,
   uploadIndexPath,
-} from "../src/file-attachments";
-import { getSettings } from "../src/settings";
+} from "../../src/attachments/file-attachments";
+import { getSettings } from "../../src/infra/settings";
 
 function bodyInit(body: string | Uint8Array): string | ArrayBuffer {
   return typeof body === "string"

@@ -1,5 +1,5 @@
 import { downloadLimited, type InboundAttachmentLike } from "./attachment-download";
-import { formatBytes } from "./display-format";
+import { formatBytes } from "../infra/display-format";
 
 export type { InboundAttachmentLike } from "./attachment-download";
 

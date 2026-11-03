@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { RunFeedback } from "../src/run-stream-relay";
-import { THINKING_HEADER } from "../src/stream-block-format";
-import { ReplyBudget } from "../src/reply-quota";
+import { RunFeedback } from "../../src/relay/run-stream-relay";
+import { THINKING_HEADER } from "../../src/relay/stream-block-format";
+import { ReplyBudget } from "../../src/quota/reply-quota";
 
 const DONE_STATE = 10;
 
