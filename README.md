@@ -28,7 +28,7 @@ pi --extension /path/to/pi-qq
 2. Run `/qq-login`.
 3. Scan the QR code with mobile QQ.
 
-Credentials are kept in process memory only. Restarting pi requires scanning again. `/qq-logout` clears the in-memory credentials immediately.
+Credentials are not written to `pi-qq.json`. Restarting pi requires scanning again. `/qq-logout` clears the credentials immediately.
 
 ## Usage
 
@@ -89,7 +89,7 @@ Run these in the pi terminal:
 | ------------ | ------------------------------------------------------ |
 | `/qq-login`  | Log in with a QR code and bind the scanning QQ user    |
 | `/qq-status` | Show login, connection, model, context, and bound user |
-| `/qq-logout` | Log out and clear in-memory credentials                |
+| `/qq-logout` | Log out and clear credentials                          |
 | `/qq-new`    | Reset the current session (used by QQ `/new`)          |
 
 QQ-side commands:

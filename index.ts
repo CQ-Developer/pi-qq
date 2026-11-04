@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
     const model = ctx?.model;
     return [
       "pi-qq status",
-      `Login: ${login ? `QR login, in memory (AppID ${maskAppId(login.credentials.appId)})` : "not logged in"}`,
+      `Login: ${login ? `QR login (AppID ${maskAppId(login.credentials.appId)})` : "not logged in"}`,
       `Connection: ${lastState}${stateDetail ? ` (${stateDetail})` : ""}`,
       `Model: ${model?.name ?? "none"}`,
       usage
@@ -305,7 +305,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("qq-logout", {
-    description: "pi-qq: log out and clear in-memory credentials",
+    description: "pi-qq: log out and clear credentials",
     handler: async (_args, ctx) => {
       stopIfRunning();
       setLoginState(undefined);
