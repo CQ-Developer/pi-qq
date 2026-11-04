@@ -7,11 +7,11 @@
 
 ## 1. 需求
 
-在现有状态信息基础上增加：
-
 1. **pi 执行状态**：执行中 / 已完成；
 2. **电脑电量**；
-3. **图标**：让状态行更易扫读。
+3. **图标**：让状态行更易扫读；
+4. **中英文支持**：所有用户可见文字支持 `zh-cn` 和 `en-us`；
+5. **语言配置**：通过配置项选择语言，不自动识别系统语言。
 
 QQ `/status` 和终端 `/qq-status` 应保持一致。
 
@@ -55,18 +55,21 @@ pi.registerCommand("qq-status", {
 ### 2.3 缺口
 
 1. **没有 agent 执行状态**
-   - `ctx.isIdle()` 已经存在，但状态行没有使用。
-   - `runFeedback.isQQRunActive()` 已经存在，可以用来区分“QQ 任务”与“本地任务”。
+   - `ctx.isIdle()` 已经存在，但状态行没有使用；
+   - `runFeedback.isQQRunActive()` 已经存在，可以区分 QQ 任务与本地任务。
 2. **没有电脑电量**
-   - 当前没有任何电池/电源采集代码。
+   - 当前没有电池/电源采集代码；
    - 状态构建函数是同步的，加入平台命令时要考虑阻塞和缓存。
 3. **没有图标**
-   - 当前 `/status` 是纯文本行。
-   - QQ 输出走普通文本消息（不是流式），emoji 可以直接使用；工具/思考消息已经在用 emoji，说明客户端渲染没有问题。
-4. **信息层级偏平**
-   - 登录、连接、模型、上下文、绑定用户之间没有视觉区分，手机上看一屏文字较难扫读。
+   - 当前 `/status` 是纯文本行；
+   - QQ 输出走普通文本消息，emoji 可以直接使用；工具/思考消息已经在用 emoji。
+4. **没有中英文支持**
+   - 当前所有命令回复、状态、错误提示都是硬编码英文；
+   - 没有统一文案表，也没有语言配置。
 5. **`Bound user` 显示完整 openid**
-   - 可能不需要改动，但可以顺手做掩码处理，和 AppID 一致。
+   - 建议做掩码处理，和 AppID 保持一致。
+6. **信息层级偏平**
+   - 登录、连接、模型、上下文、绑定用户之间没有视觉区分。
 
 ### 2.4 可用数据
 
@@ -76,54 +79,44 @@ pi.registerCommand("qq-status", {
 - `ctx.getContextUsage()`、`ctx.model`；
 - Node 标准库的 `fs` / `child_process`：读取电量，无需新增依赖。
 
-## 3. 需求澄清
+## 3. 术语与需求确认
 
-### 3.1 电脑电量
+### 3.1 执行状态的含义
 
-已确认需求是“电脑电量”。建议展示：
+- `running (QQ)`：pi 正在执行，当前 run 由 QQ 消息触发；输出会回传 QQ；
+- `running (local)`：pi 正在执行，但 run 由终端/TUI/其他来源触发；输出不会回传 QQ；
+- `completed`：pi 当前空闲，没有执行中的 run。
+
+区分 `QQ` / `local` 的价值：用户看到“正在执行但手机没有消息”时，可以判断是 QQ 任务还是本地任务。  
+如果不需要这个粒度，统一显示 `running` / `completed` 即可。
+
+### 3.2 电脑电量
+
+已确认需求是“电脑电量”。展示：
 
 - 电池百分比；
-- 充电 / 放电 / 已接通电源；
-- 没有电池（台式机）或读取失败时显示 `unknown` / `desktop`。
+- 充电 / 放电 / 已接通电源。
 
-不需要额外展示“电脑在线”状态；能返回 `/status` 本身就说明电脑在线。
+**没有电池（台式机）或读取失败时，直接隐藏 Battery 行**，不显示 `unknown` / `desktop`。  
+能返回 `/status` 本身就说明电脑在线，不需要额外展示在线状态。
 
-### 3.2 执行状态的粒度
+### 3.3 `Bound user` 是什么
 
-建议区分三种情况：
+`Bound user` 是扫码登录时绑定的 QQ 用户 `openid`：
 
-- `running (QQ)`：QQ 触发的 run 正在执行；
-- `running (local)`：pi 正在执行，但不是 QQ 触发的 run；
-- `idle / completed`：当前没有执行。
+- 用于 allowlist，只接受这个用户的消息；
+- 用于主动消息的默认目标；
+- 不是 QQ 昵称，而是 QQ 开放平台提供的、按机器人隔离的用户标识。
 
-如果只按需求做两种，统一显示 `running` / `completed` 即可。
-
-## 4. 修改建议
-
-### 4.1 状态行设计
-
-建议输出示例：
+建议把标签从 `Bound user` 改为更直观的 `QQ user` / `QQ 用户`，并做掩码：
 
 ```text
-🖥️ pi-qq status
-🔐 Login: QR login (AppID abcd****)
-🌐 Connection: connected
-🏃 Agent: running (QQ)
-🧠 Model: claude-sonnet
-📊 Context: 12.3k/200k (6.2%)
-👤 Bound user: openid-1…
-🔋 Battery: 85% (discharging)
-⚙️ Settings: ~/.pi/agent/pi-qq.json
+👤 QQ user: openid-1…
 ```
 
-空闲时：
+### 3.4 图标选择
 
-```text
-✅ Agent: completed
-⚡ Battery: 100% (AC)
-```
-
-图标建议：
+已采用推荐组合：
 
 | 字段       | 图标 / 状态                                                            |
 | ---------- | ---------------------------------------------------------------------- |
@@ -133,21 +126,52 @@ pi.registerCommand("qq-status", {
 | Agent      | 🏃 running / ✅ completed                                              |
 | Model      | 🧠                                                                     |
 | Context    | 📊                                                                     |
-| Bound user | 👤                                                                     |
-| Battery    | 🔋 放电 / 🔌 充电 / ⚡ AC / ⚪ unknown                                 |
+| QQ user    | 👤                                                                     |
+| Battery    | 🔋 放电 / 🔌 充电 / ⚡ AC                                              |
 | Settings   | ⚙️                                                                     |
 
-Connection 使用网络/链路符号，Agent 使用动作/结果符号，避免两者都用黄绿圆点。备选方案：
+Connection 使用网络/链路符号，Agent 使用动作/结果符号，避免两者都用黄绿圆点。
 
-- Connection：`📡` connected / `🔄` reconnecting / `⛔` stopped；
-- Agent：`▶️` running / `✅` completed。  
-  但 `📡` 更像“信号”，`▶️` 更像“播放”，推荐优先使用上表的 `🌐` / `🏃`。
+## 4. 修改建议
 
-注意事项：
+### 4.1 状态行设计
 
-- QQ `/status` 是普通文本消息，不要使用 Markdown 表格或链接语法；
-- 每行保持简短，避免手机窄屏换行过多；
-- emoji 在现有 QQ 输出中已验证可用。
+英文示例：
+
+```text
+🖥️ pi-qq status
+🔐 Login: QR login (AppID abcd****)
+🌐 Connection: connected
+🏃 Agent: running (QQ)
+🧠 Model: claude-sonnet
+📊 Context: 12.3k/200k (6.2%)
+👤 QQ user: openid-1…
+🔋 Battery: 85% (discharging)
+⚙️ Settings: ~/.pi/agent/pi-qq.json
+```
+
+中文示例：
+
+```text
+🖥️ pi-qq 状态
+🔐 登录：扫码登录（AppID abcd****）
+🌐 连接：已连接
+🏃 执行：执行中（QQ）
+🧠 模型：claude-sonnet
+📊 上下文：12.3k/200k（6.2%）
+👤 QQ 用户：openid-1…
+🔋 电量：85%（放电中）
+⚙️ 设置：~/.pi/agent/pi-qq.json
+```
+
+空闲时：
+
+```text
+✅ Agent: completed
+⚡ Battery: 100% (AC)
+```
+
+没有电池时省略 Battery 行。
 
 ### 4.2 执行状态
 
@@ -160,7 +184,8 @@ const agentLabel = !agentRunning ? "completed" : runFeedback.isQQRunActive() ? "
 
 - 使用 `ctx.isIdle()` 作为 pi 全局状态；
 - 用 `runFeedback.isQQRunActive()` 区分 QQ 任务；
-- `ctx` 为空时回退到 `runFeedback.isQQRunActive()`，避免终端上下文缺失时显示错误。
+- `ctx` 为空时回退到 `runFeedback.isQQRunActive()`；
+- 文案通过 i18n 表输出，不在代码中拼接中英文。
 
 ### 4.3 电脑电量
 
@@ -169,28 +194,25 @@ const agentLabel = !agentRunning ? "completed" : runFeedback.isQQRunActive() ? "
 ```ts
 export interface PowerStatus {
   percent?: number;
-  state: "charging" | "discharging" | "ac" | "unknown";
+  state: "charging" | "discharging" | "ac";
 }
 
-export function getPowerStatus(): PowerStatus;
+export function getPowerStatus(): PowerStatus | undefined;
 ```
 
-实现建议：
-
+- 返回 `undefined` 表示没有电池或读取失败，状态报告直接隐藏 Battery 行；
 - **Linux**：读取 `/sys/class/power_supply/BAT*/capacity` 和 `/status`；
-  - 多电池时优先显示第一块，或取平均；
-  - 没有电池（台式机）返回 `unknown` / `ac`。
-- **macOS**：`pmset -g batt` 解析百分比和 `charging` / `discharging` / `AC attached`。
-- **Windows**：PowerShell `Get-CimInstance Win32_Battery` 读取 `EstimatedChargeRemaining` 和 `BatteryStatus`，使用超时。
-- **缓存**：结果缓存 30 秒，避免每次 `/status` 都启动子进程。
-- **失败处理**：所有异常静默降级为 `unknown`，不能影响 `/status` 主流程。
-- **依赖**：使用 `node:fs` / `node:child_process`，不新增 npm 依赖。
+- **macOS**：解析 `pmset -g batt`；
+- **Windows**：PowerShell `Get-CimInstance Win32_Battery`；
+- **缓存**：结果缓存 30 秒，避免每次 `/status` 启动子进程；
+- **失败处理**：异常静默返回 `undefined`，不能影响 `/status`；
+- 不新增 npm 依赖。
 
 同步 vs 异步：
 
-- 当前 `getStatusLines` 是同步函数，`handleInboundCommand` 直接调用；为保持接口最小改动，建议先做**同步 + 30 秒缓存**。
-- Linux 文件读取几乎无阻塞；macOS/Windows 的子进程命令只在缓存过期时执行，并设置短超时（例如 500ms）。
-- 如果后续发现子进程阻塞明显，再把 `getStatusLines` 改为异步，并让 `/status`、`/qq-status` 都 `await`。
+- 当前 `getStatusLines` 是同步函数；第一版建议同步读取 + 30 秒缓存；
+- Linux 文件读取几乎无阻塞；macOS/Windows 子进程只在缓存过期时执行，并设置 500ms 超时；
+- 如果后续发现阻塞明显，再改为异步并让 `/status`、`/qq-status` 都 `await`。
 
 ### 4.4 提取纯格式化函数
 
@@ -198,6 +220,7 @@ export function getPowerStatus(): PowerStatus;
 
 ```ts
 export interface StatusReportInput {
+  language: Language;
   login?: { appId: string; openid: string };
   connection: { state: BotState; detail?: string };
   agent: { running: boolean; qq: boolean };
@@ -209,50 +232,110 @@ export interface StatusReportInput {
 export function formatStatusReport(input: StatusReportInput): string[];
 ```
 
-可以放在 `src/qq/status-report.ts` 或 `src/infra/status-report.ts`，由 `index.ts` 负责收集数据、纯函数负责格式化。
+职责：
 
-好处：
+- `index.ts` 收集数据；
+- `formatStatusReport()` 负责图标、标签、语言和格式；
+- 单元测试覆盖所有状态组合；
+- QQ `/status` 和终端 `/qq-status` 使用同一份输出。
 
-- 可以单元测试所有状态组合；
-- QQ `/status` 和终端 `/qq-status` 永远使用同一份格式；
-- 电量、图标、Agent 状态不需要在 `index.ts` 中堆逻辑。
+### 4.5 中英文与语言配置
 
-### 4.5 隐私
+新增配置项：
 
-`Bound user` 当前显示完整 openid。建议与 AppID 一致做掩码：
-
-```text
-👤 Bound user: openid-1…
+```json
+{
+  "language": "zh-cn"
+}
 ```
 
-如果用户需要完整 openid 排查问题，可以只在终端 `/qq-status` 中显示完整值，QQ `/status` 显示掩码；但这会增加两条输出路径的差异，第一版建议统一掩码。
+允许值：
+
+- `"zh-cn"`：简体中文；
+- `"en-us"`：英文。
+
+默认值：`"en-us"`，保持现有输出行为，避免升级后突然切换语言。
+
+#### 覆盖范围
+
+所有**用户可见文字**都应走文案表：
+
+- QQ 命令回复：`/help`、`/status`、`/last`、`/stop`、`/compact`、`/new`、未知命令；
+- QQ 错误和提示：附件失败、语音转写失败、unsupported message、模型错误；
+- 状态行：登录、连接、执行状态、模型、上下文、QQ 用户、电量、设置；
+- 流式输出：思考标题、工具失败标记、`(no output)` 等用户可见占位符；
+- 终端 TUI：`/qq-status`、`/qq-login` 提示、连接状态通知、诊断命令；
+- 状态细节 `stateDetail` 中的用户提示。
+
+不翻译：
+
+- 结构化日志（日志面向开发者，保持英文/固定字段）；
+- 命令名（`/status`、`/stop`）和配置键；
+- 第三方 SDK 返回的原始错误文本（可保留原文，外层提示翻译）。
+
+#### 实现建议
+
+新增 `src/infra/i18n.ts`：
+
+```ts
+export type Language = "zh-cn" | "en-us";
+
+export function configureI18n(language: Language): void;
+export function getLanguage(): Language;
+export function t(key: TranslationKey, params?: Record<string, string | number>): string;
+```
+
+- 文案放在 `src/infra/i18n/en-us.ts` / `zh-cn.ts`；
+- 使用类型化 key，缺少 key 时回退英文并在 debug 日志记录；
+- `settings.ts` 增加 `language` 解析和校验，非法值回退默认并警告；
+- `applyConfig()` / `session_start` 时调用 `configureI18n(settings.language)`；
+- 图标不参与翻译，保持统一；
+- 测试：两种语言、占位符、缺失 key 回退、非法配置回退。
+
+### 4.6 隐私
+
+`Bound user` 当前显示完整 openid。建议统一掩码，例如 `openid-1…`。  
+如果排障需要完整值，只在日志中记录，不通过 QQ `/status` 展示。
 
 ## 5. 执行计划
 
-### Phase 1：状态格式与 Agent 状态
+### Phase 1：i18n 基础设施
 
-1. 新增 `src/qq/status-report.ts`，定义输入类型和 `formatStatusReport()`；
-2. 在 `index.ts` 中把 `getStatusLines` 改为收集输入并调用格式化函数；
-3. 加入 `ctx.isIdle()` / `runFeedback.isQQRunActive()` 判断；
-4. 加图标；
-5. 为格式化函数补单元测试：connected/running、completed、reconnecting、未登录、unknown。
+1. 新增 `src/infra/i18n.ts` 和中英文文案表；
+2. `settings.ts` 增加 `language`，默认 `en-us`，非法值回退并警告；
+3. 在会话启动时 `configureI18n()`；
+4. 补 settings/i18n 测试。
 
-### Phase 2：电脑电量
+### Phase 2：迁移用户可见文字
+
+1. `/help`、`/status`、`/last`、`/stop`、`/compact`、`/new` 等命令回复；
+2. 附件失败、语音失败、unsupported message、模型错误；
+3. TUI 通知、`/qq-login` 提示、`/qq-status`；
+4. 流式输出的用户可见标题和占位符；
+5. 增加中英文快照测试。
+
+### Phase 3：状态格式与 Agent 状态
+
+1. 新增 `src/qq/status-report.ts`；
+2. `index.ts` 收集登录、连接、agent、model、usage、power 等数据；
+3. `ctx.isIdle()` / `runFeedback.isQQRunActive()` 判断 `running (QQ)` / `running (local)` / `completed`；
+4. 接入图标和中英文文案；
+5. 测试所有状态组合。
+
+### Phase 4：电脑电量
 
 1. 新增 `src/infra/power-status.ts`；
 2. 实现 Linux/macOS/Windows 探测和 30 秒缓存；
-3. 解析函数单独导出，使用固定字符串测试，不依赖当前机器；
-4. 在状态报告中接入 `PowerStatus`；
-5. 测试：充电、放电、AC、无电池、读取失败。
+3. 无电池/读取失败返回 `undefined`，状态报告隐藏 Battery 行；
+4. 解析函数独立测试，不依赖当前机器。
 
-### Phase 3：接入与文档
+### Phase 5：接入、文档与验证
 
-1. 更新 `README.md` / `README-zh.md` 的 `/status` 和 `/qq-status` 描述；
-2. QQ `/status` 仍是普通文本，不改成流式；
+1. 更新 `README.md` / `README-zh.md` 的 `/status`、`/qq-status` 和 `language` 配置；
+2. QQ `/status` 保持普通文本，不改成流式；
 3. 终端 `/qq-status` 继续使用 `ctx.ui.notify`；
-4. 检查 emoji 在 TUI 和 QQ 手机端的显示效果。
-
-### Phase 4：验证
+4. 手动验证中英文、执行中/已完成、电量/无电池、断线状态；
+5. 运行：
 
 ```bash
 npm run lint
@@ -261,30 +344,30 @@ npm test
 npm run format:check
 ```
 
-手动验证：
+## 6. 变更文件
 
-- QQ 发送 `/status`：执行中、已完成、未登录、断线重连四种状态；
-- 终端 `/qq-status`：与 QQ 输出一致；
-- 拔掉电源/插上电源后等待缓存过期，确认电量状态更新；
-- 台式机/无电池环境显示 `unknown` 或 `desktop`。
+| 文件                                    | 变更                                  |
+| --------------------------------------- | ------------------------------------- |
+| `src/infra/i18n.ts`                     | 新增语言类型、`t()`、语言切换         |
+| `src/infra/i18n/en-us.ts`               | 英文文案表                            |
+| `src/infra/i18n/zh-cn.ts`               | 中文文案表                            |
+| `src/infra/settings.ts`                 | 新增 `language` 解析与校验            |
+| `src/infra/power-status.ts`             | 新增电量探测和缓存                    |
+| `src/qq/status-report.ts`               | 新增纯格式化函数                      |
+| `index.ts`                              | 收集状态数据、初始化 i18n、调用格式化 |
+| `src/qq/inbound-command.ts`             | 命令回复走 i18n                       |
+| `src/qq/qq-message-handler.ts`          | 入站错误/提示走 i18n                  |
+| `src/attachments/attachment-failure.ts` | 附件失败文案走 i18n                   |
+| `src/relay/stream-block-format.ts`      | 思考/工具占位符走 i18n                |
+| `test/qq/status-report.test.ts`         | 新增状态格式测试                      |
+| `test/infra/power-status.test.ts`       | 新增电量解析测试                      |
+| `test/infra/i18n.test.ts`               | 新增语言/回退测试                     |
+| `README.md` / `README-zh.md`            | 状态与语言配置说明                    |
+| `CHANGELOG.md`                          | `[Unreleased]` 增加变更               |
 
-### 变更文件
+## 7. 待确认
 
-| 文件                              | 变更                                  |
-| --------------------------------- | ------------------------------------- |
-| `src/qq/status-report.ts`         | 新增纯格式化函数                      |
-| `src/infra/power-status.ts`       | 新增电量探测和缓存                    |
-| `index.ts`                        | 收集状态数据，调用格式化函数          |
-| `src/qq/inbound-command.ts`       | 保持 `/status` 调用方式，必要时 await |
-| `test/qq/status-report.test.ts`   | 新增格式化测试                        |
-| `test/infra/power-status.test.ts` | 新增解析/缓存测试                     |
-| `README.md` / `README-zh.md`      | 更新状态说明                          |
-| `CHANGELOG.md`                    | `[Unreleased]` 增加变更               |
-
-## 6. 待确认
-
-1. Agent 状态是否要区分 `running (QQ)` / `running (local)`，还是只显示 `running` / `completed`。
-2. 状态文字使用英文（当前风格）还是中文（执行中/已完成）。
-3. 无电池设备显示 `unknown`、`desktop`，还是隐藏 Battery 行。
-4. `Bound user` 是否统一掩码。
-5. Connection / Agent 图标是否采用推荐的 `🌐` / `🏃` 组合。
+1. 是否保留 `running (QQ)` / `running (local)` 的区分，还是只显示 `running` / `completed`。
+2. 默认语言是否用 `en-us`（保持现状）；如果更希望默认中文，改为 `zh-cn`。
+3. “所有文字”是否只覆盖 QQ/TUI 用户可见文字，还是连结构化日志也翻译；建议只覆盖用户可见文字。
+4. `Bound user` 标签是否改为 `QQ user` / `QQ 用户`。
