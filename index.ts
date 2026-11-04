@@ -114,10 +114,8 @@ export default function (pi: ExtensionAPI) {
         getDeliverAs,
         getFileMaxSize: () => activeSettings.fileMaxSize,
         getStatusLines,
-        getLastMessage: () => {
-          const running = !ctx.isIdle();
-          return { running, text: runFeedback.getLastMessage(running) };
-        },
+        getLastMessage: () => runFeedback.getLastMessage(),
+        restartPush: () => runFeedback.repushCurrent(),
         onWarn: onWarn(ctx),
         markQQTrigger: (openid, msgId) => runFeedback.markQQTrigger(openid, msgId),
         waitForEnd: () => runFeedback.waitForEnd(),

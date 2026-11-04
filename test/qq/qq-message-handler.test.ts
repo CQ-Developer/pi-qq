@@ -12,7 +12,8 @@ function makeInboundHarness(
     content?: string;
     attachments?: unknown[];
     saveFiles?: (attachments: unknown, options: unknown) => Promise<unknown>;
-    lastMessage?: { running: boolean; text?: string };
+    lastMessage?: string;
+    restartPush?: () => boolean;
   } = {},
 ) {
   const sent: string[] = [];
@@ -46,6 +47,7 @@ function makeInboundHarness(
     saveFiles: opts.saveFiles,
     getStatusLines: () => [],
     getLastMessage: () => opts.lastMessage,
+    restartPush: opts.restartPush,
     onWarn: () => {},
     markQQTrigger: () => {
       triggers += 1;
@@ -352,32 +354,35 @@ describe("inbound pending attachments", () => {
 describe("inbound /last", () => {
   it("idle 时返回最近一次完成的最终消息", async () => {
     const harness = makeInboundHarness(true, {
-      lastMessage: { running: false, text: "final answer" },
+      lastMessage: "final answer",
     });
     await harness.run({ content: "/last" });
     expect(harness.sent).toEqual(["final answer"]);
   });
 
-  it("运行中时返回当前输出", async () => {
+  it("运行中时重新开始推送当前输出", async () => {
+    let restarted = 0;
     const harness = makeInboundHarness(false, {
-      lastMessage: { running: true, text: "partial answer" },
+      restartPush: () => {
+        restarted += 1;
+        return true;
+      },
     });
     await harness.run({ content: "/last" });
-    expect(harness.sent).toEqual(["⏳ Current output:\n\npartial answer"]);
+    expect(restarted).toBe(1);
+    expect(harness.sent).toEqual(["Restarting current output."]);
   });
 
   it("运行中但还没有文本时说明状态", async () => {
     const harness = makeInboundHarness(false, {
-      lastMessage: { running: true },
+      restartPush: () => false,
     });
     await harness.run({ content: "/last" });
     expect(harness.sent).toEqual(["Task is running; no text output yet."]);
   });
 
   it("空闲且没有历史消息时给出提示", async () => {
-    const harness = makeInboundHarness(true, {
-      lastMessage: { running: false },
-    });
+    const harness = makeInboundHarness(true, {});
     await harness.run({ content: "/last" });
     expect(harness.sent).toEqual(["No completed message yet."]);
   });

@@ -77,14 +77,26 @@ export class RunFeedback {
   }
 
   /**
-   * Content for the QQ /last command.
-   *
-   * While a run is active, return its latest text. When idle, return the final
-   * text of the most recently completed run. No transcript is retained.
+   * The final assistant text of the most recently completed QQ run.
+   * No transcript is retained.
    */
-  getLastMessage(running: boolean): string | undefined {
-    if (running) return this.run?.currentText.trim() ? this.run.currentText : undefined;
+  getLastMessage(): string | undefined {
     return this.lastCompletedText;
+  }
+
+  /**
+   * Restart the current run's push with its latest text. This revives a stream
+   * that may have died while the phone was offline; later deltas continue.
+   */
+  repushCurrent(): boolean {
+    const run = this.run;
+    const text = run?.currentText;
+    if (!run || !text?.trim()) return false;
+    // Push the current text in full. Do not rewrite resultSentLen: it belongs to
+    // the assistant message currently being diffed, and changing it could drop
+    // the beginning of the next message.
+    run.writer.restartText(text);
+    return true;
   }
 
   onAgentStart(): void {

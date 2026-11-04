@@ -93,6 +93,33 @@ export class BubbleWriter {
     });
   }
 
+  /**
+   * Start a fresh bubble and push the current text again, reviving a stream
+   * that died while the phone was offline. Later deltas continue in this bubble.
+   */
+  restartText(text: string): void {
+    if (!text || this.disposed) return;
+    void this.enqueue(async () => {
+      if (this.disposed) return;
+      if (this.fenceOpen) await this.closeOpenFence();
+      if (this.cur) await this.rotateStream();
+
+      this.streamDead = false;
+      this.pendingResume = undefined;
+      this.resumeAttempts = 0;
+      this.lastKind = "none";
+      this.blockClosed = false;
+      this.toolOpen = false;
+      this.fenceOpen = false;
+      this.fenceLen = 0;
+      this.fenceQuoted = false;
+      this.lastChar = "";
+      this.thinkingAtLineStart = true;
+      this.bubbleChars = 0;
+      this.pushText(text);
+    });
+  }
+
   async whenIdle(): Promise<void> {
     await this.drainQueue();
   }

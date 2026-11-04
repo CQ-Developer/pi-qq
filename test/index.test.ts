@@ -14,6 +14,7 @@ const feedback = vi.hoisted(() => ({
   cancelRecovery: vi.fn(),
   isQQRunActive: vi.fn(() => false),
   getLastMessage: vi.fn(() => undefined),
+  repushCurrent: vi.fn(() => false),
 }));
 
 const bot = vi.hoisted(() => ({
@@ -39,6 +40,7 @@ vi.mock("../src/relay/run-stream-relay", () => ({
     cancelRecovery = feedback.cancelRecovery;
     isQQRunActive = feedback.isQQRunActive;
     getLastMessage = feedback.getLastMessage;
+    repushCurrent = feedback.repushCurrent;
   },
 }));
 

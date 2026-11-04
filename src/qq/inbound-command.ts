@@ -11,16 +11,12 @@ export interface InboundContext {
 
 export type InboundPi = Pick<ExtensionAPI, "sendUserMessage">;
 
-export interface LastMessageSnapshot {
-  running: boolean;
-  text?: string;
-}
-
 export interface InboundCommandDeps {
   pi: InboundPi;
   ctx: InboundContext;
   getStatusLines: () => string[];
-  getLastMessage?: () => LastMessageSnapshot;
+  getLastMessage?: () => string | undefined;
+  restartPush?: () => boolean;
   onStop?: () => void;
   waitForEnd?: () => Promise<void>;
 }
@@ -39,7 +35,7 @@ export async function handleInboundCommand(
           "• /stop — abort the current task",
           "• /compact — compact the context",
           "• /status — show status",
-          "• /last — show the current or last completed message",
+          "• /last — restart current output or show the last completed message",
           "• /new — reset the session",
           "• /help — this help",
           "Other text is sent to pi.",
@@ -68,13 +64,11 @@ export async function handleInboundCommand(
       await reply(deps.getStatusLines().join("\n"));
       break;
     case "/last": {
-      const snapshot = deps.getLastMessage?.();
-      if (snapshot?.text) {
-        await reply(snapshot.running ? `⏳ Current output:\n\n${snapshot.text}` : snapshot.text);
-      } else if (snapshot?.running) {
-        await reply("Task is running; no text output yet.");
+      if (!deps.ctx.isIdle()) {
+        const restarted = deps.restartPush?.() ?? false;
+        await reply(restarted ? "Restarting current output." : "Task is running; no text output yet.");
       } else {
-        await reply("No completed message yet.");
+        await reply(deps.getLastMessage?.() ?? "No completed message yet.");
       }
       break;
     }

@@ -507,7 +507,7 @@ QQ 只保证短时间重连的 RESUME 补发；长时间离线或会话失效后
 
 - 记录最近一次/多次 QQ 任务的开始时间、状态、最后事件时间、当前工具和输出摘要；
 - 下一次入站时，如果距上次入站超过阈值（例如 2 分钟）且期间有输出，先回复一条摘要，例如“你离开期间任务仍在运行/已完成；当前工具 bash，已运行 12 分钟；最近输出：……”；
-- 提供 `/last` 命令：运行中返回当前文本；空闲时返回最近一次完成 run 的最终文本；不缓存完整历史；
+- 提供 `/last` 命令：运行中重新推送当前输出；空闲时返回最近一次完成 run 的最终文本；不缓存完整历史；
 - 摘要要限制长度，并标记“离线期间可能未送达”，避免与用户已看到的内容重复；
 - 这是最可靠的“回来后知道执行到哪一步”的方案。
 
@@ -652,31 +652,41 @@ this.freshMs = opts?.freshMs ?? 60 * 60_000;
 
 ### 行为
 
-- **pi idle**：返回最近一次完成 run 的最终 assistant 文本；
-- **pi 运行中**：返回当前 run 的最新 assistant 文本；
+只保留两种状态：
+
+- **pi idle（已完成）**：返回最近一次完成 run 的最终 assistant 文本；
+- **pi 运行中（未完成）**：重新开始推送当前 run 的最新文本，创建一个新的流式气泡；后续 delta 继续写入这个新气泡。
+
+边界情况：
+
 - 运行中但还没有文本：回复 `Task is running; no text output yet.`；
 - idle 且没有完成的文本：回复 `No completed message yet.`；
-- 运行中的当前输出带 `⏳ Current output:` 前缀，便于和最终结果区分。
+- 重新推送只保证“当前文本 + 后续输出”，不保证补齐离线期间已经错过的所有历史气泡。
 
 ### 实现
 
+- `src/relay/bubble-writer.ts`
+  - 新增 `restartText(text)`：关闭当前气泡（如仍有内容），重置流状态并创建新气泡，重新推送当前文本；流式已熔断时也会尝试恢复。
 - `src/relay/run-stream-relay.ts`
   - `RunState.currentText` 保存当前 run 的最新文本；
   - `lastCompletedText` 保存最近一次完成 run 的最终文本；
-  - `getLastMessage(running)` 根据运行状态返回当前或最近完成文本；
+  - `getLastMessage()` 只返回最近完成文本；
+  - `repushCurrent()` 在运行中重新推送当前文本；不重写 `resultSentLen`，避免下一条 assistant 消息的开头被截掉；
   - 流式已经熔断时仍更新 `currentText`，因此 `/last` 不依赖 stream 状态。
 - `src/qq/inbound-command.ts`
-  - 新增 `/last` 分支和帮助项；
-  - 新增 `LastMessageSnapshot` / `getLastMessage` 依赖。
+  - 用 `ctx.isIdle()` 分成两种状态；
+  - 运行中调用 `restartPush()`，回复 `Restarting current output.`；
+  - idle 调用 `getLastMessage()` 并返回最终文本。
 - `index.ts`
-  - 用 `ctx.isIdle()` 判断是否运行中，并接入 `runFeedback.getLastMessage(...)`。
+  - 接入 `runFeedback.getLastMessage()` 和 `runFeedback.repushCurrent()`。
 - 测试：
-  - `test/relay/run-stream-relay.test.ts` 覆盖当前/最终文本切换；
-  - `test/qq/qq-message-handler.test.ts` 覆盖 idle、运行中、无文本三种回复。
+  - `test/relay/run-stream-relay.test.ts` 覆盖重新推送、最终文本和流式熔断；
+  - `test/qq/qq-message-handler.test.ts` 覆盖两种状态和边界提示。
 
 ### 限制
 
 - 只保留 assistant 文本，不包含 thinking/tool 历史；
+- 重新推送会把当前文本再发一次，手机上可能看到重复内容；这是手动恢复行为；
+- 如果超过 60 分钟被动窗口或流式已经不可恢复，重新推送仍可能失败；
 - 最近一次 run 如果没有文本，会清空 `lastCompletedText`；
-- 非 QQ 触发的本地 run 不在 `RunFeedback` 中，`/last` 可能只显示上一条 QQ 结果；
-- 这是“取当前/最后一条消息”，不是完整回放；后续如需离线期间多段输出，再考虑摘要或 `/last full`。
+- 非 QQ 触发的本地 run 不在 `RunFeedback` 中，`/last` 可能只显示上一条 QQ 结果。

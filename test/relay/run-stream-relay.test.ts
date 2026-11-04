@@ -297,33 +297,46 @@ describe("RunFeedback 直推", () => {
     expect(settled).toBe(true);
   });
 
-  it("getLastMessage 运行中返回当前文本，结束后返回最终文本", async () => {
-    const { rf } = makeRunHarness();
+  it("getLastMessage 返回最近完成文本，repushCurrent 重新推送当前文本", async () => {
+    const { rf, calls } = makeRunHarness();
     startRun(rf);
     rf.onAssistantDelta("partial", "");
-    expect(rf.getLastMessage(true)).toBe("partial");
-    expect(rf.getLastMessage(false)).toBeUndefined();
+    expect(rf.repushCurrent()).toBe(true);
 
-    await rf.onAssistantFinal("final answer", false);
-    expect(rf.getLastMessage(true)).toBe("final answer");
+    await rf.onAssistantFinal("partial answer", false);
     await rf.onAgentEnd();
-    expect(rf.getLastMessage(false)).toBe("final answer");
+    expect(rf.getLastMessage()).toBe("partial answer");
+    expect(streamContent(calls).match(/partial/g)?.length).toBeGreaterThanOrEqual(2);
 
     startRun(rf, "msg-2");
-    expect(rf.getLastMessage(true)).toBeUndefined();
-    expect(rf.getLastMessage(false)).toBe("final answer");
+    expect(rf.repushCurrent()).toBe(false);
+    expect(rf.getLastMessage()).toBe("partial answer");
     await rf.onAgentEnd();
-    expect(rf.getLastMessage(false)).toBeUndefined();
+    expect(rf.getLastMessage()).toBeUndefined();
   });
 
   it("流式熔断后仍保留 /last 可读取的文本", async () => {
     const { rf } = makeRunHarness({ alwaysFail: true });
     startRun(rf);
     rf.onAssistantDelta("hello", "");
+    expect(rf.repushCurrent()).toBe(true);
     await rf.onAssistantFinal("hello", false);
-    expect(rf.getLastMessage(true)).toBe("hello");
     await rf.onAgentEnd();
-    expect(rf.getLastMessage(false)).toBe("hello");
+    expect(rf.getLastMessage()).toBe("hello");
+  });
+
+  it("repush 后下一条 assistant 消息不会丢失", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("first", "");
+    await rf.onAssistantFinal("first", false);
+    expect(rf.repushCurrent()).toBe(true);
+
+    rf.onAssistantDelta("second", "");
+    await rf.onAssistantFinal("second", false);
+    await rf.onAgentEnd();
+    expect(streamContent(calls)).toContain("second");
+    expect(rf.getLastMessage()).toBe("second");
   });
 
   it("dispose 清除待处理目标", () => {

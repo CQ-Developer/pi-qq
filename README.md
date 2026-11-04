@@ -94,14 +94,14 @@ Run these in the pi terminal:
 
 QQ-side commands:
 
-| Command    | Description                              |
-| ---------- | ---------------------------------------- |
-| `/new`     | Start a new pi session                   |
-| `/stop`    | Abort the current run                    |
-| `/compact` | Compact the current context              |
-| `/status`  | Show session and context status          |
-| `/last`    | Show the current or last completed reply |
-| `/help`    | Show command help                        |
+| Command    | Description                                                  |
+| ---------- | ------------------------------------------------------------ |
+| `/new`     | Start a new pi session                                       |
+| `/stop`    | Abort the current run                                        |
+| `/compact` | Compact the current context                                  |
+| `/status`  | Show session and context status                              |
+| `/last`    | Restart the current output, or show the last completed reply |
+| `/help`    | Show command help                                            |
 
 ### Diagnostics
 
