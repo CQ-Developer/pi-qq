@@ -83,7 +83,7 @@
 > 状态：TODO，等待长期使用日志
 > 记录日期：2026-11-04
 > 相关版本：pi-qq 1.4.0
-> 详细调研：`doc/archive/delivery-v4-zh.md`
+> 详细调研：`doc/archive/delivery-v4.md`
 
 ### 现象
 
@@ -177,7 +177,7 @@ QQ 侧的 `/last` 已可用于手动恢复：
 
 ### 下一步
 
-- 如果日志确认 `msg_id` 过期/被动次数超限：按 `doc/archive/delivery-v4-zh.md` 的“长耗时工具”建议实现错误分类和预算修复。
+- 如果日志确认 `msg_id` 过期/被动次数超限：按 `doc/archive/delivery-v4.md` 的“Long-running tools”建议实现错误分类和预算修复。
 - 如果日志显示流一直存活但没有新帧：优先实现长工具心跳和 `tool_execution_update` 转发。
 - 如果事件循环 `driftMs` / `p99Ms` 很高：排查 e2e CPU、TUI 渲染和同步工具代码。
 - 如果 `/stop` 的 `wait done` 缺失或 `waitedMs` 很大：实现非阻塞 `/stop`。
