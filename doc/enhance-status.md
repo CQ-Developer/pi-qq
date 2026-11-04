@@ -10,7 +10,7 @@
 1. **pi 执行状态**：执行中 / 已完成；
 2. **电脑电量**；
 3. **图标**：让状态行更易扫读；
-4. **中英文支持**：所有用户可见文字支持 `zh-cn` 和 `en-us`；
+4. **中英文支持**：所有用户可见文字和日志消息支持 `zh-cn` 和 `en-us`；
 5. **语言配置**：通过配置项选择语言，不自动识别系统语言。
 
 QQ `/status` 和终端 `/qq-status` 应保持一致。
@@ -100,15 +100,15 @@ pi.registerCommand("qq-status", {
 **没有电池（台式机）或读取失败时，直接隐藏 Battery 行**，不显示 `unknown` / `desktop`。  
 能返回 `/status` 本身就说明电脑在线，不需要额外展示在线状态。
 
-### 3.3 `Bound user` 是什么
+### 3.3 `QQ user` 是什么（原 `Bound user`）
 
-`Bound user` 是扫码登录时绑定的 QQ 用户 `openid`：
+`QQ user`（原 `Bound user`）是扫码登录时绑定的 QQ 用户 `openid`：
 
 - 用于 allowlist，只接受这个用户的消息；
 - 用于主动消息的默认目标；
 - 不是 QQ 昵称，而是 QQ 开放平台提供的、按机器人隔离的用户标识。
 
-建议把标签从 `Bound user` 改为更直观的 `QQ user` / `QQ 用户`，并做掩码：
+已确认把标签改为更直观的 `QQ user` / `QQ 用户`，并做掩码：
 
 ```text
 👤 QQ user: openid-1…
@@ -254,24 +254,25 @@ export function formatStatusReport(input: StatusReportInput): string[];
 - `"zh-cn"`：简体中文；
 - `"en-us"`：英文。
 
-默认值：`"en-us"`，保持现有输出行为，避免升级后突然切换语言。
+默认值：`"zh-cn"`。这是有意的行为变更：升级后默认中文；需要英文时配置 `"language": "en-us"`。
 
 #### 覆盖范围
 
-所有**用户可见文字**都应走文案表：
+所有**用户可见文字和日志消息**都应走文案表：
 
 - QQ 命令回复：`/help`、`/status`、`/last`、`/stop`、`/compact`、`/new`、未知命令；
 - QQ 错误和提示：附件失败、语音转写失败、unsupported message、模型错误；
 - 状态行：登录、连接、执行状态、模型、上下文、QQ 用户、电量、设置；
 - 流式输出：思考标题、工具失败标记、`(no output)` 等用户可见占位符；
 - 终端 TUI：`/qq-status`、`/qq-login` 提示、连接状态通知、诊断命令；
-- 状态细节 `stateDetail` 中的用户提示。
+- 状态细节 `stateDetail` 中的用户提示；
+- pi-qq 自己写入的结构化日志消息。
 
 不翻译：
 
-- 结构化日志（日志面向开发者，保持英文/固定字段）；
+- 日志的 `scope`、字段名、级别等机器可读结构；
 - 命令名（`/status`、`/stop`）和配置键；
-- 第三方 SDK 返回的原始错误文本（可保留原文，外层提示翻译）。
+- 第三方 SDK 返回的原始错误文本和原始日志（可保留英文原文）。
 
 #### 实现建议
 
@@ -292,9 +293,38 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 - 图标不参与翻译，保持统一；
 - 测试：两种语言、占位符、缺失 key 回退、非法配置回退。
 
+#### 日志本地化
+
+日志也支持中英文，但保持机器可读结构：
+
+- 新增稳定的 `msgKey` 字段，例如 `log.session.starting_bot`；
+- `msg` 按当前 `language` 输出中文/英文；
+- `scope`、`level`、时间、字段名保持英文/固定；
+- 日志 API 使用 key，例如 `log.info("session", "log.session.starting_bot", data)`；
+- `file-logger` 在写入时解析 key，同时写入 `msgKey` 和本地化后的 `msg`；
+- `sdkLogger` 收到的 SDK 原文保持原样，不强行翻译；
+- 语言切换只影响后续日志，已经写入的日志保持原语言；
+- 默认语言是 `zh-cn`，因此未配置时日志消息也是中文；排障脚本应优先匹配 `scope` / `msgKey`，不要依赖 `msg` 文本。
+
+示例：
+
+```json
+{
+  "time": "...",
+  "level": "info",
+  "scope": "session",
+  "msgKey": "log.session.starting_bot",
+  "msg": "正在启动机器人",
+  "appId": "...",
+  "allowedOpenid": "..."
+}
+```
+
+如果现有日志消费方依赖英文 `msg`，需要把它们迁移到 `msgKey`；这是本方案的兼容性成本。
+
 ### 4.6 隐私
 
-`Bound user` 当前显示完整 openid。建议统一掩码，例如 `openid-1…`。  
+`Bound user` 当前显示完整 openid。已确认改名为 `QQ user` / `QQ 用户`，并统一掩码，例如 `openid-1…`。  
 如果排障需要完整值，只在日志中记录，不通过 QQ `/status` 展示。
 
 ## 5. 执行计划
@@ -302,17 +332,18 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 ### Phase 1：i18n 基础设施
 
 1. 新增 `src/infra/i18n.ts` 和中英文文案表；
-2. `settings.ts` 增加 `language`，默认 `en-us`，非法值回退并警告；
+2. `settings.ts` 增加 `language`，默认 `zh-cn`，非法值回退并警告；
 3. 在会话启动时 `configureI18n()`；
 4. 补 settings/i18n 测试。
 
-### Phase 2：迁移用户可见文字
+### Phase 2：迁移用户可见文字与日志
 
 1. `/help`、`/status`、`/last`、`/stop`、`/compact`、`/new` 等命令回复；
 2. 附件失败、语音失败、unsupported message、模型错误；
 3. TUI 通知、`/qq-login` 提示、`/qq-status`；
 4. 流式输出的用户可见标题和占位符；
-5. 增加中英文快照测试。
+5. pi-qq 自有的结构化日志消息迁移到 `msgKey` + 本地化 `msg`；
+6. 增加中英文快照测试和日志字段测试。
 
 ### Phase 3：状态格式与 Agent 状态
 
@@ -365,9 +396,11 @@ npm run format:check
 | `README.md` / `README-zh.md`            | 状态与语言配置说明                    |
 | `CHANGELOG.md`                          | `[Unreleased]` 增加变更               |
 
-## 7. 待确认
+## 7. 已确认
 
-1. 是否保留 `running (QQ)` / `running (local)` 的区分，还是只显示 `running` / `completed`。
-2. 默认语言是否用 `en-us`（保持现状）；如果更希望默认中文，改为 `zh-cn`。
-3. “所有文字”是否只覆盖 QQ/TUI 用户可见文字，还是连结构化日志也翻译；建议只覆盖用户可见文字。
-4. `Bound user` 标签是否改为 `QQ user` / `QQ 用户`。
+1. 保留 `running (QQ)` / `running (local)` 的区分。
+2. 默认语言为 `zh-cn`；需要英文时配置 `"language": "en-us"`。
+3. 日志也支持中英文；结构化字段保持稳定，新增 `msgKey`。
+4. `Bound user` 改名为 `QQ user` / `QQ 用户`。
+5. Connection / Agent 使用推荐图标：`🌐` / `🏃` / `✅`。
+6. 无电池或读取失败时隐藏 Battery 行。
