@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-11-04
+
 ### Added
 
 - `/status` now shows agent state, connection state, model/context, QQ user, battery (when available), and icons.
@@ -71,7 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.0...v1.3.1
