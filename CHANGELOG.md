@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-11-04
+
+### Added
+
+- Reading a `SKILL.md` now renders a dedicated `## 🧩 Skill` block on QQ instead of a generic read tool; the file content is not forwarded.
+
 ## [1.3.4] - 2026-11-04
 
 ### Added
@@ -14,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/status` now shows agent state, connection state, model/context, QQ user, battery (when available), and icons.
 - `language` setting for `zh-cn` / `en-us`; user-facing text and logs are localized.
 - Stable `msgKey` in structured logs for language-independent filtering.
-- Reading a `SKILL.md` now renders a dedicated `## 🧩 Skill` block on QQ instead of a generic read tool; the file content is not forwarded.
 
 ### Changed
 
@@ -74,7 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.1...v1.3.2
