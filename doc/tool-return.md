@@ -151,6 +151,36 @@ this.startNextTool(run);
 
 对单个工具来说，主因是 `AppendStream` 节流；对并行工具来说，还有 `RunFeedback` 的串行输出策略。
 
+### 2.6 长 e2e 命令只显示 `bash` + 一个点
+
+用户反馈：bash 执行 e2e 测试数分钟时，QQ 上只看到 `bash` 和一个点，看不到命令参数。
+
+这不是“等待结果后一起推送”的典型表现；如果长时间工具已经超过 500ms，启动帧通常已经发出（前面的日志已验证）。需要区分：
+
+1. **启动帧确实包含命令，但 QQ 只渲染出一个点/省略号**
+   - `formatToolLine()` 把命令放在行内代码中，并对参数做 200 字符截断，末尾是 `…`；
+   - 超长命令、包含反引号或特殊 Markdown 字符时，QQ 可能折叠/截断行内代码，只留下一个小点或省略号；
+   - 此时日志中的 `POST stream_messages` 的 `content_raw` 仍然应该包含完整或截断后的命令。
+
+2. **启动帧没有命令参数**
+   - `tool_execution_start` 的 `args` 缺失/不是 `{command: string}`；
+   - `formatToolLine()` 的 `primaryArg()` 没有取到 `command`；
+   - 需要检查 `scope":"tool"` 的 `toolStart` 日志和同时间的 `stream_messages` 请求体。
+
+3. **启动帧没有在 500ms 后发出**
+   - 工具/主进程阻塞了 Node 事件循环；
+   - 并行工具被 `activeTool` 串行策略挡住；
+   - 需要看日志中 tool start 后是否有 `stream_messages` POST。
+
+当前工作区没有该次 e2e 的日志（`pi-qq-test` 只有 14:34 的一次运行），因此还无法确认是 1、2 还是 3。需要用户提供：
+
+- e2e 的 bash 命令或 QQ 截图；
+- 对应时间段的 `pi-qq-YYYY-MM-DD.log`；
+- `scope":"tool"` 的 `toolStart` 行；
+- 紧随其后的 `POST .../stream_messages` 的 `content_raw`。
+
+如果确认是长命令渲染问题，建议把工具参数从行内代码改为 fenced code block，或只显示命令摘要，避免 QQ 把长行内代码折叠成一个点。
+
 ## 3. 影响
 
 - 用户无法从 QQ 判断工具是否已经开始执行；
