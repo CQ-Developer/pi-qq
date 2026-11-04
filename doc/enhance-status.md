@@ -10,7 +10,7 @@
 在现有状态信息基础上增加：
 
 1. **pi 执行状态**：执行中 / 已完成；
-2. **电脑电量**（需求原文为“电脑点亮”，按同音理解为“电脑电量”）；
+2. **电脑电量**；
 3. **图标**：让状态行更易扫读。
 
 QQ `/status` 和终端 `/qq-status` 应保持一致。
@@ -45,7 +45,7 @@ pi.registerCommand("qq-status", {
 | 行             | 当前内容                                                          | 数据来源                    |
 | -------------- | ----------------------------------------------------------------- | --------------------------- |
 | `pi-qq status` | 固定标题                                                          | 无                          |
-| `Login`        | QR 登录，凭据在内存，AppID 掩码                                   | `getLoginState()`           |
+| `Login`        | QR 登录，AppID 掩码                                               | `getLoginState()`           |
 | `Connection`   | `stopped` / `starting` / `connected` / `reconnecting` / `blocked` | `lastState` + `stateDetail` |
 | `Model`        | 当前模型名                                                        | `ctx.model`                 |
 | `Context`      | tokens / contextWindow / percent                                  | `ctx.getContextUsage()`     |
@@ -78,15 +78,15 @@ pi.registerCommand("qq-status", {
 
 ## 3. 需求澄清
 
-### 3.1 “电脑点亮”
+### 3.1 电脑电量
 
-按“电脑电量”理解。建议展示：
+已确认需求是“电脑电量”。建议展示：
 
 - 电池百分比；
 - 充电 / 放电 / 已接通电源；
 - 没有电池（台式机）或读取失败时显示 `unknown` / `desktop`。
 
-如果需求实际是“电脑是否在线/是否点亮”，那只需要显示 `Computer: online`，但这对 `/status` 的价值较低；需要确认。
+不需要额外展示“电脑在线”状态；能返回 `/status` 本身就说明电脑在线。
 
 ### 3.2 执行状态的粒度
 
@@ -106,9 +106,9 @@ pi.registerCommand("qq-status", {
 
 ```text
 🖥️ pi-qq status
-🔐 Login: QR login, in memory (AppID abcd****)
-🔌 Connection: connected
-🟡 Agent: running (QQ)
+🔐 Login: QR login (AppID abcd****)
+🌐 Connection: connected
+🏃 Agent: running (QQ)
 🧠 Model: claude-sonnet
 📊 Context: 12.3k/200k (6.2%)
 👤 Bound user: openid-1…
@@ -119,23 +119,29 @@ pi.registerCommand("qq-status", {
 空闲时：
 
 ```text
-🟢 Agent: completed
-🔌 Battery: 100% (AC)
+✅ Agent: completed
+⚡ Battery: 100% (AC)
 ```
 
 图标建议：
 
-| 字段       | 图标 / 状态                                    |
-| ---------- | ---------------------------------------------- |
-| 标题       | 🖥️                                             |
-| Login      | 🔐；未登录 ⚪                                  |
-| Connection | 🟢 connected / 🟡 reconnecting / 🔴 stopped 等 |
-| Agent      | 🟡 running / 🟢 completed                      |
-| Model      | 🧠                                             |
-| Context    | 📊                                             |
-| Bound user | 👤                                             |
-| Battery    | 🔋 放电 / 🔌 充电 / ⚡ AC / ⚪ unknown         |
-| Settings   | ⚙️                                             |
+| 字段       | 图标 / 状态                                                            |
+| ---------- | ---------------------------------------------------------------------- |
+| 标题       | 🖥️                                                                     |
+| Login      | 🔐；未登录 ⚪                                                          |
+| Connection | 🌐 connected / 🔄 reconnecting / ⛔ stopped / 🚫 blocked / ⏳ starting |
+| Agent      | 🏃 running / ✅ completed                                              |
+| Model      | 🧠                                                                     |
+| Context    | 📊                                                                     |
+| Bound user | 👤                                                                     |
+| Battery    | 🔋 放电 / 🔌 充电 / ⚡ AC / ⚪ unknown                                 |
+| Settings   | ⚙️                                                                     |
+
+Connection 使用网络/链路符号，Agent 使用动作/结果符号，避免两者都用黄绿圆点。备选方案：
+
+- Connection：`📡` connected / `🔄` reconnecting / `⛔` stopped；
+- Agent：`▶️` running / `✅` completed。  
+  但 `📡` 更像“信号”，`▶️` 更像“播放”，推荐优先使用上表的 `🌐` / `🏃`。
 
 注意事项：
 
@@ -277,8 +283,8 @@ npm run format:check
 
 ## 6. 待确认
 
-1. “电脑点亮”是否确认为“电脑电量”？如果指“电脑在线/电源接通”，方案需要调整。
-2. Agent 状态是否要区分 `running (QQ)` / `running (local)`，还是只显示 `running` / `completed`。
-3. 状态文字使用英文（当前风格）还是中文（执行中/已完成）。
-4. 无电池设备显示 `unknown`、`desktop`，还是隐藏 Battery 行。
-5. `Bound user` 是否统一掩码。
+1. Agent 状态是否要区分 `running (QQ)` / `running (local)`，还是只显示 `running` / `completed`。
+2. 状态文字使用英文（当前风格）还是中文（执行中/已完成）。
+3. 无电池设备显示 `unknown`、`desktop`，还是隐藏 Battery 行。
+4. `Bound user` 是否统一掩码。
+5. Connection / Agent 图标是否采用推荐的 `🌐` / `🏃` 组合。
