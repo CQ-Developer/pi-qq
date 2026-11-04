@@ -164,6 +164,7 @@ The extension entrypoint is `index.ts`. Source modules are grouped by responsibi
 - Images are saved as files and read through pi's `read` tool; the current model must support image input to see them.
 - Saved attachments are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
+- Reading a `SKILL.md` is shown as a `## 🧩 Skill` block with the skill name; the file content is not forwarded to QQ.
 
 ## License
 

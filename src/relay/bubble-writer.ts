@@ -2,7 +2,7 @@ import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { AppendStream, type AppendStreamCheckpoint } from "./stream-session";
 import type { ReplyBudget } from "../quota/reply-quota";
 import { log } from "../infra/file-logger";
-import { formatToolLine, formatToolResult, thinkingHeader } from "./stream-block-format";
+import { formatSkillBlock, formatToolLine, formatToolResult, thinkingHeader } from "./stream-block-format";
 import { t } from "../infra/i18n";
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
@@ -78,6 +78,14 @@ export class BubbleWriter {
     const newBubble = this.lastKind !== "none";
     const prefix = this.beginBlock("tool", newBubble);
     this.push(`${prefix}${formatToolLine(name, args)}\n\n`, prefix.length > 0 || newBubble, false, newBubble);
+  }
+
+  pushSkill(name: string): void {
+    if (this.streamDead || this.disposed) return;
+    this.toolOpen = false;
+    const newBubble = true;
+    const prefix = this.beginBlock("tool", newBubble);
+    this.push(`${prefix}${formatSkillBlock(name)}`, prefix.length > 0 || newBubble, false, newBubble);
   }
 
   pushToolResult(result: unknown, isError: boolean): void {

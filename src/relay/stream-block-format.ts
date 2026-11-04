@@ -74,6 +74,30 @@ function primaryArg(args: unknown): string {
   return normalized.length > ARG_MAX_CHARS ? `${normalized.slice(0, ARG_MAX_CHARS)}…` : normalized;
 }
 
+export interface SkillRead {
+  name: string;
+}
+
+/**
+ * Detect a read of a SKILL.md file. pi renders this as "[skill]" in the TUI;
+ * QQ should show a dedicated skill block instead of a generic read tool.
+ */
+export function detectSkillRead(toolName: string, args: unknown): SkillRead | undefined {
+  if (toolName !== "read" || !args || typeof args !== "object") return undefined;
+  const record = args as Record<string, unknown>;
+  const rawPath =
+    typeof record.path === "string" ? record.path : typeof record.file_path === "string" ? record.file_path : undefined;
+  if (!rawPath) return undefined;
+  const parts = rawPath.split(/[\\/]+/).filter((part) => part.length > 0 && part !== ".");
+  if (parts.length < 2 || parts[parts.length - 1] !== "SKILL.md") return undefined;
+  const name = parts[parts.length - 2];
+  return name ? { name } : undefined;
+}
+
+export function formatSkillBlock(name: string): string {
+  return `## 🧩 Skill\n\n${inlineCode(name)}\n\n---\n`;
+}
+
 export function formatToolLine(name: string, args: unknown): string {
   const primary = primaryArg(args);
   const label = `${TOOL_ICONS[name.toLowerCase()] ?? "🔧"} ${name}`;

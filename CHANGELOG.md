@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/status` now shows agent state, connection state, model/context, QQ user, battery (when available), and icons.
 - `language` setting for `zh-cn` / `en-us`; user-facing text and logs are localized.
 - Stable `msgKey` in structured logs for language-independent filtering.
+- Reading a `SKILL.md` now renders a dedicated `## 🧩 Skill` block on QQ instead of a generic read tool; the file content is not forwarded.
 
 ### Changed
 

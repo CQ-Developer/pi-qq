@@ -2,6 +2,7 @@ import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { BubbleWriter } from "./bubble-writer";
 import type { ReplyBudget } from "../quota/reply-quota";
 import { log } from "../infra/file-logger";
+import { detectSkillRead } from "./stream-block-format";
 
 export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;
@@ -15,6 +16,7 @@ interface ToolCall {
   name: string;
   args?: unknown;
   result?: { isError: boolean; result?: unknown };
+  skillName?: string;
   started: boolean;
   finished: boolean;
 }
@@ -157,7 +159,15 @@ export class RunFeedback {
     if (!run || run.writer.dead) return;
     const id = toolCallId ?? toolName;
     if (run.tools.some((tool) => tool.id === id)) return;
-    run.tools.push({ id, name: toolName, args, started: false, finished: false });
+    const skill = detectSkillRead(toolName, args);
+    run.tools.push({
+      id,
+      name: toolName,
+      args,
+      ...(skill ? { skillName: skill.name } : {}),
+      started: false,
+      finished: false,
+    });
     this.startNextTool(run);
   }
 
@@ -299,14 +309,20 @@ export class RunFeedback {
     if (!tool) return;
     tool.started = true;
     run.activeTool = tool.id;
-    run.writer.pushTool(tool.name, tool.args);
+    if (tool.skillName) {
+      run.writer.pushSkill(tool.skillName);
+    } else {
+      run.writer.pushTool(tool.name, tool.args);
+    }
     if (tool.result) this.finishTool(run, tool);
   }
 
   private finishTool(run: RunState, tool: ToolCall): void {
     if (!tool.result || tool.finished) return;
     tool.finished = true;
-    run.writer.pushToolResult(tool.result.result, tool.result.isError);
+    if (!tool.skillName) {
+      run.writer.pushToolResult(tool.result.result, tool.result.isError);
+    }
     run.writer.schedule(() => {
       if (this.run !== run) return;
       if (run.activeTool !== tool.id) return;

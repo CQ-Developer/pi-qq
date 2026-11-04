@@ -367,6 +367,35 @@ describe("RunFeedback 直推", () => {
     ]);
   });
 
+  it("读取 SKILL.md 显示 skill 气泡并隐藏 read 内容", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("read", { path: "/home/chen/.pi/agent/skills/playwright-cli/SKILL.md" }, "skill-1");
+    rf.onToolEnd("read", false, "---\nname: playwright-cli\n---\n", "skill-1");
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual(["## 🧩 Skill\n\n`playwright-cli`\n\n---\n"]);
+    expect(streamContent(calls)).not.toContain("SKILL.md");
+    expect(streamContent(calls)).not.toContain("📖 read");
+  });
+
+  it("skill 之后的工具保持顺序", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("read", { file_path: "C:\\skills\\playwright-cli\\SKILL.md" }, "skill-1");
+    rf.onToolEnd("read", false, "skill body", "skill-1");
+    rf.onToolStart("bash", { command: "echo next" }, "bash-1");
+    rf.onToolEnd("bash", false, "next", "bash-1");
+    await rf.onAgentEnd();
+
+    const bubbles = bubbleContents(calls);
+    expect(bubbles).toHaveLength(2);
+    expect(bubbles[0]).toBe("## 🧩 Skill\n\n`playwright-cli`\n\n---\n");
+    expect(bubbles[1]).toContain("**💻 bash**");
+    expect(bubbles[1]).toContain("next");
+    expect(streamContent(calls)).not.toContain("skill body");
+  });
+
   it("顺序工具调用各自一个气泡", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { configureI18n } from "../../src/infra/i18n";
-import { formatToolLine, formatToolResult } from "../../src/relay/stream-block-format";
+import {
+  detectSkillRead,
+  formatSkillBlock,
+  formatToolLine,
+  formatToolResult,
+} from "../../src/relay/stream-block-format";
 
 beforeEach(() => configureI18n("zh-cn"));
 
@@ -48,5 +53,23 @@ describe("工具格式化", () => {
     expect(result).toContain("line 7");
     expect(result).not.toContain("line 8");
     expect(result).toContain("…");
+  });
+});
+
+describe("skill formatting", () => {
+  it("detects SKILL.md reads", () => {
+    expect(detectSkillRead("read", { path: "/home/chen/.pi/agent/skills/playwright-cli/SKILL.md" })).toEqual({
+      name: "playwright-cli",
+    });
+    expect(detectSkillRead("read", { file_path: "C:\\skills\\my-skill\\SKILL.md" })).toEqual({
+      name: "my-skill",
+    });
+    expect(detectSkillRead("read", { path: "src/foo.ts" })).toBeUndefined();
+    expect(detectSkillRead("bash", { path: "/tmp/SKILL.md" })).toBeUndefined();
+    expect(detectSkillRead("read", { path: "SKILL.md" })).toBeUndefined();
+  });
+
+  it("formats a fixed English skill block", () => {
+    expect(formatSkillBlock("playwright-cli")).toBe("## 🧩 Skill\n\n`playwright-cli`\n\n---\n");
   });
 });

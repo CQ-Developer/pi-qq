@@ -1,6 +1,6 @@
 # QQ 侧 Skill 执行显示设计
 
-> 状态：设计文档，尚未实现
+> 状态：设计文档，已实现
 > 日期：2026-11-04
 > 涉及版本：pi-qq 1.3.4，pi 1.5.0
 > 证据截图：
@@ -157,12 +157,7 @@ export function detectSkillRead(toolName: string, args: unknown): SkillRead | un
 - 末尾单独一行 `---`；
 - 不附加路径、来源、描述或内容。
 
-i18n：
-
-- 英文：`Skill`
-- 中文：`技能`
-- 默认语言 `zh-cn` 时标题为 `## 🧩 技能`；
-- 如果希望固定英文，可把文案设为不翻译。
+标题固定为英文 `Skill`，不跟随 `language` 配置，也不做翻译。
 
 ### 5.3 抑制原 read 工具输出
 
@@ -195,19 +190,19 @@ interface ToolCall {
 
 ### 5.5 失败处理
 
-如果 `read SKILL.md` 失败：
+当前实现：
 
-- 仍然显示 skill 气泡，提示 skill 已尝试加载；
+- 仍然显示 skill 气泡，表示模型尝试加载该 skill；
 - 不显示 `SKILL.md` 内容；
-- 是否额外显示失败原因，需要确认；建议在 skill 气泡后加一行简短错误，避免用户以为 skill 已成功加载。
+- 不额外显示失败原因。后续如需提示加载失败，可以再调整。
 
 ## 6. 执行计划
 
 ### Phase 1：识别与格式
 
-- [ ] 新增 `detectSkillRead()`，处理 `path` / `file_path`、Unix/Windows 路径；
-- [ ] 新增 `formatSkillBlock(name)`；
-- [ ] 单元测试：
+- [x] 新增 `detectSkillRead()`，处理 `path` / `file_path`、Unix/Windows 路径；
+- [x] 新增 `formatSkillBlock(name)`；
+- [x] 单元测试：
   - `read .../playwright-cli/SKILL.md` → skill；
   - 普通 `read` 不受影响；
   - Windows 路径；
@@ -216,12 +211,12 @@ interface ToolCall {
 
 ### Phase 2：接入 relay
 
-- [ ] `ToolCall` 增加 `skillName`；
-- [ ] `onToolStart` 检测 skill；
-- [ ] `BubbleWriter` 增加 `pushSkill(name)`；
-- [ ] `startNextTool` 对 skill 使用 `pushSkill`；
-- [ ] `finishTool` 对 skill 跳过 read 结果；
-- [ ] 测试：
+- [x] `ToolCall` 增加 `skillName`；
+- [x] `onToolStart` 检测 skill；
+- [x] `BubbleWriter` 增加 `pushSkill(name)`；
+- [x] `startNextTool` 对 skill 使用 `pushSkill`；
+- [x] `finishTool` 对 skill 跳过 read 结果；
+- [x] 测试：
   - 只出现 skill 气泡，不出现 read 工具行/结果；
   - skill 与前后工具的顺序；
   - 流式熔断时 skill 仍按现有 fallback 行为；
@@ -229,16 +224,15 @@ interface ToolCall {
 
 ### Phase 3：文案与文档
 
-- [ ] i18n 增加 `stream.skill`（`Skill` / `技能`）；
-- [ ] 更新 README 的 skill 说明；
-- [ ] 更新 `CHANGELOG.md`。
+- [x] 更新 README 的 skill 说明；
+- [x] 更新 `CHANGELOG.md`。
 
 ### Phase 4：验证
 
-- [ ] `npm run lint`
-- [ ] `npm run typecheck`
-- [ ] `npm test`
-- [ ] `npm run format:check`
+- [x] `npm run lint`
+- [x] `npm run typecheck`
+- [x] `npm test`
+- [x] `npm run format:check`
 - [ ] 在 `pi-qq-test` 中让模型读取 `playwright-cli/SKILL.md`，对比：
   - pi TUI：`[skill] playwright-cli`
   - QQ：`## 🧩 Skill` + `playwright-cli` + `---`
@@ -251,7 +245,6 @@ interface ToolCall {
 | `src/relay/stream-block-format.ts`       | `detectSkillRead()`、`formatSkillBlock()` |
 | `src/relay/run-stream-relay.ts`          | `ToolCall.skillName`、start/finish 分支   |
 | `src/relay/bubble-writer.ts`             | `pushSkill()`                             |
-| `src/infra/i18n.ts`                      | skill 标题文案                            |
 | `test/relay/stream-block-format.test.ts` | skill 识别/格式测试                       |
 | `test/relay/run-stream-relay.test.ts`    | skill 气泡与 read 抑制测试                |
 | `README.md` / `README-zh.md`             | skill 显示说明                            |
@@ -261,12 +254,9 @@ interface ToolCall {
 
 1. QQ 显示 skill 执行，不显示普通 read 工具；
 2. 格式为 `## 🧩 Skill` + skill 名称 + `---`；
-3. 不显示 `SKILL.md` 完整内容；
-4. 不支持 QQ `/skill:` 命令；
-5. 不显示 skill 来源。
-
-## 9. 待确认
-
-1. skill 标题是否跟随 `language` 配置（默认中文“技能”，还是固定英文“Skill”）。
-2. `read SKILL.md` 失败时是否显示简短错误，还是仅显示 skill 气泡。
-3. 同一个 run 多次读取同一 `SKILL.md` 是否去重。
+3. 标题固定英文，不跟随语言配置；
+4. 不显示 `SKILL.md` 完整内容；
+5. 不支持 QQ `/skill:` 命令；
+6. 不显示 skill 来源；
+7. 读取失败时仍显示 skill 气泡，不显示错误；
+8. 同一个 run 多次读取 `SKILL.md` 不去重。
