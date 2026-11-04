@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-04
+
 ### Changed
 
 - Removed the archived Chinese delivery records from `doc/archive/` and dropped `doc/archive/README.md`.
+- Removed code comments from the TypeScript sources, tests, configuration, and release workflow.
 
 ## [1.4.0] - 2026-11-04
 
@@ -100,7 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.4...v1.3.5
