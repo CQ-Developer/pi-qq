@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-04
+
+### Added
+
+- Debug diagnostics for long-running tools: tool duration/update summaries, stream frame error codes, writer state, `/last` repush, `/stop` wait time, and event-loop timer drift. Logging only; no runtime behavior change.
+
+### Changed
+
+- Tool bubbles now use `## <icon> <name>`, show `bash` commands in a `bash` code block without truncation, and choose result code-block languages from `read` file extensions (for example `markdown`, `python`, `json`).
+- Consolidated the v4 design and investigation records into `doc/archive/delivery-v4.md` and `doc/archive/delivery-v4-zh.md`.
+
 ## [1.3.6] - 2026-11-04
 
 ### Added
@@ -85,7 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.6...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.3...v1.3.4
