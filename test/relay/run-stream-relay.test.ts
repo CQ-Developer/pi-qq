@@ -297,6 +297,35 @@ describe("RunFeedback 直推", () => {
     expect(settled).toBe(true);
   });
 
+  it("getLastMessage 运行中返回当前文本，结束后返回最终文本", async () => {
+    const { rf } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("partial", "");
+    expect(rf.getLastMessage(true)).toBe("partial");
+    expect(rf.getLastMessage(false)).toBeUndefined();
+
+    await rf.onAssistantFinal("final answer", false);
+    expect(rf.getLastMessage(true)).toBe("final answer");
+    await rf.onAgentEnd();
+    expect(rf.getLastMessage(false)).toBe("final answer");
+
+    startRun(rf, "msg-2");
+    expect(rf.getLastMessage(true)).toBeUndefined();
+    expect(rf.getLastMessage(false)).toBe("final answer");
+    await rf.onAgentEnd();
+    expect(rf.getLastMessage(false)).toBeUndefined();
+  });
+
+  it("流式熔断后仍保留 /last 可读取的文本", async () => {
+    const { rf } = makeRunHarness({ alwaysFail: true });
+    startRun(rf);
+    rf.onAssistantDelta("hello", "");
+    await rf.onAssistantFinal("hello", false);
+    expect(rf.getLastMessage(true)).toBe("hello");
+    await rf.onAgentEnd();
+    expect(rf.getLastMessage(false)).toBe("hello");
+  });
+
   it("dispose 清除待处理目标", () => {
     const { rf } = makeRunHarness();
     rf.markQQTrigger("openid-u", "msg-1");

@@ -12,6 +12,7 @@ function makeInboundHarness(
     content?: string;
     attachments?: unknown[];
     saveFiles?: (attachments: unknown, options: unknown) => Promise<unknown>;
+    lastMessage?: { running: boolean; text?: string };
   } = {},
 ) {
   const sent: string[] = [];
@@ -44,6 +45,7 @@ function makeInboundHarness(
     getFileMaxSize: () => 50 * 1024 * 1024,
     saveFiles: opts.saveFiles,
     getStatusLines: () => [],
+    getLastMessage: () => opts.lastMessage,
     onWarn: () => {},
     markQQTrigger: () => {
       triggers += 1;
@@ -344,6 +346,40 @@ describe("inbound pending attachments", () => {
     expect(content).toBe("分析");
     expect(content).not.toContain(relativeAttachment("a.zip"));
     expect(harness.triggers()).toBe(1);
+  });
+});
+
+describe("inbound /last", () => {
+  it("idle 时返回最近一次完成的最终消息", async () => {
+    const harness = makeInboundHarness(true, {
+      lastMessage: { running: false, text: "final answer" },
+    });
+    await harness.run({ content: "/last" });
+    expect(harness.sent).toEqual(["final answer"]);
+  });
+
+  it("运行中时返回当前输出", async () => {
+    const harness = makeInboundHarness(false, {
+      lastMessage: { running: true, text: "partial answer" },
+    });
+    await harness.run({ content: "/last" });
+    expect(harness.sent).toEqual(["⏳ Current output:\n\npartial answer"]);
+  });
+
+  it("运行中但还没有文本时说明状态", async () => {
+    const harness = makeInboundHarness(false, {
+      lastMessage: { running: true },
+    });
+    await harness.run({ content: "/last" });
+    expect(harness.sent).toEqual(["Task is running; no text output yet."]);
+  });
+
+  it("空闲且没有历史消息时给出提示", async () => {
+    const harness = makeInboundHarness(true, {
+      lastMessage: { running: false },
+    });
+    await harness.run({ content: "/last" });
+    expect(harness.sent).toEqual(["No completed message yet."]);
   });
 });
 

@@ -25,6 +25,8 @@ interface RunState {
   msgId?: string;
   thinkingSentLen: number;
   finalizedText: string;
+  /** Latest text of the current run, kept for the QQ /last command. */
+  currentText: string;
   resultSentLen: number;
   tools: ToolCall[];
   activeTool?: string;
@@ -49,6 +51,7 @@ export class RunFeedback {
   private pending: { openid: string; msgId: string; at: number } | null = null;
   private recovery: { openid: string; msgId: string; at: number } | null = null;
   private run: RunState | null = null;
+  private lastCompletedText: string | undefined;
   private endPromise: Promise<void> = Promise.resolve();
   private endResolve?: () => void;
 
@@ -71,6 +74,17 @@ export class RunFeedback {
 
   waitForEnd(): Promise<void> {
     return this.run ? this.endPromise : Promise.resolve();
+  }
+
+  /**
+   * Content for the QQ /last command.
+   *
+   * While a run is active, return its latest text. When idle, return the final
+   * text of the most recently completed run. No transcript is retained.
+   */
+  getLastMessage(running: boolean): string | undefined {
+    if (running) return this.run?.currentText.trim() ? this.run.currentText : undefined;
+    return this.lastCompletedText;
   }
 
   onAgentStart(): void {
@@ -105,6 +119,7 @@ export class RunFeedback {
       msgId: target.msgId,
       thinkingSentLen: 0,
       finalizedText: "",
+      currentText: "",
       resultSentLen: 0,
       tools: [],
       deferredThinking: "",
@@ -143,21 +158,25 @@ export class RunFeedback {
 
   onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
     const run = this.run;
-    if (!run || run.writer.dead) return;
+    if (!run) return;
+
+    const full = [run.finalizedText, snapshotText].filter((part) => part.trim()).join("\n\n");
+    if (full.trim()) run.currentText = full;
+
+    if (run.writer.dead) return;
 
     if (snapshotThinking.length > run.thinkingSentLen) {
-      const delta = snapshotThinking.slice(run.thinkingSentLen);
+      const thinkingDelta = snapshotThinking.slice(run.thinkingSentLen);
       run.thinkingSentLen = snapshotThinking.length;
       if (this.deps.getThinkingRelay()) {
         if (this.hasPendingTools(run)) {
-          run.deferredThinking += delta;
+          run.deferredThinking += thinkingDelta;
         } else {
-          run.writer.pushThinking(delta);
+          run.writer.pushThinking(thinkingDelta);
         }
       }
     }
 
-    const full = [run.finalizedText, snapshotText].filter((part) => part.trim()).join("\n\n");
     const delta = full.slice(run.resultSentLen);
     if (!delta) return;
     run.resultSentLen = full.length;
@@ -173,6 +192,7 @@ export class RunFeedback {
     if (!run) return false;
 
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
+    if (text.trim()) run.currentText = text;
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
     if (!isError && text && delta) {
@@ -207,6 +227,7 @@ export class RunFeedback {
     if (!this.hasPendingTools(run)) this.flushDeferred(run);
     await run.writer.whenIdle();
     this.clearTimers();
+    this.lastCompletedText = run.currentText.trim() ? run.currentText : undefined;
     if (!run.hadError && run.writer.hasPushed) this.recovery = null;
     this.run = null;
     log.debug("run", "ended", {
@@ -230,6 +251,7 @@ export class RunFeedback {
     this.run = null;
     this.pending = null;
     this.recovery = null;
+    this.lastCompletedText = undefined;
     this.finishEnd();
   }
 

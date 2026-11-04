@@ -13,6 +13,7 @@ const feedback = vi.hoisted(() => ({
   waitForEnd: vi.fn(async () => {}),
   cancelRecovery: vi.fn(),
   isQQRunActive: vi.fn(() => false),
+  getLastMessage: vi.fn(() => undefined),
 }));
 
 const bot = vi.hoisted(() => ({
@@ -37,6 +38,7 @@ vi.mock("../src/relay/run-stream-relay", () => ({
     waitForEnd = feedback.waitForEnd;
     cancelRecovery = feedback.cancelRecovery;
     isQQRunActive = feedback.isQQRunActive;
+    getLastMessage = feedback.getLastMessage;
   },
 }));
 
