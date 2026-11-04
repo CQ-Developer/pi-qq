@@ -312,7 +312,7 @@ describe("RunFeedback 直推", () => {
     expect(rf.repushCurrent()).toBe(false);
     expect(rf.getLastMessage()).toBe("partial answer");
     await rf.onAgentEnd();
-    expect(rf.getLastMessage()).toBeUndefined();
+    expect(rf.getLastMessage()).toBe("partial answer");
   });
 
   it("流式熔断后仍保留 /last 可读取的文本", async () => {

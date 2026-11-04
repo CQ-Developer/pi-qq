@@ -239,7 +239,7 @@ export class RunFeedback {
     if (!this.hasPendingTools(run)) this.flushDeferred(run);
     await run.writer.whenIdle();
     this.clearTimers();
-    this.lastCompletedText = run.currentText.trim() ? run.currentText : undefined;
+    if (run.currentText.trim()) this.lastCompletedText = run.currentText;
     if (!run.hadError && run.writer.hasPushed) this.recovery = null;
     this.run = null;
     log.debug("run", "ended", {
