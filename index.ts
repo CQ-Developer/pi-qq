@@ -49,6 +49,20 @@ const runFeedback = new RunFeedback({
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 100 });
 let eventLoopTimer: ReturnType<typeof setInterval> | undefined;
 
+interface ToolUpdateStats {
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  firstPartial: string;
+}
+
+const toolUpdateStats = new Map<string, ToolUpdateStats>();
+const TOOL_UPDATE_LOG_EVERY = 50;
+
+function clearToolUpdateStats(): void {
+  toolUpdateStats.clear();
+}
+
 function roundMs(value: number): number {
   return Math.round((value / 1e6) * 10) / 10;
 }
@@ -58,11 +72,16 @@ function startEventLoopMonitor(): void {
   eventLoopDelay.disable();
   eventLoopDelay.reset();
   eventLoopDelay.enable();
+  let lastTickAt = Date.now();
   eventLoopTimer = setInterval(() => {
+    const now = Date.now();
+    const driftMs = now - lastTickAt - 5_000;
+    lastTickAt = now;
     log.debug("event-loop", "event loop delay", {
       meanMs: roundMs(eventLoopDelay.mean),
       maxMs: roundMs(eventLoopDelay.max),
       p99Ms: roundMs(eventLoopDelay.percentile(99)),
+      driftMs,
     });
     eventLoopDelay.reset();
   }, 5_000);
@@ -121,6 +140,7 @@ export default function (pi: ExtensionAPI) {
     stateDetail = undefined;
     sessionCtx = undefined;
     runFeedback.dispose();
+    clearToolUpdateStats();
     stopEventLoopMonitor();
   };
 
@@ -208,22 +228,66 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_execution_start", (event) => {
+    toolUpdateStats.delete(event.toolCallId);
     if (isLogEnabled("debug")) {
       log.debug("tool", "start", {
         toolName: event.toolName,
         toolCallId: event.toolCallId,
+        parentToolCallId: event.parentToolCallId ?? null,
+        at: Date.now(),
         args: previewForLog(event.args),
       });
     }
     void runFeedback.onToolStart(event.toolName, event.args, event.toolCallId);
   });
 
+  pi.on("tool_execution_update", (event) => {
+    if (!isLogEnabled("debug")) return;
+    const now = Date.now();
+    const existing = toolUpdateStats.get(event.toolCallId);
+    if (!existing) {
+      const first: ToolUpdateStats = {
+        count: 1,
+        firstAt: now,
+        lastAt: now,
+        firstPartial: previewForLog(event.partialResult, 300),
+      };
+      toolUpdateStats.set(event.toolCallId, first);
+      log.debug("tool", "update", {
+        phase: "first",
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        count: 1,
+        partial: first.firstPartial,
+      });
+      return;
+    }
+    existing.count += 1;
+    existing.lastAt = now;
+    if (existing.count % TOOL_UPDATE_LOG_EVERY === 0) {
+      log.debug("tool", "update", {
+        phase: "progress",
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        count: existing.count,
+        spanMs: existing.lastAt - existing.firstAt,
+      });
+    }
+  });
+
   pi.on("tool_execution_end", (event) => {
+    const updates = toolUpdateStats.get(event.toolCallId);
+    toolUpdateStats.delete(event.toolCallId);
     if (isLogEnabled("debug")) {
       log.debug("tool", "end", {
         toolName: event.toolName,
         toolCallId: event.toolCallId,
+        parentToolCallId: event.parentToolCallId ?? null,
         isError: event.isError,
+        durationMs: event.durationMs ?? null,
+        updateCount: updates?.count ?? 0,
+        updateSpanMs: updates ? updates.lastAt - updates.firstAt : null,
+        firstPartial: updates?.firstPartial ?? null,
         result: previewForLog(event.result),
       });
     }

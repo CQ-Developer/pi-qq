@@ -71,6 +71,14 @@ function startRun(rf: RunFeedback, msgId = "msg-1"): void {
   rf.onAgentStart();
 }
 
+function bashBubble(command: string, result: string): string {
+  return `## 💻 bash\n\n\`\`\`bash\n${command}\n\`\`\`\n\n\`\`\`text\n${result}\n\`\`\`\n`;
+}
+
+function readBubble(path: string, result: string, language = "text"): string {
+  return `## 📖 read\n\n\`${path}\`\n\n\`\`\`${language}\n${result}\n\`\`\`\n`;
+}
+
 describe("RunFeedback 直推", () => {
   it("思考、工具、结果、文本按块切成多个气泡", async () => {
     const { rf, calls } = makeRunHarness();
@@ -84,7 +92,7 @@ describe("RunFeedback 直推", () => {
 
     expect(bubbleContents(calls)).toEqual([
       `${THINKING_HEADER}think 1\nthink 2\n`,
-      "**💻 bash**\n\n`npm test`\n\n```text\n12 passed\n```\n",
+      bashBubble("npm test", "12 passed"),
       "answer",
     ]);
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(3);
@@ -221,10 +229,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("bash", false, "ok");
     await rf.onAgentEnd();
 
-    expect(bubbleContents(calls)).toEqual([
-      THINKING_HEADER + "```\ncode\n```\n",
-      "**💻 bash**\n\n`echo`\n\n```text\nok\n```\n",
-    ]);
+    expect(bubbleContents(calls)).toEqual([THINKING_HEADER + "```\ncode\n```\n", bashBubble("echo", "ok")]);
   });
 
   it("工具调用与结果不拆泡", async () => {
@@ -236,7 +241,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(2);
-    expect(bubbleContents(calls)[1]).toContain("**💻 bash**\n\n`echo");
+    expect(bubbleContents(calls)[1]).toContain("## 💻 bash");
+    expect(bubbleContents(calls)[1]).toContain("```bash");
     expect(bubbleContents(calls)[1]).toContain("ok");
   });
 
@@ -249,7 +255,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(calls.filter((call) => call.input_state === DONE_STATE)).toHaveLength(2);
-    expect(bubbleContents(calls).at(-1)).toContain("**💻 bash**\n\n`echo");
+    expect(bubbleContents(calls).at(-1)).toContain("## 💻 bash");
+    expect(bubbleContents(calls).at(-1)).toContain("```bash");
   });
 
   it("工具未完成时后续思考延后，不打乱工具顺序", async () => {
@@ -263,8 +270,8 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual([
-      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**💻 bash**\n\n`two`\n\n```text\n2\n```\n",
+      bashBubble("one", "1"),
+      bashBubble("two", "2"),
       `${THINKING_HEADER}after tools`,
     ]);
   });
@@ -361,10 +368,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("bash", false, "1", "call-1");
     await rf.onAgentEnd();
 
-    expect(bubbleContents(calls)).toEqual([
-      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**💻 bash**\n\n`two`\n\n```text\n2\n```\n",
-    ]);
+    expect(bubbleContents(calls)).toEqual([bashBubble("one", "1"), bashBubble("two", "2")]);
   });
 
   it("读取 SKILL.md 显示 skill 气泡并隐藏 read 内容", async () => {
@@ -391,7 +395,8 @@ describe("RunFeedback 直推", () => {
     const bubbles = bubbleContents(calls);
     expect(bubbles).toHaveLength(2);
     expect(bubbles[0]).toBe("## 🧩 Skill\n\n`playwright-cli`\n");
-    expect(bubbles[1]).toContain("**💻 bash**");
+    expect(bubbles[1]).toContain("## 💻 bash");
+    expect(bubbles[1]).toContain("```bash");
     expect(bubbles[1]).toContain("next");
     expect(streamContent(calls)).not.toContain("skill body");
   });
@@ -405,9 +410,31 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("read", false, "2");
     await rf.onAgentEnd();
 
+    expect(bubbleContents(calls)).toEqual([bashBubble("one", "1"), readBubble("two", "2")]);
+  });
+
+  it("read Markdown 结果使用 markdown 代码块", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("read", { path: "docs/a.md" });
+    rf.onToolEnd("read", false, "# A\n\n正文");
+    await rf.onAgentEnd();
+
+    expect(bubbleContents(calls)).toEqual([readBubble("docs/a.md", "# A\n\n正文", "markdown")]);
+  });
+
+  it("read Python/JSON 结果使用对应语言", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("read", { path: "src/a.py" }, "read-py");
+    rf.onToolEnd("read", false, "print(1)", "read-py");
+    rf.onToolStart("read", { path: "data/a.json" }, "read-json");
+    rf.onToolEnd("read", false, '{"a":1}', "read-json");
+    await rf.onAgentEnd();
+
     expect(bubbleContents(calls)).toEqual([
-      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**📖 read**\n\n`two`\n\n```text\n2\n```\n",
+      readBubble("src/a.py", "print(1)", "python"),
+      readBubble("data/a.json", '{"a":1}', "json"),
     ]);
   });
 
@@ -420,13 +447,10 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("bash", false, "1");
     await rf.onAgentEnd();
 
-    expect(bubbleContents(calls)).toEqual([
-      "**💻 bash**\n\n`one`\n\n```text\n1\n```\n",
-      "**📖 read**\n\n`two`\n\n```text\n2\n```\n",
-    ]);
+    expect(bubbleContents(calls)).toEqual([bashBubble("one", "1"), readBubble("two", "2")]);
   });
 
-  it("工具行内联反引号不触发围栏", async () => {
+  it("bash 命令含三反引号时使用更长围栏", async () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);
     rf.onToolStart("bash", { command: "echo ```x```" });
@@ -434,6 +458,7 @@ describe("RunFeedback 直推", () => {
     rf.onAssistantDelta("", "after");
     await rf.onAgentEnd();
 
+    expect(streamContent(calls)).toContain("````bash\necho ```x```\n````");
     expect(streamContent(calls).match(/^```(?!`)/gm)).toHaveLength(2);
   });
 
@@ -453,7 +478,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolStart("bash", { command: "false" });
     rf.onToolEnd("bash", true, "exit 1");
     await rf.onAgentEnd();
-    expect(streamContent(calls)).toBe("**💻 bash**\n\n`false`\n\n```text\n❌ exit 1\n```\n");
+    expect(streamContent(calls)).toBe(bashBubble("false", "❌ exit 1"));
   });
 
   it("首次失败后同泡续写，index 与缓冲保留", async () => {

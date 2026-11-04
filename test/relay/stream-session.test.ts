@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AppendStream } from "../../src/relay/stream-session";
+import { AppendStream, type AppendStreamFrameInfo } from "../../src/relay/stream-session";
 
 function makeFakeApi() {
   const calls: Array<Record<string, unknown>> = [];
@@ -80,6 +80,28 @@ describe("AppendStream", () => {
     const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 300 });
     await expect(stream.append("未确认")).rejects.toThrow("stream broke");
     expect(stream.checkpoint()).toMatchObject({ index: 1, buffer: "未确认" });
+  });
+
+  it("失败帧报告结构化诊断信息", async () => {
+    const { api } = makeFakeApi();
+    api.failPlainNext = 1;
+    const frames: Array<{ err: unknown; info: AppendStreamFrameInfo }> = [];
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", {
+      throttleMs: 300,
+      onFrameError: (err, info) => frames.push({ err, info }),
+    });
+
+    await expect(stream.append("未确认")).rejects.toThrow("stream broke");
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.err).toBeInstanceOf(Error);
+    expect(frames[0]?.info).toMatchObject({
+      index: 0,
+      state: "generating",
+      msgSeq: expect.any(Number),
+      bufferLength: 3,
+    });
+    expect(frames[0]?.info.streamMsgId).toBeUndefined();
   });
 
   it("检查点续写沿用 msg_seq 与下一个 index", async () => {

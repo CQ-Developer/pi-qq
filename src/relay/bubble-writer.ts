@@ -1,8 +1,14 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { AppendStream, type AppendStreamCheckpoint } from "./stream-session";
 import type { ReplyBudget } from "../quota/reply-quota";
-import { log } from "../infra/file-logger";
-import { formatSkillBlock, formatToolLine, formatToolResult, thinkingHeader } from "./stream-block-format";
+import { isLogEnabled, log } from "../infra/file-logger";
+import {
+  formatSkillBlock,
+  formatToolLine,
+  formatToolResult,
+  resultLanguage,
+  thinkingHeader,
+} from "./stream-block-format";
 import { t } from "../infra/i18n";
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
@@ -31,6 +37,7 @@ export class BubbleWriter {
   private resumeAttempts = 0;
   private pushedAny = false;
   private bubbleChars = 0;
+  private lastFrameAt = 0;
   private fenceOpen = false;
   private fenceLen = 0;
   private fenceQuoted = false;
@@ -50,6 +57,33 @@ export class BubbleWriter {
 
   get dead(): boolean {
     return this.streamDead;
+  }
+
+  /** Snapshot used by debug logs to explain stalls without changing relay behavior. */
+  stats(now = Date.now()): {
+    dead: boolean;
+    disposed: boolean;
+    hasStream: boolean;
+    hasPendingResume: boolean;
+    resumeAttempts: number;
+    bubbleChars: number;
+    hasPushed: boolean;
+    lastKind: string;
+    toolOpen: boolean;
+    lastFrameAgeMs: number | null;
+  } {
+    return {
+      dead: this.streamDead,
+      disposed: this.disposed,
+      hasStream: Boolean(this.cur),
+      hasPendingResume: Boolean(this.pendingResume),
+      resumeAttempts: this.resumeAttempts,
+      bubbleChars: this.bubbleChars,
+      hasPushed: this.pushedAny,
+      lastKind: this.lastKind,
+      toolOpen: this.toolOpen,
+      lastFrameAgeMs: this.lastFrameAt ? now - this.lastFrameAt : null,
+    };
   }
 
   /** Mark the current block as complete so the next content starts a new bubble. */
@@ -77,13 +111,16 @@ export class BubbleWriter {
     this.toolOpen = true;
     const newBubble = this.lastKind !== "none";
     const prefix = this.beginBlock("tool", newBubble);
-    log.debug("stream", "stream timing", {
-      phase: "tool queued",
-      msgId: this.logMsgId(),
-      tool: name,
-      at: Date.now(),
-      hasStream: Boolean(this.cur),
-    });
+    if (isLogEnabled("debug")) {
+      log.debug("stream", "stream timing", {
+        phase: "tool queued",
+        msgId: this.logMsgId(),
+        tool: name,
+        at: Date.now(),
+        stats: this.stats(),
+        budget: this.deps.budget.snapshot(),
+      });
+    }
     this.push(
       `${prefix}${formatToolLine(name, args)}\n\n`,
       prefix.length > 0 || newBubble,
@@ -102,10 +139,11 @@ export class BubbleWriter {
     this.push(`${prefix}${formatSkillBlock(name)}`, prefix.length > 0 || newBubble, false, newBubble, false, "skill");
   }
 
-  pushToolResult(result: unknown, isError: boolean): void {
+  pushToolResult(result: unknown, isError: boolean, toolName?: string, args?: unknown): void {
     if (this.streamDead || this.disposed) return;
     const prefix = this.beginBlock("tool");
-    this.push(`${prefix}${formatToolResult(result, isError)}`, prefix.length > 0, true);
+    const language = toolName ? resultLanguage(toolName, args, isError) : "text";
+    this.push(`${prefix}${formatToolResult(result, isError, language)}`, prefix.length > 0, true);
   }
 
   /** Run `op` after all currently queued appends, unless the stream died first. */
@@ -247,13 +285,14 @@ export class BubbleWriter {
     const queuedAt = trace ? Date.now() : 0;
     void this.enqueue(async () => {
       if (this.streamDead || this.disposed) return;
-      if (trace) {
+      if (trace && isLogEnabled("debug")) {
+        const now = Date.now();
         log.debug("stream", "stream timing", {
           phase: "append start",
           trace,
           msgId: this.logMsgId(),
-          waitedMs: Date.now() - queuedAt,
-          hasStream: Boolean(this.cur),
+          waitedMs: now - queuedAt,
+          stats: this.stats(now),
         });
       }
       if (blockBoundary && !(await this.closeOpenFence())) return;
@@ -280,16 +319,17 @@ export class BubbleWriter {
       try {
         await stream.append(outgoing);
         this.bubbleChars += outgoing.length;
+        this.lastFrameAt = Date.now();
         this.trackFences(outgoing);
         this.lastChar = outgoing.slice(-1);
         if (endTool) this.toolOpen = false;
-        if (trace) {
+        if (trace && isLogEnabled("debug")) {
           log.debug("stream", "stream timing", {
             phase: "append done",
             trace,
             msgId: this.logMsgId(),
             totalMs: Date.now() - queuedAt,
-            bubbleChars: this.bubbleChars,
+            stats: this.stats(),
           });
         }
       } catch (err) {
@@ -343,10 +383,13 @@ export class BubbleWriter {
     this.fenceQuoted = false;
     this.lastChar = "";
     this.thinkingAtLineStart = true;
-    log.debug("stream", "bubble split", {
-      msgId: this.logMsgId(),
-      elapsedMs: Date.now() - this.deps.startedAt,
-    });
+    if (isLogEnabled("debug")) {
+      log.debug("stream", "bubble split", {
+        msgId: this.logMsgId(),
+        elapsedMs: Date.now() - this.deps.startedAt,
+        stats: this.stats(),
+      });
+    }
   }
 
   private drainQueue(): Promise<void> {
@@ -380,10 +423,42 @@ export class BubbleWriter {
           this.handleStreamError(err);
         });
       },
+      onFrameError: (err, info) => {
+        if (!isLogEnabled("debug")) return;
+        const e = err as { name?: string; message?: string; httpStatus?: number; bizCode?: number; path?: string };
+        log.debug("stream", "stream error", {
+          phase: "frame failed",
+          msgId: this.logMsgId(),
+          ...info,
+          errorName: e?.name ?? null,
+          errorMessage: e?.message ?? String(err),
+          httpStatus: e?.httpStatus ?? null,
+          bizCode: e?.bizCode ?? null,
+          path: e?.path ?? null,
+          stats: this.stats(),
+          budget: this.deps.budget.snapshot(),
+        });
+      },
       onDebug: (message) => log.debug("stream", message, { msgId: this.logMsgId() }),
     });
     this.cur = stream;
     if (!resume) this.deps.budget.noteStreamBubble(this.deps.msgId);
+    if (isLogEnabled("debug")) {
+      log.debug("stream", "stream timing", {
+        phase: "stream open",
+        msgId: this.logMsgId(),
+        resumed: Boolean(resume),
+        resume: resume
+          ? {
+              index: resume.index,
+              hasStreamMsgId: Boolean(resume.streamMsgId),
+              bufferLength: resume.buffer?.length ?? 0,
+            }
+          : null,
+        stats: this.stats(),
+        budget: this.deps.budget.snapshot(),
+      });
+    }
     return stream;
   }
 
@@ -396,6 +471,15 @@ export class BubbleWriter {
     log.warn("stream", "stream error", {
       msgId: this.logMsgId(),
       elapsedMs: Date.now() - this.deps.startedAt,
+      checkpoint: checkpoint
+        ? {
+            index: checkpoint.index,
+            hasStreamMsgId: Boolean(checkpoint.streamMsgId),
+            bufferLength: checkpoint.buffer?.length ?? 0,
+          }
+        : null,
+      stats: this.stats(),
+      budget: this.deps.budget.snapshot(),
       err,
     });
     if (checkpoint && this.resumeAttempts < MAX_RESUME_ATTEMPTS) {
@@ -412,7 +496,12 @@ export class BubbleWriter {
     this.pendingResume = undefined;
     this.cur?.dispose();
     this.cur = null;
-    log.warn("stream", "stream unavailable", { msgId: this.logMsgId(), reason });
+    log.warn("stream", "stream unavailable", {
+      msgId: this.logMsgId(),
+      reason,
+      stats: this.stats(),
+      budget: this.deps.budget.snapshot(),
+    });
     this.deps.onWarn(t("stream.unavailable", { reason }));
   }
 }

@@ -108,13 +108,13 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
 
         stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
         await stream.append(
-          `${thinkingHeader()}${t("diagnostics.probeThinking")}\n\n**💻 bash**\n\n\`echo probe\`\n\n\`\`\`text\n${t("diagnostics.probeCode")}\n\`\`\`\n`,
+          `${thinkingHeader()}${t("diagnostics.probeThinking")}\n\n## 💻 bash\n\n\`\`\`bash\necho probe\n\`\`\`\n\n\`\`\`text\n${t("diagnostics.probeCode")}\n\`\`\`\n`,
         );
         await sleep(1200);
         await stream.append(`\n${t("diagnostics.probeIntermediate")}\n`);
         await sleep(1200);
         await stream.append(
-          `\n**📖 read**\n\n\`src/index.ts\`\n\n\`\`\`text\n${t("diagnostics.probeReadFile")}\n\`\`\`\n`,
+          `\n## 📖 read\n\n\`src/index.ts\`\n\n\`\`\`typescript\n${t("diagnostics.probeReadFile")}\n\`\`\`\n`,
         );
         await sleep(800);
         await stream.append(`\n${t("diagnostics.probeFinal")}`);

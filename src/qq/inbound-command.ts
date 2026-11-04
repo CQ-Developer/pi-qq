@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 
 /** The slice of ExtensionContext used by QQ inbound handling. */
@@ -54,7 +55,13 @@ export async function handleInboundCommand(
         await reply(t("commands.stop.none"));
       } else {
         deps.ctx.abort();
+        const waitStartedAt = Date.now();
+        log.debug("inbound", "stream timing", { phase: "/stop wait start" });
         await deps.waitForEnd?.();
+        log.debug("inbound", "stream timing", {
+          phase: "/stop wait done",
+          waitedMs: Date.now() - waitStartedAt,
+        });
         await reply(t("commands.stop.abort"));
       }
       break;

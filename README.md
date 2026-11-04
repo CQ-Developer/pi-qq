@@ -76,7 +76,7 @@ Debug logs include the raw `asr_refer_text` and attachment metadata when `logLev
 ### Reply format
 
 - **Thinking**: its own bubble, plain text, starting with `**💭 思考**`. Long thinking may continue in a new bubble with the header repeated.
-- **Tools**: one bubble per call: `**<icon> <name>**`, blank line, inline-code argument, blank line, then the result in a `text` code block.
+- **Tools**: one bubble per call: `## <icon> <name>`; `bash` commands use a `bash` code block, other arguments use inline code, and results use `text`, `markdown`, `python`, `json`, etc. depending on the tool and file type.
 - **Regular messages**: raw text with no header.
 - **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
 - **Error recovery**: after a model error, automatic retry runs within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.

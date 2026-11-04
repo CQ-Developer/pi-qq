@@ -18,12 +18,21 @@ export interface AppendStreamCheckpoint {
   buffer?: string;
 }
 
+export interface AppendStreamFrameInfo {
+  index: number;
+  state: "generating" | "done";
+  msgSeq: number | null;
+  streamMsgId?: string;
+  bufferLength: number;
+}
+
 export interface AppendStreamOptions {
   throttleMs?: number;
   retryBaseMs?: number;
   resume?: AppendStreamCheckpoint;
   onError?: (err: Error) => void;
   onDebug?: (message: string) => void;
+  onFrameError?: (err: unknown, info: AppendStreamFrameInfo) => void;
 }
 
 export class AppendStream {
@@ -131,7 +140,9 @@ export class AppendStream {
     if (this.flushing) return;
     const content = state === "done" ? "" : this.buffer;
     if (!content && state === "generating") return;
-    this.opts.onDebug?.(`flush: start state=${state}, content=${content.length}, index=${this.index}`);
+    this.opts.onDebug?.(
+      `flush: start state=${state}, content=${content.length}, index=${this.index}, msgSeq=${this.msgSeq ?? "none"}, streamMsgId=${this.streamMsgId ?? "none"}`,
+    );
     this.flushing = true;
     let failed = false;
     try {
@@ -148,11 +159,13 @@ export class AppendStream {
         index,
         ...(this.streamMsgId ? { stream_msg_id: this.streamMsgId } : {}),
       } as unknown as StreamMessageRequest;
-      const resp = await this.sendWithRetry(req);
+      const resp = await this.sendWithRetry(req, state);
       if (resp?.id && !this.streamMsgId) this.streamMsgId = resp.id;
       if (state === "generating") this.buffer = this.buffer.slice(content.length);
       this.lastFlushAt = Date.now();
-      this.opts.onDebug?.(`flush: done state=${state}, remaining=${this.buffer.length}`);
+      this.opts.onDebug?.(
+        `flush: done state=${state}, remaining=${this.buffer.length}, streamMsgId=${this.streamMsgId ?? "none"}`,
+      );
     } catch (err) {
       failed = true;
       throw err;
@@ -167,7 +180,10 @@ export class AppendStream {
     }
   }
 
-  private async sendWithRetry(req: StreamMessageRequest): Promise<MessageResponse | undefined> {
+  private async sendWithRetry(
+    req: StreamMessageRequest,
+    state: "generating" | "done",
+  ): Promise<MessageResponse | undefined> {
     const base = this.opts.retryBaseMs ?? RATE_LIMIT_BASE_MS;
     for (let attempt = 0; ; attempt++) {
       try {
@@ -175,6 +191,13 @@ export class AppendStream {
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         if (attempt >= MAX_RETRIES || !this.isRateLimitError(err)) {
+          this.opts.onFrameError?.(err, {
+            index: req.index,
+            state,
+            msgSeq: this.msgSeq,
+            ...(this.streamMsgId ? { streamMsgId: this.streamMsgId } : {}),
+            bufferLength: this.buffer.length,
+          });
           this.opts.onDebug?.(t("log.streamFrameFailed", { index: req.index, attempts: attempt + 1, reason }));
           throw err;
         }

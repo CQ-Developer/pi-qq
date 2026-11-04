@@ -94,6 +94,11 @@ export async function sendStreamReply(
   target: StreamTarget,
   budget?: ReplyBudget,
 ): Promise<void> {
+  log.debug("stream", "stream timing", {
+    phase: "last reply stream",
+    msgId: target.msgId.slice(0, 8),
+    textLength: text.length,
+  });
   const stream = new AppendStream(bot.messageApi, bot.getCredentials(), target.openid, target.msgId);
   budget?.noteStreamBubble(target.msgId);
   try {
