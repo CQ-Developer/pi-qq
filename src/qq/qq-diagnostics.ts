@@ -12,10 +12,6 @@ export interface QQDiagnosticsDeps {
   getBoundOpenid: () => string | undefined;
 }
 
-/**
- * Terminal-only protocol probes. Kept out of the entrypoint so index.ts stays
- * a composition root and does not construct stream frames directly.
- */
 export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps): void {
   const diagTarget = () => {
     const last = deps.budget.lastTarget;

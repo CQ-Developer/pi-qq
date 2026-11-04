@@ -1,9 +1,5 @@
 name: release
 
-# Uses npm Trusted Publisher (OIDC). Configure it on npm:
-# package Settings -> Trusted Publisher -> GitHub Actions
-# owner: CQ-Developer, repository: pi-qq, workflow: release.yml
-
 on:
   push:
     tags:

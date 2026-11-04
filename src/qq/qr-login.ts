@@ -87,8 +87,6 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
           },
           handleInput(data: string): void {
             if (keybindings.matches(data, "tui.select.cancel") || data === "\x1b") {
-              // Mark the login settled before aborting: the connector reports an
-              // AbortError through onFailure, which must not look like a failure.
               finish();
               ac.abort();
               done();

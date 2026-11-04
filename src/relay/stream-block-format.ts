@@ -86,10 +86,6 @@ export interface SkillRead {
   name: string;
 }
 
-/**
- * Detect a read of a SKILL.md file. pi renders this as "[skill]" in the TUI;
- * QQ should show a dedicated skill block instead of a generic read tool.
- */
 export function detectSkillRead(toolName: string, args: unknown): SkillRead | undefined {
   if (toolName !== "read" || !args || typeof args !== "object") return undefined;
   const record = args as Record<string, unknown>;

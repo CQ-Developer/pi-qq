@@ -35,7 +35,6 @@ export function isLogEnabled(level: Exclude<LogLevel, "silent">): boolean {
   return isLevelEnabled(activeLevel, level);
 }
 
-/** Resolve once every queued log record has been written (or dropped). */
 export async function flushLogs(): Promise<void> {
   await writeQueue;
 }

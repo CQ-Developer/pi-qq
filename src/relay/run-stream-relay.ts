@@ -27,7 +27,6 @@ interface RunState {
   msgId?: string;
   thinkingSentLen: number;
   finalizedText: string;
-  /** Latest text of the current run, kept for the QQ /last command. */
   currentText: string;
   resultSentLen: number;
   tools: ToolCall[];
@@ -43,11 +42,6 @@ const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
 const RECOVERY_TTL_MS = 60_000;
 
-/**
- * Coordinates a QQ-triggered agent run: target selection, tool ordering,
- * deferred content, typing indicators, and run lifetime. Bubble layout and
- * stream I/O are delegated to BubbleWriter.
- */
 export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
   private pending: { openid: string; msgId: string; at: number } | null = null;
@@ -78,18 +72,10 @@ export class RunFeedback {
     return this.run ? this.endPromise : Promise.resolve();
   }
 
-  /**
-   * The final assistant text of the most recently completed QQ run.
-   * No transcript is retained.
-   */
   getLastMessage(): string | undefined {
     return this.lastCompletedText;
   }
 
-  /**
-   * Restart the current run's push with its latest text. This revives a stream
-   * that may have died while the phone was offline; later deltas continue.
-   */
   repushCurrent(openid: string, msgId: string): boolean {
     const run = this.run;
     const text = run?.currentText;
@@ -108,12 +94,8 @@ export class RunFeedback {
       textLength: text.length,
       ...this.diagnostics(run),
     });
-    // Rebind to the /last message so the new stream has a fresh passive window.
     run.openid = openid;
     run.msgId = msgId;
-    // Push the current text in full. Do not rewrite resultSentLen: it belongs to
-    // the assistant message currently being diffed, and changing it could drop
-    // the beginning of the next message.
     run.writer.restartText(text, { openid, msgId });
     return true;
   }
@@ -465,7 +447,6 @@ export class RunFeedback {
     run.typingTimer = undefined;
   }
 
-  /** Structured snapshot for debug logs; must not be called on hot paths. */
   private diagnostics(run: RunState): Record<string, unknown> {
     if (!isLogEnabled("debug")) return {};
     return {

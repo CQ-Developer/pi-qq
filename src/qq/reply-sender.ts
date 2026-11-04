@@ -87,7 +87,6 @@ export interface StreamTarget {
   msgId: string;
 }
 
-/** Send a complete message as one new stream bubble. */
 export async function sendStreamReply(
   bot: QQBot,
   text: string,

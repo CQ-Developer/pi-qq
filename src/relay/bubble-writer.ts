@@ -25,11 +25,6 @@ export interface BubbleWriterDeps {
   onWarn: (msg: string) => void;
 }
 
-/**
- * Owns one run's QQ stream: block layout, bubble rotation, fence tracking, and
- * stream recovery. Operations are serialized so callers can enqueue in event
- * order without waiting for network round-trips.
- */
 export class BubbleWriter {
   private cur: AppendStream | null = null;
   private pendingResume?: AppendStreamCheckpoint;
@@ -59,7 +54,6 @@ export class BubbleWriter {
     return this.streamDead;
   }
 
-  /** Snapshot used by debug logs to explain stalls without changing relay behavior. */
   stats(now = Date.now()): {
     dead: boolean;
     disposed: boolean;
@@ -86,7 +80,6 @@ export class BubbleWriter {
     };
   }
 
-  /** Mark the current block as complete so the next content starts a new bubble. */
   closeBlock(): void {
     this.blockClosed = true;
   }
@@ -146,7 +139,6 @@ export class BubbleWriter {
     this.push(`${prefix}${formatToolResult(result, isError, language)}`, prefix.length > 0, true);
   }
 
-  /** Run `op` after all currently queued appends, unless the stream died first. */
   schedule(op: () => void): void {
     void this.enqueue(async () => {
       if (this.streamDead || this.disposed) return;
@@ -154,10 +146,6 @@ export class BubbleWriter {
     });
   }
 
-  /**
-   * Start a fresh bubble and push the current text again, reviving a stream
-   * that died while the phone was offline. Later deltas continue in this bubble.
-   */
   restartText(text: string, target?: { openid: string; msgId: string }): void {
     if (!text || this.disposed) return;
     void this.enqueue(async () => {

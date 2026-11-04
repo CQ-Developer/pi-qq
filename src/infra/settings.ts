@@ -37,10 +37,6 @@ function isPositiveSize(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-/**
- * Validate the on-disk shape before it reaches business code. Invalid fields
- * are dropped individually so one typo does not discard the whole config.
- */
 export function parseConfig(raw: unknown): ReadConfigResult {
   if (!isRecord(raw)) {
     return {

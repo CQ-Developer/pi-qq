@@ -68,9 +68,7 @@ export function readLinuxBattery(root = "/sys/class/power_supply"): PowerStatus 
       const rawStatus = readFileSync(join(dir, "status"), "utf8").trim().toLowerCase();
       const state = rawStatus === "charging" ? "charging" : rawStatus === "discharging" ? "discharging" : "ac";
       return { percent, state };
-    } catch {
-      // Try the next battery.
-    }
+    } catch {}
   }
   return undefined;
 }

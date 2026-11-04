@@ -22,10 +22,6 @@ export type ResolvedInbound =
       voiceCount: number;
     };
 
-/**
- * Turn one inbound message into injectable content: prefer ASR for voice,
- * persist every non-voice attachment, and report per-file failures.
- */
 export async function resolveInboundContent(
   msg: QQBotInboundMessage,
   options: ResolveInboundOptions,
@@ -56,7 +52,6 @@ export async function resolveInboundContent(
     }
   }
 
-  // Voice attachments are handled above; all other attachments are stored as files.
   const attachmentsToSave = attachments.filter((attachment) => !isVoiceAttachment(attachment));
   const failures: AttachmentFailure[] = [];
   let files: SavedFile[] = [];
@@ -78,7 +73,6 @@ export async function resolveInboundContent(
   return { status: "resolved", text, files, failures, voiceCount: voiceAttachments.length };
 }
 
-/** Attachments that arrived without an instruction, consumed by the next text or voice message. */
 export class PendingAttachments {
   private files: SavedFile[] = [];
 

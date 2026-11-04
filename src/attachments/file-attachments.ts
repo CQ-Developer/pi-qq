@@ -44,8 +44,7 @@ export function uploadIndexPath(uploadDir: string): string {
 export function sanitizeFilename(filename: string | undefined, fallback: string): string {
   const raw = basename((filename ?? "").trim());
   const cleaned = raw
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_")
+    .replace(/[\p{Cc}<>:"|?*]/gu, "_")
     .replace(/^[.\s]+|[.\s]+$/g, "")
     .trim();
   if (!cleaned || cleaned === "." || cleaned === "..") return fallback;

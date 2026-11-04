@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 
-/** The slice of ExtensionContext used by QQ inbound handling. */
 export interface InboundContext {
   readonly cwd: string;
   isIdle(): boolean;
