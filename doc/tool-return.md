@@ -181,6 +181,64 @@ this.startNextTool(run);
 
 如果确认是长命令渲染问题，建议把工具参数从行内代码改为 fenced code block，或只显示命令摘要，避免 QQ 把长行内代码折叠成一个点。
 
+### 2.7 是否是 Node 事件循环阻塞导致的？
+
+目前不能直接归因于 `bash` 工具本身。pi 的内置 bash 工具使用 `node:child_process.spawn` 启动子进程，然后异步等待子进程结束；它不是 `spawnSync`，正常情况下不会阻塞 Node 事件循环。
+
+本地用同样的异步子进程做验证：
+
+```js
+const child = spawn("bash", ["-lc", "sleep 3; echo done"]);
+setInterval(() => console.log(Date.now() - start), 500);
+```
+
+结果：
+
+```text
+tick 1 at 501ms
+tick 2 at 1002ms
+...
+child finished at 3018ms, ticks=6
+```
+
+即子进程运行 3 秒期间，定时器正常触发。pi 的 bash 路径也是同一个模型：`spawn` + stdout/stderr 异步事件 + `await` 子进程退出。
+
+pi-qq 侧也没有在 `onToolStart()` 里等待工具结果：
+
+```ts
+onToolStart(...) {
+  ...
+  this.startNextTool(run); // 同步返回
+}
+```
+
+`AppendStream` 的 500ms 定时器是独立的 Node timer，工具 Promise 尚未完成不会阻止它。
+
+因此，单次 bash 工具本身**不应该**让 QQ 参数等几分钟。还需要排查以下可能：
+
+1. **e2e 子进程把 CPU 吃满**：Node 父进程可能被严重饿死，timer 实际延迟；需要看系统 CPU/Nice 和 event-loop lag。
+2. **pi TUI 处理大量 tool update/输出**：大量同步渲染可能占用主线程，延迟 timer。
+3. **`BubbleWriter` 队列被之前的网络请求阻塞**：如果前一个 `stream.flush()`/HTTP 请求卡住，新的工具启动 append 会排在它后面；`ApiClient` 单个请求有 30s 超时，但多次重试/排队可能造成较长延迟。
+4. **并行工具被 `activeTool` 串行化**：后面工具的启动行要等前一个工具结束，这一条与事件循环无关。
+5. **启动帧已经发出，但 QQ 没有渲染出参数**：需要对照日志中的 `content_raw` 和截图，而不能只看聊天界面。
+
+区分方法：
+
+- 如果日志中 `POST .../stream_messages` 的 `content_raw` 在 tool start 后约 500ms 就包含完整命令，但 QQ 只显示 bash + 点，则是 QQ 渲染/截断问题，不是事件循环。
+- 如果 POST 直到 tool end 后才出现，则说明 timer 或前面的队列被阻塞，再结合 event-loop lag 定位。
+- 如果 POST 在 500ms 出现但 `content_raw` 不含 command，则检查 `tool_execution_start` 的 `args` 和 `formatToolLine()`。
+
+建议在 `index.ts` 或 `file-logger` 增加临时诊断：
+
+```ts
+import { monitorEventLoopDelay } from "node:perf_hooks";
+const lag = monitorEventLoopDelay({ resolution: 100 });
+lag.enable();
+// 定期 log.debug("event-loop", "lag", { maxMs: lag.max / 1e6, meanMs: lag.mean / 1e6 });
+```
+
+并在 tool start、`BubbleWriter` enqueue、`stream.flush` 前后记录时间戳。这样可以直接判断是“事件循环被饿死”还是“队列/网络/渲染”导致。
+
 ## 3. 影响
 
 - 用户无法从 QQ 判断工具是否已经开始执行；
