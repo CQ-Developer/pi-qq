@@ -301,15 +301,16 @@ describe("RunFeedback 直推", () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);
     rf.onAssistantDelta("partial", "");
-    expect(rf.repushCurrent()).toBe(true);
+    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(true);
 
     await rf.onAssistantFinal("partial answer", false);
     await rf.onAgentEnd();
     expect(rf.getLastMessage()).toBe("partial answer");
     expect(streamContent(calls).match(/partial/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(calls.some((call) => call.msg_id === "msg-last")).toBe(true);
 
     startRun(rf, "msg-2");
-    expect(rf.repushCurrent()).toBe(false);
+    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(false);
     expect(rf.getLastMessage()).toBe("partial answer");
     await rf.onAgentEnd();
     expect(rf.getLastMessage()).toBe("partial answer");
@@ -319,7 +320,7 @@ describe("RunFeedback 直推", () => {
     const { rf } = makeRunHarness({ alwaysFail: true });
     startRun(rf);
     rf.onAssistantDelta("hello", "");
-    expect(rf.repushCurrent()).toBe(true);
+    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(true);
     await rf.onAssistantFinal("hello", false);
     await rf.onAgentEnd();
     expect(rf.getLastMessage()).toBe("hello");
@@ -330,7 +331,7 @@ describe("RunFeedback 直推", () => {
     startRun(rf);
     rf.onAssistantDelta("first", "");
     await rf.onAssistantFinal("first", false);
-    expect(rf.repushCurrent()).toBe(true);
+    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(true);
 
     rf.onAssistantDelta("second", "");
     await rf.onAssistantFinal("second", false);

@@ -97,13 +97,17 @@ export class BubbleWriter {
    * Start a fresh bubble and push the current text again, reviving a stream
    * that died while the phone was offline. Later deltas continue in this bubble.
    */
-  restartText(text: string): void {
+  restartText(text: string, target?: { openid: string; msgId: string }): void {
     if (!text || this.disposed) return;
     void this.enqueue(async () => {
       if (this.disposed) return;
       if (this.fenceOpen) await this.closeOpenFence();
       if (this.cur) await this.rotateStream();
 
+      if (target) {
+        this.deps.openid = target.openid;
+        this.deps.msgId = target.msgId;
+      }
       this.streamDead = false;
       this.pendingResume = undefined;
       this.resumeAttempts = 0;

@@ -16,15 +16,20 @@ export interface InboundCommandDeps {
   ctx: InboundContext;
   getStatusLines: () => string[];
   getLastMessage?: () => string | undefined;
-  restartPush?: () => boolean;
   onStop?: () => void;
   waitForEnd?: () => Promise<void>;
+}
+
+export interface InboundCommandExtras {
+  streamReply?: (text: string) => Promise<void>;
+  restartPush?: () => void;
 }
 
 export async function handleInboundCommand(
   text: string,
   reply: (t: string) => Promise<void>,
   deps: InboundCommandDeps,
+  extras: InboundCommandExtras = {},
 ): Promise<void> {
   const cmd = text.split(/\s+/)[0];
   switch (cmd) {
@@ -35,7 +40,7 @@ export async function handleInboundCommand(
           "• /stop — abort the current task",
           "• /compact — compact the context",
           "• /status — show status",
-          "• /last — restart current output or show the last completed message",
+          "• /last — push the last completed message or restart current output",
           "• /new — reset the session",
           "• /help — this help",
           "Other text is sent to pi.",
@@ -65,9 +70,18 @@ export async function handleInboundCommand(
       break;
     case "/last": {
       if (!deps.ctx.isIdle()) {
-        deps.restartPush?.();
+        extras.restartPush?.();
       } else {
-        await reply(deps.getLastMessage?.() ?? "No completed message yet.");
+        const text = deps.getLastMessage?.();
+        if (text) {
+          if (extras.streamReply) {
+            await extras.streamReply(text);
+          } else {
+            await reply(text);
+          }
+        } else {
+          await reply("No completed message yet.");
+        }
       }
       break;
     }

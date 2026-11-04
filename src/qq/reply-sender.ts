@@ -1,5 +1,6 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { ReplyBudget } from "../quota/reply-quota";
+import { AppendStream } from "../relay/stream-session";
 import { log } from "../infra/file-logger";
 
 export const TEXT_CHUNK_LIMIT = 4500;
@@ -78,6 +79,28 @@ export interface ReplyChannel {
   budget: ReplyBudget;
   boundOpenid: string;
   onWarn?: (msg: string) => void;
+}
+
+export interface StreamTarget {
+  openid: string;
+  msgId: string;
+}
+
+/** Send a complete message as one new stream bubble. */
+export async function sendStreamReply(
+  bot: QQBot,
+  text: string,
+  target: StreamTarget,
+  budget?: ReplyBudget,
+): Promise<void> {
+  const stream = new AppendStream(bot.messageApi, bot.getCredentials(), target.openid, target.msgId);
+  budget?.noteStreamBubble(target.msgId);
+  try {
+    await stream.append(text);
+    await stream.done();
+  } finally {
+    stream.dispose();
+  }
 }
 
 export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Promise<void> {

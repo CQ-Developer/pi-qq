@@ -1,5 +1,5 @@
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
-import { sendReply, type ReplyChannel } from "./reply-sender";
+import { sendReply, sendStreamReply, type ReplyChannel } from "./reply-sender";
 import type { ReplyBudget } from "../quota/reply-quota";
 import { formatAttachmentFailures } from "../attachments/attachment-failure";
 import {
@@ -18,6 +18,8 @@ export interface InboundDeps extends InboundCommandDeps {
   getDeliverAs: () => "steer" | "followUp";
   getFileMaxSize: () => number;
   saveFiles?: typeof saveInboundFiles;
+  streamReply?: typeof sendStreamReply;
+  repushCurrent: (openid: string, msgId: string) => boolean;
   onWarn: (msg: string) => void;
   markQQTrigger: (openid: string, msgId: string) => void;
 }
@@ -78,7 +80,27 @@ export function createInboundHandler(deps: InboundDeps) {
         log.info("inbound", "cleared pending attachments for /new", { count: pending.count });
         pending.clear();
       }
-      await handleInboundCommand(contentText, reply, deps);
+      await handleInboundCommand(contentText, reply, deps, {
+        streamReply: async (text) => {
+          try {
+            await (deps.streamReply ?? sendStreamReply)(
+              bot,
+              text,
+              { openid: msg.senderId, msgId: msg.messageId },
+              deps.budget,
+            );
+          } catch (err) {
+            log.warn("inbound", "stream reply failed; falling back to text", {
+              messageId: msg.messageId,
+              err,
+            });
+            await reply(text);
+          }
+        },
+        restartPush: () => {
+          deps.repushCurrent(msg.senderId, msg.messageId);
+        },
+      });
       return;
     }
 

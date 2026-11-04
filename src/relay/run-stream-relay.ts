@@ -88,14 +88,17 @@ export class RunFeedback {
    * Restart the current run's push with its latest text. This revives a stream
    * that may have died while the phone was offline; later deltas continue.
    */
-  repushCurrent(): boolean {
+  repushCurrent(openid: string, msgId: string): boolean {
     const run = this.run;
     const text = run?.currentText;
     if (!run || !text?.trim()) return false;
+    // Rebind to the /last message so the new stream has a fresh passive window.
+    run.openid = openid;
+    run.msgId = msgId;
     // Push the current text in full. Do not rewrite resultSentLen: it belongs to
     // the assistant message currently being diffed, and changing it could drop
     // the beginning of the next message.
-    run.writer.restartText(text);
+    run.writer.restartText(text, { openid, msgId });
     return true;
   }
 

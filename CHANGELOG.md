@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- QQ `/last` command: restart the current output while a run is active, or show the final text of the last completed run when idle.
+- QQ `/last` command: push the last completed assistant message as a new stream bubble, or restart the current output while a run is active.
 - GitHub Releases now attach the npm tarball and a `SHA256SUMS` file.
 
 ### Changed

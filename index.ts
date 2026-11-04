@@ -115,7 +115,7 @@ export default function (pi: ExtensionAPI) {
         getFileMaxSize: () => activeSettings.fileMaxSize,
         getStatusLines,
         getLastMessage: () => runFeedback.getLastMessage(),
-        restartPush: () => runFeedback.repushCurrent(),
+        repushCurrent: (openid, msgId) => runFeedback.repushCurrent(openid, msgId),
         onWarn: onWarn(ctx),
         markQQTrigger: (openid, msgId) => runFeedback.markQQTrigger(openid, msgId),
         waitForEnd: () => runFeedback.waitForEnd(),

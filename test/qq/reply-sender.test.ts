@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText, markdownToPlain, TEXT_CHUNK_LIMIT } from "../../src/qq/reply-sender";
+import { chunkText, markdownToPlain, sendStreamReply, TEXT_CHUNK_LIMIT } from "../../src/qq/reply-sender";
 
 describe("markdownToPlain", () => {
   it("标题去 #", () => {
@@ -85,5 +85,24 @@ describe("chunkText", () => {
   it("非法上限会回退到安全值", () => {
     expect(chunkText("abc", 0)).toEqual(["a", "b", "c"]);
     expect(chunkText("abc", Number.NaN)).toEqual(["abc"]);
+  });
+});
+
+describe("sendStreamReply", () => {
+  it("把完整文本作为新流式气泡发送并结束", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const bot = {
+      messageApi: {
+        async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+          calls.push(req);
+          return { id: "stream-1" };
+        },
+      },
+      getCredentials: () => ({}),
+    };
+    await sendStreamReply(bot as never, "final answer", { openid: "openid-u", msgId: "msg-last" });
+    expect(calls.map((call) => call.content_raw as string).join("")).toBe("final answer");
+    expect(calls.at(-1)?.input_state).toBe(10);
+    expect(calls[0]?.msg_id).toBe("msg-last");
   });
 });

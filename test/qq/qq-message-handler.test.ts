@@ -13,10 +13,13 @@ function makeInboundHarness(
     attachments?: unknown[];
     saveFiles?: (attachments: unknown, options: unknown) => Promise<unknown>;
     lastMessage?: string;
-    restartPush?: () => boolean;
+    streamReply?: (bot: unknown, text: string, target: unknown, budget: unknown) => Promise<void>;
+    repushCurrent?: (openid: string, msgId: string) => boolean;
   } = {},
 ) {
   const sent: string[] = [];
+  const streamed: string[] = [];
+  const streamTargets: unknown[] = [];
   const userMessages: Array<{ content: unknown; options: unknown }> = [];
   let triggers = 0;
   let stops = 0;
@@ -47,7 +50,13 @@ function makeInboundHarness(
     saveFiles: opts.saveFiles,
     getStatusLines: () => [],
     getLastMessage: () => opts.lastMessage,
-    restartPush: opts.restartPush,
+    streamReply:
+      opts.streamReply ??
+      (async (_bot, text, target) => {
+        streamed.push(text);
+        streamTargets.push(target);
+      }),
+    repushCurrent: opts.repushCurrent ?? (() => false),
     onWarn: () => {},
     markQQTrigger: () => {
       triggers += 1;
@@ -68,7 +77,7 @@ function makeInboundHarness(
         attachments: override.attachments ?? opts.attachments ?? [],
       } as never,
     );
-  return { run, sent, userMessages, triggers: () => triggers, stops: () => stops };
+  return { run, sent, streamed, streamTargets, userMessages, triggers: () => triggers, stops: () => stops };
 }
 
 describe("inbound image attachments", () => {
@@ -352,33 +361,37 @@ describe("inbound pending attachments", () => {
 });
 
 describe("inbound /last", () => {
-  it("idle 时返回最近一次完成的最终消息", async () => {
+  it("idle 时用流式推送最近一次完成的最终消息", async () => {
     const harness = makeInboundHarness(true, {
       lastMessage: "final answer",
     });
     await harness.run({ content: "/last" });
-    expect(harness.sent).toEqual(["final answer"]);
+    expect(harness.sent).toEqual([]);
+    expect(harness.streamed).toEqual(["final answer"]);
+    expect(harness.streamTargets).toEqual([{ openid: "openid-u", msgId: "msg-new" }]);
   });
 
-  it("运行中时重新开始推送当前输出", async () => {
-    let restarted = 0;
+  it("运行中时重新绑定到 /last 的 msgId 并推送当前输出", async () => {
+    let target: { openid?: string; msgId?: string } = {};
     const harness = makeInboundHarness(false, {
-      restartPush: () => {
-        restarted += 1;
+      repushCurrent: (openid, msgId) => {
+        target = { openid, msgId };
         return true;
       },
     });
     await harness.run({ content: "/last" });
-    expect(restarted).toBe(1);
+    expect(target).toEqual({ openid: "openid-u", msgId: "msg-new" });
     expect(harness.sent).toEqual([]);
+    expect(harness.streamed).toEqual([]);
   });
 
   it("运行中但还没有文本时不额外回复", async () => {
     const harness = makeInboundHarness(false, {
-      restartPush: () => false,
+      repushCurrent: () => false,
     });
     await harness.run({ content: "/last" });
     expect(harness.sent).toEqual([]);
+    expect(harness.streamed).toEqual([]);
   });
 
   it("空闲且没有历史消息时给出提示", async () => {
