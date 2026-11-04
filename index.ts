@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { getSettings, readConfig, type Credentials, type ResolvedSettings } from "./src/infra/settings";
 import { startBot, type BotState, type RunningBot } from "./src/qq/qq-bot";
 import { runQrLogin, type QrLoginResult } from "./src/qq/qr-login";
@@ -44,6 +45,35 @@ const runFeedback = new RunFeedback({
   getThinkingRelay: () => activeSettings.thinkingRelay,
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
 });
+
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 100 });
+let eventLoopTimer: ReturnType<typeof setInterval> | undefined;
+
+function roundMs(value: number): number {
+  return Math.round((value / 1e6) * 10) / 10;
+}
+
+function startEventLoopMonitor(): void {
+  if (!isLogEnabled("debug") || eventLoopTimer) return;
+  eventLoopDelay.disable();
+  eventLoopDelay.reset();
+  eventLoopDelay.enable();
+  eventLoopTimer = setInterval(() => {
+    log.debug("event-loop", "event loop delay", {
+      meanMs: roundMs(eventLoopDelay.mean),
+      maxMs: roundMs(eventLoopDelay.max),
+      p99Ms: roundMs(eventLoopDelay.percentile(99)),
+    });
+    eventLoopDelay.reset();
+  }, 5_000);
+  eventLoopTimer.unref?.();
+}
+
+function stopEventLoopMonitor(): void {
+  if (eventLoopTimer) clearInterval(eventLoopTimer);
+  eventLoopTimer = undefined;
+  eventLoopDelay.disable();
+}
 
 export default function (pi: ExtensionAPI) {
   activeSettings = getSettings(readConfig().config);
@@ -91,12 +121,14 @@ export default function (pi: ExtensionAPI) {
     stateDetail = undefined;
     sessionCtx = undefined;
     runFeedback.dispose();
+    stopEventLoopMonitor();
   };
 
   const startWithCredentials = async (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
     const settings = activeSettings;
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
     stopIfRunning();
+    startEventLoopMonitor();
     stateDetail = undefined;
     sessionCtx = ctx;
     const uploadDir = sessionUploadDir(ctx.cwd, ctx.sessionManager.getSessionId());
@@ -141,6 +173,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const { settings, error } = applyConfig(ctx);
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
+    startEventLoopMonitor();
 
     const login = getLoginState();
     log.info("session", "started", {

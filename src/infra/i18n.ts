@@ -214,6 +214,8 @@ const enUS = {
   "log.messageReceived": "message received",
   "log.ended": "ended",
   "log.starting": "starting",
+  "log.streamTiming": "stream timing",
+  "log.eventLoopDelay": "event loop delay",
 } as const;
 
 export type TranslationKey = keyof typeof enUS;
@@ -426,6 +428,8 @@ const zhCN: Record<TranslationKey, string> = {
   "log.messageReceived": "收到消息",
   "log.ended": "已结束",
   "log.starting": "启动中",
+  "log.streamTiming": "流式时序",
+  "log.eventLoopDelay": "事件循环延迟",
 };
 
 const dictionaries: Record<Language, Record<TranslationKey, string>> = {
@@ -500,6 +504,8 @@ const LOG_MESSAGE_KEYS: Record<string, TranslationKey> = {
   start: "log.toolStart",
   started: "log.sessionStarted",
   starting: "log.botStarting",
+  "stream timing": "log.streamTiming",
+  "event loop delay": "log.eventLoopDelay",
   "starting bot": "log.sessionStartingBot",
   "starting bot after login failed": "log.startBotAfterLoginFailed",
   "stream error": "log.streamError",

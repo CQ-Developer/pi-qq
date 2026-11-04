@@ -77,7 +77,21 @@ export class BubbleWriter {
     this.toolOpen = true;
     const newBubble = this.lastKind !== "none";
     const prefix = this.beginBlock("tool", newBubble);
-    this.push(`${prefix}${formatToolLine(name, args)}\n\n`, prefix.length > 0 || newBubble, false, newBubble);
+    log.debug("stream", "stream timing", {
+      phase: "tool queued",
+      msgId: this.logMsgId(),
+      tool: name,
+      at: Date.now(),
+      hasStream: Boolean(this.cur),
+    });
+    this.push(
+      `${prefix}${formatToolLine(name, args)}\n\n`,
+      prefix.length > 0 || newBubble,
+      false,
+      newBubble,
+      false,
+      "tool",
+    );
   }
 
   pushSkill(name: string): void {
@@ -85,7 +99,7 @@ export class BubbleWriter {
     this.toolOpen = false;
     const newBubble = true;
     const prefix = this.beginBlock("tool", newBubble);
-    this.push(`${prefix}${formatSkillBlock(name)}`, prefix.length > 0 || newBubble, false, newBubble);
+    this.push(`${prefix}${formatSkillBlock(name)}`, prefix.length > 0 || newBubble, false, newBubble, false, "skill");
   }
 
   pushToolResult(result: unknown, isError: boolean): void {
@@ -221,10 +235,27 @@ export class BubbleWriter {
     }
   }
 
-  private push(text: string, blockBoundary = false, endTool = false, newBubble = false, thinking = false): void {
+  private push(
+    text: string,
+    blockBoundary = false,
+    endTool = false,
+    newBubble = false,
+    thinking = false,
+    trace?: string,
+  ): void {
     if (!text || this.streamDead || this.disposed) return;
+    const queuedAt = trace ? Date.now() : 0;
     void this.enqueue(async () => {
       if (this.streamDead || this.disposed) return;
+      if (trace) {
+        log.debug("stream", "stream timing", {
+          phase: "append start",
+          trace,
+          msgId: this.logMsgId(),
+          waitedMs: Date.now() - queuedAt,
+          hasStream: Boolean(this.cur),
+        });
+      }
       if (blockBoundary && !(await this.closeOpenFence())) return;
       if (newBubble && this.cur && this.bubbleChars > 0 && !this.pendingResume) {
         await this.rotateStream();
@@ -252,6 +283,15 @@ export class BubbleWriter {
         this.trackFences(outgoing);
         this.lastChar = outgoing.slice(-1);
         if (endTool) this.toolOpen = false;
+        if (trace) {
+          log.debug("stream", "stream timing", {
+            phase: "append done",
+            trace,
+            msgId: this.logMsgId(),
+            totalMs: Date.now() - queuedAt,
+            bubbleChars: this.bubbleChars,
+          });
+        }
       } catch (err) {
         if (this.cur === stream) this.handleStreamError(err as Error);
       }

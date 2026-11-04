@@ -83,16 +83,24 @@ export class AppendStream {
     if (this.doneSent || !delta) return;
     this.buffer += delta;
     const elapsed = Date.now() - this.lastFlushAt;
-    if (this.flushing) return;
-    if (elapsed >= this.throttleMs()) {
+    const throttle = this.throttleMs();
+    if (this.flushing) {
+      this.opts.onDebug?.(`append: while flushing, buffer=${this.buffer.length}`);
+      return;
+    }
+    if (elapsed >= throttle) {
+      this.opts.onDebug?.(`append: immediate, elapsed=${elapsed}, buffer=${this.buffer.length}`);
       await this.doFlush("generating");
       return;
     }
     if (!this.flushTimer) {
+      const waitMs = throttle - elapsed;
+      this.opts.onDebug?.(`append: buffered, elapsed=${elapsed}, wait=${waitMs}, buffer=${this.buffer.length}`);
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
+        this.opts.onDebug?.(`timer: fired after ${waitMs}, buffer=${this.buffer.length}`);
         void this.doFlush("generating").catch((err) => this.opts.onError?.(err as Error));
-      }, this.throttleMs() - elapsed);
+      }, waitMs);
     }
   }
 
@@ -123,6 +131,7 @@ export class AppendStream {
     if (this.flushing) return;
     const content = state === "done" ? "" : this.buffer;
     if (!content && state === "generating") return;
+    this.opts.onDebug?.(`flush: start state=${state}, content=${content.length}, index=${this.index}`);
     this.flushing = true;
     let failed = false;
     try {
@@ -143,6 +152,7 @@ export class AppendStream {
       if (resp?.id && !this.streamMsgId) this.streamMsgId = resp.id;
       if (state === "generating") this.buffer = this.buffer.slice(content.length);
       this.lastFlushAt = Date.now();
+      this.opts.onDebug?.(`flush: done state=${state}, remaining=${this.buffer.length}`);
     } catch (err) {
       failed = true;
       throw err;
