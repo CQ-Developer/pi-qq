@@ -70,6 +70,6 @@ describe("skill formatting", () => {
   });
 
   it("formats a fixed English skill block", () => {
-    expect(formatSkillBlock("playwright-cli")).toBe("## 🧩 Skill\n\n`playwright-cli`\n\n---\n");
+    expect(formatSkillBlock("playwright-cli")).toBe("## 🧩 Skill\n\n`playwright-cli`\n");
   });
 });

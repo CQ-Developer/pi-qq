@@ -18,8 +18,6 @@
 ## 🧩 Skill
 
 `playwright-cli`
-
----
 ```
 
 明确不做：
@@ -148,13 +146,10 @@ export function detectSkillRead(toolName: string, args: unknown): SkillRead | un
 ## 🧩 Skill
 
 `playwright-cli`
-
----
 ```
 
 - 标题使用 Markdown 二级标题；
 - skill 名称用行内代码；
-- 末尾单独一行 `---`；
 - 不附加路径、来源、描述或内容。
 
 标题固定为英文 `Skill`，不跟随 `language` 配置，也不做翻译。
@@ -235,7 +230,7 @@ interface ToolCall {
 - [x] `npm run format:check`
 - [ ] 在 `pi-qq-test` 中让模型读取 `playwright-cli/SKILL.md`，对比：
   - pi TUI：`[skill] playwright-cli`
-  - QQ：`## 🧩 Skill` + `playwright-cli` + `---`
+  - QQ：`## 🧩 Skill` + `playwright-cli`
   - QQ 不再出现 `📖 read` 和 `SKILL.md` 全文
 
 ## 7. 变更文件
@@ -253,7 +248,7 @@ interface ToolCall {
 ## 8. 已确认
 
 1. QQ 显示 skill 执行，不显示普通 read 工具；
-2. 格式为 `## 🧩 Skill` + skill 名称 + `---`；
+2. 格式为 `## 🧩 Skill` + skill 名称；
 3. 标题固定英文，不跟随语言配置；
 4. 不显示 `SKILL.md` 完整内容；
 5. 不支持 QQ `/skill:` 命令；

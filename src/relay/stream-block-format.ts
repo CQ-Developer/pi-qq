@@ -95,7 +95,7 @@ export function detectSkillRead(toolName: string, args: unknown): SkillRead | un
 }
 
 export function formatSkillBlock(name: string): string {
-  return `## 🧩 Skill\n\n${inlineCode(name)}\n\n---\n`;
+  return `## 🧩 Skill\n\n${inlineCode(name)}\n`;
 }
 
 export function formatToolLine(name: string, args: unknown): string {
