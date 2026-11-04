@@ -370,15 +370,15 @@ describe("inbound /last", () => {
     });
     await harness.run({ content: "/last" });
     expect(restarted).toBe(1);
-    expect(harness.sent).toEqual(["Restarting current output."]);
+    expect(harness.sent).toEqual([]);
   });
 
-  it("运行中但还没有文本时说明状态", async () => {
+  it("运行中但还没有文本时不额外回复", async () => {
     const harness = makeInboundHarness(false, {
       restartPush: () => false,
     });
     await harness.run({ content: "/last" });
-    expect(harness.sent).toEqual(["Task is running; no text output yet."]);
+    expect(harness.sent).toEqual([]);
   });
 
   it("空闲且没有历史消息时给出提示", async () => {

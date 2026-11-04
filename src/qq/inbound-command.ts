@@ -65,8 +65,7 @@ export async function handleInboundCommand(
       break;
     case "/last": {
       if (!deps.ctx.isIdle()) {
-        const restarted = deps.restartPush?.() ?? false;
-        await reply(restarted ? "Restarting current output." : "Task is running; no text output yet.");
+        deps.restartPush?.();
       } else {
         await reply(deps.getLastMessage?.() ?? "No completed message yet.");
       }

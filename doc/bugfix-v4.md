@@ -659,7 +659,7 @@ this.freshMs = opts?.freshMs ?? 60 * 60_000;
 
 边界情况：
 
-- 运行中但还没有文本：回复 `Task is running; no text output yet.`；
+- 运行中但还没有文本：不额外回复，等下一次可推送输出；
 - idle 且没有完成的文本：回复 `No completed message yet.`；
 - 重新推送只保证“当前文本 + 后续输出”，不保证补齐离线期间已经错过的所有历史气泡。
 
@@ -675,13 +675,13 @@ this.freshMs = opts?.freshMs ?? 60 * 60_000;
   - 流式已经熔断时仍更新 `currentText`，因此 `/last` 不依赖 stream 状态。
 - `src/qq/inbound-command.ts`
   - 用 `ctx.isIdle()` 分成两种状态；
-  - 运行中调用 `restartPush()`，回复 `Restarting current output.`；
+  - 运行中直接调用 `restartPush()`，不额外回复；
   - idle 调用 `getLastMessage()` 并返回最终文本。
 - `index.ts`
   - 接入 `runFeedback.getLastMessage()` 和 `runFeedback.repushCurrent()`。
 - 测试：
   - `test/relay/run-stream-relay.test.ts` 覆盖重新推送、最终文本和流式熔断；
-  - `test/qq/qq-message-handler.test.ts` 覆盖两种状态和边界提示。
+  - `test/qq/qq-message-handler.test.ts` 覆盖两种状态和静默边界。
 
 ### 限制
 
