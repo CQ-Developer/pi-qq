@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { configureI18n } from "../../src/infra/i18n";
 import { getSettings, parseConfig } from "../../src/infra/settings";
+
+beforeEach(() => configureI18n("en-us"));
 
 describe("parseConfig", () => {
   it("rejects non-object JSON roots", () => {
@@ -32,8 +35,17 @@ describe("parseConfig", () => {
       deliverAs: "followUp",
       fileMaxSize: 2048,
       logLevel: "debug",
+      language: "en-us",
     } as const;
     expect(parseConfig(raw)).toEqual({ config: raw });
+  });
+
+  it("defaults language to zh-cn and rejects invalid values", () => {
+    expect(getSettings({}).language).toBe("zh-cn");
+    expect(getSettings({ language: "en-us" }).language).toBe("en-us");
+    const { config, error } = parseConfig({ language: "fr-fr" });
+    expect(config).toEqual({});
+    expect(error).toContain("language");
   });
 });
 
@@ -85,6 +97,7 @@ describe("getSettings", () => {
       deliverAs: "steer",
       fileMaxSize: 50 * 1024 * 1024,
       logLevel: "silent",
+      language: "zh-cn",
     });
   });
 });

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { t } from "../infra/i18n";
 
 /** The slice of ExtensionContext used by QQ inbound handling. */
 export interface InboundContext {
@@ -36,33 +37,33 @@ export async function handleInboundCommand(
     case "/help":
       await reply(
         [
-          "pi-qq commands:",
-          "• /stop — abort the current task",
-          "• /compact — compact the context",
-          "• /status — show status",
-          "• /last — push the last completed message or restart current output",
-          "• /new — reset the session",
-          "• /help — this help",
-          "Other text is sent to pi.",
+          t("commands.help.title"),
+          t("commands.help.stop"),
+          t("commands.help.compact"),
+          t("commands.help.status"),
+          t("commands.help.last"),
+          t("commands.help.new"),
+          t("commands.help.help"),
+          t("commands.help.other"),
         ].join("\n"),
       );
       break;
     case "/stop":
       deps.onStop?.();
       if (deps.ctx.isIdle()) {
-        await reply("No task is running.");
+        await reply(t("commands.stop.none"));
       } else {
         deps.ctx.abort();
         await deps.waitForEnd?.();
-        await reply("Abort requested.");
+        await reply(t("commands.stop.abort"));
       }
       break;
     case "/compact":
       if (deps.ctx.isIdle()) {
         deps.ctx.compact();
-        await reply("Context compaction triggered.");
+        await reply(t("commands.compact.done"));
       } else {
-        await reply("Task is running; use /stop before /compact.");
+        await reply(t("commands.compact.busy"));
       }
       break;
     case "/status":
@@ -80,20 +81,20 @@ export async function handleInboundCommand(
             await reply(text);
           }
         } else {
-          await reply("No completed message yet.");
+          await reply(t("commands.last.none"));
         }
       }
       break;
     }
     case "/new":
       if (!deps.ctx.isIdle()) {
-        await reply("Task is running; use /stop before resetting.");
+        await reply(t("commands.new.busy"));
       } else {
-        await reply("Resetting the session…");
+        await reply(t("commands.new.resetting"));
         deps.pi.sendUserMessage("/qq-new", { expandPromptTemplates: true });
       }
       break;
     default:
-      await reply(`Unknown command ${cmd}; use /help.`);
+      await reply(t("commands.unknown", { cmd }));
   }
 }

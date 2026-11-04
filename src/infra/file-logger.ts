@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { localizeLogMessage } from "./i18n";
 
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
 type LogFields = Record<string, unknown>;
@@ -78,11 +79,13 @@ function stringifyError(err: unknown): string {
 function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message: string, data?: unknown): void {
   if (!isLevelEnabled(activeLevel, level)) return;
 
+  const localized = localizeLogMessage(message);
   const record: LogFields = {
     time: new Date().toISOString(),
     level,
     scope,
-    msg: message,
+    ...(localized.msgKey ? { msgKey: localized.msgKey } : {}),
+    msg: localized.msg,
   };
   const fields = normalizeData(data);
   if (fields) {
@@ -105,7 +108,8 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
       time: record.time,
       level,
       scope,
-      msg: message,
+      ...(localized.msgKey ? { msgKey: localized.msgKey } : {}),
+      msg: localized.msg,
       serializationError: stringifyError(err),
     });
   }

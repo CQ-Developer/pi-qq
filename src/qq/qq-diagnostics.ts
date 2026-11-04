@@ -3,6 +3,8 @@ import type { ReplyBudget } from "../quota/reply-quota";
 import { formatBudgetStatus } from "../quota/reply-quota-report";
 import { AppendStream } from "../relay/stream-session";
 import type { RunningBot } from "./qq-bot";
+import { t } from "../infra/i18n";
+import { thinkingHeader } from "../relay/stream-block-format";
 
 export interface QQDiagnosticsDeps {
   getRunning: () => RunningBot | undefined;
@@ -23,46 +25,46 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
   };
 
   pi.registerCommand("qq-test-budget", {
-    description: "pi-qq: show passive reply budget, stream bubbles, and last inbound target",
+    description: t("diagnostics.descBudget"),
     handler: async (_args, ctx) => {
       ctx.ui.notify(formatBudgetStatus(deps.budget.snapshot(), deps.budget.lastTarget).join("\n"), "info");
     },
   });
 
   pi.registerCommand("qq-test-md", {
-    description: "pi-qq: send a Markdown message to verify QQ C2C Markdown rendering",
+    description: t("diagnostics.descMd"),
     handler: async (args, ctx) => {
       const running = deps.getRunning();
       if (!running) {
-        ctx.ui.notify("pi-qq is not connected.", "warning");
+        ctx.ui.notify(t("diagnostics.notConnected"), "warning");
         return;
       }
       const target = diagTarget();
       if (!target) {
-        ctx.ui.notify("pi-qq: no send target. Send a QQ message first.", "warning");
+        ctx.ui.notify(t("diagnostics.noTarget"), "warning");
         return;
       }
       const content = args?.trim() || "**Markdown test**\n# Heading\n- Item one\n- Item two\n[Link](https://qq.com)";
       try {
         await running.bot.sendMarkdown(target, content);
-        ctx.ui.notify("Markdown test sent. Check whether QQ renders it as rich text.", "info");
+        ctx.ui.notify(t("diagnostics.mdSent"), "info");
       } catch (err) {
-        ctx.ui.notify(`Markdown send failed: ${(err as Error).message}`, "error");
+        ctx.ui.notify(t("diagnostics.mdFailed", { message: (err as Error).message }), "error");
       }
     },
   });
 
   pi.registerCommand("qq-test-stream", {
-    description: "pi-qq: run a streamed timeline diagnostic (thinking/tools/text) or resume probe",
+    description: t("diagnostics.descStream"),
     handler: async (args, ctx) => {
       const running = deps.getRunning();
       if (!running) {
-        ctx.ui.notify("pi-qq is not connected.", "warning");
+        ctx.ui.notify(t("diagnostics.notConnected"), "warning");
         return;
       }
       const last = deps.budget.lastTarget;
       if (!last) {
-        ctx.ui.notify("pi-qq: send a QQ message first (streaming needs a msgId).", "warning");
+        ctx.ui.notify(t("diagnostics.streamNoTarget"), "warning");
         return;
       }
 
@@ -72,13 +74,13 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
         if (args?.trim() === "resume") {
           const first = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
           stream = first;
-          await first.append("**Resume probe** frame 1\n");
+          await first.append(t("diagnostics.probeResumeFrame1"));
           await first.flush();
           const checkpoint = first.checkpoint();
           first.dispose();
           stream = undefined;
           if (!checkpoint?.streamMsgId) {
-            ctx.ui.notify("Resume probe: frame 1 sent but stream_msg_id is missing; cannot resume.", "error");
+            ctx.ui.notify(t("diagnostics.resumeNoStream"), "error");
             return;
           }
           await sleep(800);
@@ -90,12 +92,15 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
             { resume: checkpoint },
           );
           stream = second;
-          await second.append("frame 2 after resume\n");
+          await second.append(t("diagnostics.probeResumeFrame2"));
           await second.done();
           second.dispose();
           stream = undefined;
           ctx.ui.notify(
-            `Resume probe: frame 2 sent with index ${checkpoint.index} and stream_msg_id ${checkpoint.streamMsgId}. Check whether both frames are in the same bubble.`,
+            t("diagnostics.resumeResult", {
+              index: checkpoint.index,
+              streamMsgId: checkpoint.streamMsgId,
+            }),
             "info",
           );
           return;
@@ -103,26 +108,28 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
 
         stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
         await stream.append(
-          "**💭 思考**\n\nprobe thinking\nsecond line\n\n**💻 bash**\n\n`echo probe`\n\n```text\nprobe\n```\n",
+          `${thinkingHeader()}${t("diagnostics.probeThinking")}\n\n**💻 bash**\n\n\`echo probe\`\n\n\`\`\`text\n${t("diagnostics.probeCode")}\n\`\`\`\n`,
         );
         await sleep(1200);
-        await stream.append("\n**Intermediate message**: first-turn reply.\n");
+        await stream.append(`\n${t("diagnostics.probeIntermediate")}\n`);
         await sleep(1200);
-        await stream.append("\n**📖 read**\n\n`src/index.ts`\n\n```text\nprobe file\n```\n");
+        await stream.append(
+          `\n**📖 read**\n\n\`src/index.ts\`\n\n\`\`\`text\n${t("diagnostics.probeReadFile")}\n\`\`\`\n`,
+        );
         await sleep(800);
-        await stream.append("\n**Final reply** (streamed append)");
-        let doneNote = "DONE succeeded";
+        await stream.append(`\n${t("diagnostics.probeFinal")}`);
+        let doneNote = t("diagnostics.doneSucceeded");
         try {
           await stream.done();
         } catch (doneErr) {
-          doneNote = `DONE rejected: ${(doneErr as Error).message}`;
+          doneNote = t("diagnostics.doneRejected", { message: (doneErr as Error).message });
         }
         stream.dispose();
         stream = undefined;
-        ctx.ui.notify(`Stream timeline test: frames sent, ${doneNote}. Check the QQ activity timeline.`, "info");
+        ctx.ui.notify(t("diagnostics.streamResult", { done: doneNote }), "info");
       } catch (err) {
         stream?.dispose();
-        ctx.ui.notify(`Stream timeline test failed: ${(err as Error).message}`, "error");
+        ctx.ui.notify(t("diagnostics.streamFailed", { message: (err as Error).message }), "error");
       }
     },
   });

@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { configureI18n, DEFAULT_LANGUAGE } from "../../src/infra/i18n";
 import {
   configureLogger,
   dateStamp,
@@ -17,6 +18,7 @@ import {
 
 afterEach(async () => {
   configureLogger("silent");
+  configureI18n(DEFAULT_LANGUAGE);
   await flushLogs();
 });
 
@@ -95,6 +97,30 @@ describe("file output", () => {
       log.error("test", "hidden");
       await flushLogs();
       expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("localizes known log messages and writes msgKey", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-i18n-"));
+    try {
+      configureLogger("debug", dir);
+      configureI18n("zh-cn");
+      log.info("session", "starting bot", { appId: "a" });
+      await flushLogs();
+      let lines = (await readFile(getLogFilePath(), "utf8")).trim().split("\n");
+      let record = JSON.parse(lines[0]!) as Record<string, unknown>;
+      expect(record.msgKey).toBe("log.sessionStartingBot");
+      expect(record.msg).toBe("正在启动机器人");
+
+      configureI18n("en-us");
+      log.info("session", "starting bot", { appId: "a" });
+      await flushLogs();
+      lines = (await readFile(getLogFilePath(), "utf8")).trim().split("\n");
+      record = JSON.parse(lines[1]!) as Record<string, unknown>;
+      expect(record.msgKey).toBe("log.sessionStartingBot");
+      expect(record.msg).toBe("starting bot");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

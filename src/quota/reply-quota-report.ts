@@ -1,3 +1,4 @@
+import { t } from "../infra/i18n";
 import type { BudgetSnapshot } from "./reply-quota";
 
 interface BudgetTarget {
@@ -18,14 +19,41 @@ export function formatBudgetStatus(
   const ageSec = last ? Math.max(0, Math.floor((now - last.arrivedAt) / 1000)) : null;
   const estimated = snapshot.hasTarget ? Math.max(0, snapshot.remaining - snapshot.streamBubbles) : null;
 
+  const lastLine = last
+    ? t("diagnostics.budget.lastInbound", {
+        openid: mask(last.openid),
+        msgId: mask(last.msgId),
+        age: ageSec ?? 0,
+      })
+    : t("diagnostics.budget.lastInboundNone");
+
+  const remainingLine = snapshot.hasTarget
+    ? t("diagnostics.budget.passiveRemaining", { remaining: snapshot.remaining })
+    : t("diagnostics.budget.passiveRemainingNone");
+
+  const estimatedLine =
+    estimated === null
+      ? t("diagnostics.budget.estimatedNone")
+      : t("diagnostics.budget.estimated", { remaining: estimated });
+
+  const windowLine = snapshot.hasTarget
+    ? t("diagnostics.budget.window", {
+        window: snapshot.fresh ? t("diagnostics.budget.valid") : t("diagnostics.budget.expired"),
+      })
+    : t("diagnostics.budget.windowNone");
+
   return [
-    "pi-qq passive reply budget",
-    `Limit: ${snapshot.limit}/msg (${snapshot.ttlHours}h)`,
-    `Last inbound: ${last ? `${mask(last.openid)} / ${mask(last.msgId)}, ${ageSec}s ago` : "none"}`,
-    `Passive remaining: ${snapshot.hasTarget ? snapshot.remaining : "—"}`,
-    `Stream bubbles: ${snapshot.streamBubbles} (current msgId)`,
-    `Estimated remaining: ${estimated ?? "—"} (diagnostic only)`,
-    `msgId window: ${snapshot.hasTarget ? (snapshot.fresh ? "valid" : "expired") : "—"}`,
-    `Recorded: passive ${snapshot.totalReplies} / stream ${snapshot.streamBubblesTotal} / ${snapshot.trackedMessages} msgId(s)`,
+    t("diagnostics.budget.title"),
+    t("diagnostics.budget.limit", { limit: snapshot.limit, hours: snapshot.ttlHours }),
+    lastLine,
+    remainingLine,
+    t("diagnostics.budget.streamBubbles", { count: snapshot.streamBubbles }),
+    estimatedLine,
+    windowLine,
+    t("diagnostics.budget.recorded", {
+      passive: snapshot.totalReplies,
+      stream: snapshot.streamBubblesTotal,
+      tracked: snapshot.trackedMessages,
+    }),
   ];
 }

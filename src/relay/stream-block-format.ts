@@ -1,4 +1,8 @@
-export const THINKING_HEADER = "**💭 思考**\n\n";
+import { t } from "../infra/i18n";
+
+export function thinkingHeader(): string {
+  return `**💭 ${t("stream.thinking")}**\n\n`;
+}
 const ARG_MAX_CHARS = 200;
 const RESULT_MAX_CHARS = 600;
 const RESULT_MAX_LINES = 8;
@@ -109,7 +113,7 @@ function resultText(result: unknown): string {
 export function formatToolResult(result: unknown, isError: boolean): string {
   let text = resultText(result);
   text = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
-  if (!text) text = "(no output)";
+  if (!text) text = t("stream.noOutput");
   text = truncateText(text, RESULT_MAX_CHARS, RESULT_MAX_LINES);
   if (isError) text = `❌ ${text}`;
   const fence = backtickFence(text, 3);

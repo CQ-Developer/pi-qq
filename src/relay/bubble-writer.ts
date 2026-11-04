@@ -2,7 +2,8 @@ import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { AppendStream, type AppendStreamCheckpoint } from "./stream-session";
 import type { ReplyBudget } from "../quota/reply-quota";
 import { log } from "../infra/file-logger";
-import { THINKING_HEADER, formatToolLine, formatToolResult } from "./stream-block-format";
+import { formatToolLine, formatToolResult, thinkingHeader } from "./stream-block-format";
+import { t } from "../infra/i18n";
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
 
@@ -236,7 +237,7 @@ export class BubbleWriter {
       const stream = this.ensureStream();
       if (!stream) return;
       this.pushedAny = true;
-      const outgoing = thinking && (!this.cur || this.bubbleChars === 0) ? `${THINKING_HEADER}${text}` : text;
+      const outgoing = thinking && (!this.cur || this.bubbleChars === 0) ? `${thinkingHeader()}${text}` : text;
       try {
         await stream.append(outgoing);
         this.bubbleChars += outgoing.length;
@@ -364,6 +365,6 @@ export class BubbleWriter {
     this.cur?.dispose();
     this.cur = null;
     log.warn("stream", "stream unavailable", { msgId: this.logMsgId(), reason });
-    this.deps.onWarn(`Stream unavailable; falling back to text (${reason}).`);
+    this.deps.onWarn(t("stream.unavailable", { reason }));
   }
 }

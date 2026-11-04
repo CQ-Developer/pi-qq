@@ -1,3 +1,5 @@
+import { t } from "../infra/i18n";
+
 export interface AttachmentFailure {
   filename: string;
   reason: string;
@@ -6,7 +8,7 @@ export interface AttachmentFailure {
 export function formatAttachmentFailures(failures: readonly AttachmentFailure[], successCount: number): string {
   const title =
     successCount > 0
-      ? `⚠️ ${failures.length} attachment(s) failed (${successCount} succeeded):`
-      : "⚠️ Attachment failed:";
+      ? t("attachments.failedMany", { failed: failures.length, success: successCount })
+      : t("attachments.failedNone");
   return [title, ...failures.map((failure) => `• ${failure.filename}: ${failure.reason}`)].join("\n");
 }

@@ -3,6 +3,7 @@ import { generate } from "qrcode-terminal";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Credentials } from "../infra/settings";
 import { log } from "../infra/file-logger";
+import { t } from "../infra/i18n";
 
 export interface QrLoginResult extends Credentials {
   userOpenid?: string;
@@ -12,7 +13,7 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
   const ac = new AbortController();
   log.info("login", "QR login started");
 
-  const qr = { lines: [] as string[], hint: "Fetching QR code…" };
+  const qr = { lines: [] as string[], hint: t("login.fetchingQr") };
   let requestRender: (() => void) | undefined;
   let closeOverlay: (() => void) | undefined;
 
@@ -46,22 +47,22 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
             causeCode: cause && typeof cause === "object" ? (cause as NodeJS.ErrnoException).code : undefined,
             causeMessage: cause instanceof Error ? cause.message : undefined,
           });
-          ctx.ui.notify("Error: QR login failed", "error");
+          ctx.ui.notify(t("login.failed"), "error");
           finish();
           closeOverlay?.();
         },
         onQrDisplayed: (url) => {
           log.debug("login", "QR code displayed");
-          qr.hint = "Scan with mobile QQ";
+          qr.hint = t("login.scan");
           generate(url, { small: true }, (ascii) => {
             qr.lines = ascii.split("\n").filter((line) => line.trim().length > 0);
           });
           requestRender?.();
-          if (ctx.mode !== "tui") ctx.ui.notify(`pi-qq QR URL: ${url}`, "info");
+          if (ctx.mode !== "tui") ctx.ui.notify(t("login.qrUrl", { url }), "info");
         },
         onQrExpired: () => {
           log.warn("login", "QR code expired; refreshing");
-          qr.hint = "QR code expired; refreshing…";
+          qr.hint = t("login.expired");
           requestRender?.();
         },
       },
@@ -69,7 +70,7 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
     );
 
     if (ctx.mode !== "tui") {
-      ctx.ui.notify("pi-qq: waiting for mobile QQ scan…", "info");
+      ctx.ui.notify(t("login.waiting"), "info");
       return;
     }
 
@@ -79,8 +80,8 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
         requestRender = () => tui.requestRender();
         return {
           render(width: number): string[] {
-            const lines = qr.lines.length > 0 ? qr.lines : ["(fetching QR code…)"];
-            return [...lines, "", qr.hint, theme.fg("dim", "Esc to cancel")].map((line) =>
+            const lines = qr.lines.length > 0 ? qr.lines : [t("login.fetchingQrShort")];
+            return [...lines, "", qr.hint, theme.fg("dim", t("login.cancel"))].map((line) =>
               line.length > width ? line.slice(0, width) : line,
             );
           },

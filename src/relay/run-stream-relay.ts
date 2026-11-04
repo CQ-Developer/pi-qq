@@ -143,7 +143,7 @@ export class RunFeedback {
       writer,
     };
     this.run = run;
-    log.debug("run", "started", { msgId: run.msgId?.slice(0, 8) ?? "?" });
+    log.debug("run", "run started", { msgId: run.msgId?.slice(0, 8) ?? "?" });
 
     const keepTyping = () => {
       void bot.sendTyping({ scope: "c2c", targetId: run.openid }, 60).catch(() => {});
@@ -245,7 +245,7 @@ export class RunFeedback {
     if (run.currentText.trim()) this.lastCompletedText = run.currentText;
     if (!run.hadError && run.writer.hasPushed) this.recovery = null;
     this.run = null;
-    log.debug("run", "ended", {
+    log.debug("run", "run ended", {
       msgId: run.msgId?.slice(0, 8) ?? "?",
       elapsedMs: Date.now() - run.startedAt,
     });

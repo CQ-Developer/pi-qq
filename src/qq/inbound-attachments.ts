@@ -2,6 +2,7 @@ import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import type { AttachmentFailure } from "../attachments/attachment-failure";
 import { saveInboundFiles, type SavedFile } from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
+import { t } from "../infra/i18n";
 import { isVoiceAttachment, resolveVoiceTranscript } from "../attachments/voice-transcript";
 
 export interface ResolveInboundOptions {
@@ -45,7 +46,7 @@ export async function resolveInboundContent(
         log.warn("inbound", "voice ASR returned no text", { messageId: msg.messageId });
         return {
           status: "rejected",
-          reply: "Could not transcribe this voice message; please resend or type it.",
+          reply: t("inbound.voiceFailed"),
         };
       }
       log.warn("inbound", "voice ASR returned no text; using text content", { messageId: msg.messageId });

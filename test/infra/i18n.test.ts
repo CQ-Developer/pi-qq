@@ -1,0 +1,48 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { configureI18n, DEFAULT_LANGUAGE, getLanguage, isLanguage, localizeLogMessage, t } from "../../src/infra/i18n";
+
+afterEach(() => configureI18n(DEFAULT_LANGUAGE));
+
+describe("i18n", () => {
+  it("defaults to zh-cn", () => {
+    configureI18n(DEFAULT_LANGUAGE);
+    expect(getLanguage()).toBe("zh-cn");
+    expect(t("status.title")).toBe("pi-qq 状态");
+    expect(t("commands.help.stop")).toContain("中止");
+  });
+
+  it("switches to en-us", () => {
+    configureI18n("en-us");
+    expect(getLanguage()).toBe("en-us");
+    expect(t("status.title")).toBe("pi-qq status");
+    expect(t("commands.help.stop")).toContain("abort");
+  });
+
+  it("interpolates parameters", () => {
+    configureI18n("en-us");
+    expect(t("attachments.tooLarge", { kind: "file", size: "2MB", limit: "1MB" })).toBe("file too large (2MB > 1MB)");
+    configureI18n("zh-cn");
+    expect(t("attachments.tooLarge", { kind: "文件", size: "2MB", limit: "1MB" })).toBe("文件过大（2MB > 1MB）");
+  });
+
+  it("validates language values", () => {
+    expect(isLanguage("zh-cn")).toBe(true);
+    expect(isLanguage("en-us")).toBe(true);
+    expect(isLanguage("fr-fr")).toBe(false);
+  });
+
+  it("localizes known log messages and leaves SDK messages raw", () => {
+    configureI18n("zh-cn");
+    expect(localizeLogMessage("starting bot")).toEqual({
+      msg: "正在启动机器人",
+      msgKey: "log.sessionStartingBot",
+    });
+    expect(localizeLogMessage("unknown SDK message")).toEqual({ msg: "unknown SDK message" });
+
+    configureI18n("en-us");
+    expect(localizeLogMessage("starting bot")).toEqual({
+      msg: "starting bot",
+      msgKey: "log.sessionStartingBot",
+    });
+  });
+});

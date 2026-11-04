@@ -120,15 +120,17 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 ```json
 {
   "thinkingRelay": true,
+  "language": "zh-cn",
   "logLevel": "silent"
 }
 ```
 
 | Key             | Default    | Description                                                  |
 | --------------- | ---------- | ------------------------------------------------------------ |
-| `thinkingRelay` | `true`     | Relay thinking as plain text with a `💭 思考` header         |
+| `thinkingRelay` | `true`     | Relay thinking as plain text with a localized `💭` header    |
 | `deliverAs`     | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
 | `fileMaxSize`   | `52428800` | QQ attachment download limit in bytes (50MB)                 |
+| `language`      | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |
 | `logLevel`      | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
 
 Settings are read when a pi session starts; restart pi after editing the file. Unknown keys are ignored, and invalid values fall back to defaults with a warning.

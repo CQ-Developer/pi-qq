@@ -9,6 +9,7 @@ import {
 import type { QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import type { Credentials } from "../infra/settings";
 import { log, sdkLogger } from "../infra/file-logger";
+import { t } from "../infra/i18n";
 
 export type BotState = "stopped" | "starting" | "connected" | "reconnecting" | "blocked";
 
@@ -91,15 +92,11 @@ export function startBot(opts: StartBotOptions): RunningBot {
     const code = (err as { code?: string }).code;
     if (code === GatewayErrorCode.FATAL_CLOSE) {
       const closeCode = (err as { closeCode?: number }).closeCode;
-      report(
-        "blocked",
-        `Connection closed by the server (${closeCode ?? "unknown"}, 4914=offline/sandbox, 4915=banned). ` +
-          `Check the bot status on the QQ Open Platform, or run /qq-login again.`,
-      );
+      report("blocked", t("bot.fatalClose", { code: closeCode ?? "unknown" }));
     } else if (code === GatewayErrorCode.RETRY_EXHAUSTED) {
-      report("stopped", `Reconnect budget exhausted: ${(err as Error).message}; run /qq-login to retry.`);
+      report("stopped", t("bot.retryExhausted", { message: (err as Error).message }));
     } else {
-      report("stopped", `Startup failed: ${(err as Error).message}; check credentials and network.`);
+      report("stopped", t("bot.startupFailed", { message: (err as Error).message }));
     }
   });
 

@@ -114,4 +114,15 @@ describe("extension lifecycle", () => {
     expect(feedback.dispose).toHaveBeenCalled();
     expect((globalThis as Record<string, unknown>)[LOGIN_STATE_KEY]).toBeUndefined();
   });
+
+  it("qq-status reports the localized agent state", async () => {
+    const { pi, commands } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+
+    await commands.get("qq-status")!("", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("pi-qq 状态"), "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("执行：已完成"), "info");
+  });
 });

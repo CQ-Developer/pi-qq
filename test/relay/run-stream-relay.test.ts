@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { configureI18n } from "../../src/infra/i18n";
 import { RunFeedback } from "../../src/relay/run-stream-relay";
-import { THINKING_HEADER } from "../../src/relay/stream-block-format";
+import { thinkingHeader } from "../../src/relay/stream-block-format";
 import { ReplyBudget } from "../../src/quota/reply-quota";
 
+beforeEach(() => configureI18n("zh-cn"));
+
 const DONE_STATE = 10;
+const THINKING_HEADER = thinkingHeader();
 
 function makeRunHarness(options: { thinkingRelay?: boolean; failNext?: number; alwaysFail?: boolean } = {}) {
   const calls: Array<Record<string, unknown>> = [];
@@ -411,7 +415,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("read", false, { content: [{ type: "text", text: "" }] });
     await rf.onAgentEnd();
 
-    expect(streamContent(calls)).toContain("```text\n(no output)\n```");
+    expect(streamContent(calls)).toContain("```text\n（无输出）\n```");
   });
 
   it("工具失败结果内联 ❌", async () => {
@@ -447,7 +451,7 @@ describe("RunFeedback 直推", () => {
 
     expect(calls).toEqual([]);
     expect(warns).toHaveLength(1);
-    expect(warns[0]).toContain("Stream unavailable");
+    expect(warns[0]).toContain("流式不可用");
   });
 
   it("无 msgId 时放弃流式，交给消息路径", async () => {

@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { normalizeLogLevel, type LogLevel } from "./file-logger";
+import { DEFAULT_LANGUAGE, getLanguage, isLanguage, translate, type Language } from "./i18n";
 
 export interface PiQQSettings {
   thinkingRelay?: boolean;
   deliverAs?: "steer" | "followUp";
   fileMaxSize?: number;
   logLevel?: LogLevel;
+  language?: Language;
   debug?: boolean;
 }
 
@@ -43,36 +45,47 @@ export function parseConfig(raw: unknown): ReadConfigResult {
   if (!isRecord(raw)) {
     return {
       config: {},
-      error: `Invalid config file (${CONFIG_PATH}): expected a JSON object; using defaults.`,
+      error: translate(getLanguage(), "settings.invalidRoot", { path: CONFIG_PATH }),
     };
   }
 
+  const language = isLanguage(raw.language) ? raw.language : getLanguage();
   const config: PiQQSettings = {};
   const errors: string[] = [];
 
+  if (raw.language !== undefined) {
+    if (isLanguage(raw.language)) config.language = raw.language;
+    else errors.push(translate(language, "settings.language"));
+  }
   if (raw.thinkingRelay !== undefined) {
     if (typeof raw.thinkingRelay === "boolean") config.thinkingRelay = raw.thinkingRelay;
-    else errors.push("thinkingRelay must be a boolean");
+    else errors.push(translate(language, "settings.thinkingRelay"));
   }
   if (raw.deliverAs !== undefined) {
     if (raw.deliverAs === "steer" || raw.deliverAs === "followUp") config.deliverAs = raw.deliverAs;
-    else errors.push('deliverAs must be "steer" or "followUp"');
+    else errors.push(translate(language, "settings.deliverAs"));
   }
   if (raw.fileMaxSize !== undefined) {
     if (isPositiveSize(raw.fileMaxSize)) config.fileMaxSize = raw.fileMaxSize;
-    else errors.push("fileMaxSize must be a positive finite number");
+    else errors.push(translate(language, "settings.fileMaxSize"));
   }
   if (raw.logLevel !== undefined) {
     if (isLogLevel(raw.logLevel)) config.logLevel = raw.logLevel;
-    else errors.push('logLevel must be "silent", "error", "warn", "info", or "debug"');
+    else errors.push(translate(language, "settings.logLevel"));
   }
   if (raw.debug !== undefined) {
     if (typeof raw.debug === "boolean") config.debug = raw.debug;
-    else errors.push("debug must be a boolean");
+    else errors.push(translate(language, "settings.debug"));
   }
 
   return errors.length > 0
-    ? { config, error: `Invalid config file (${CONFIG_PATH}): ${errors.join("; ")}; invalid values were ignored.` }
+    ? {
+        config,
+        error: translate(language, "settings.invalidFields", {
+          path: CONFIG_PATH,
+          errors: errors.join("; "),
+        }),
+      }
     : { config };
 }
 
@@ -86,7 +99,13 @@ export function readConfig(): ReadConfigResult {
   try {
     return parseConfig(JSON.parse(raw));
   } catch (e) {
-    return { config: {}, error: `Failed to parse config file (${CONFIG_PATH}): ${(e as Error).message}` };
+    return {
+      config: {},
+      error: translate(getLanguage(), "settings.parseFailed", {
+        path: CONFIG_PATH,
+        message: (e as Error).message,
+      }),
+    };
   }
 }
 
@@ -99,5 +118,6 @@ export function getSettings(config: PiQQSettings): ResolvedSettings {
     deliverAs: config.deliverAs ?? "steer",
     fileMaxSize: config.fileMaxSize ?? 50 * 1024 * 1024,
     logLevel,
+    language: config.language ?? DEFAULT_LANGUAGE,
   };
 }

@@ -1,8 +1,8 @@
 # `/status` 增强设计
 
-> 状态：设计文档，尚未实现  
-> 日期：2026-11-04  
-> 涉及版本：pi-qq 1.3.3  
+> 状态：设计文档；已按执行计划实现
+> 日期：2026-11-04
+> 涉及版本：pi-qq 1.3.3
 > 范围：QQ `/status` 与终端 `/qq-status`
 
 ## 1. 需求
@@ -300,8 +300,9 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 - 新增稳定的 `msgKey` 字段，例如 `log.session.starting_bot`；
 - `msg` 按当前 `language` 输出中文/英文；
 - `scope`、`level`、时间、字段名保持英文/固定；
-- 日志 API 使用 key，例如 `log.info("session", "log.session.starting_bot", data)`；
-- `file-logger` 在写入时解析 key，同时写入 `msgKey` 和本地化后的 `msg`；
+- pi-qq 自有日志消息通过统一消息表解析；现有调用继续传英文消息作为查找键；
+- `file-logger` 在写入时解析消息表，同时写入 `msgKey` 和本地化后的 `msg`；
+- 未命中的消息（SDK/动态内容）保持原文，不写 `msgKey`；
 - `sdkLogger` 收到的 SDK 原文保持原样，不强行翻译；
 - 语言切换只影响后续日志，已经写入的日志保持原语言；
 - 默认语言是 `zh-cn`，因此未配置时日志消息也是中文；排障脚本应优先匹配 `scope` / `msgKey`，不要依赖 `msg` 文本。
@@ -375,26 +376,46 @@ npm test
 npm run format:check
 ```
 
+### 执行进度（2026-11-04）
+
+- [x] i18n 基础设施、`language` 配置，默认 `zh-cn`
+- [x] 用户可见文字迁移
+- [x] pi-qq 自有日志消息本地化，新增 `msgKey`
+- [x] 状态报告、执行状态、图标
+- [x] 电量探测；无电池/失败时隐藏 Battery 行
+- [x] QQ `/status` 与终端 `/qq-status` 共用格式化函数
+- [x] 中英文、状态、电量、日志测试
+- [x] README / CHANGELOG 更新
+- [ ] 在手机 QQ 和终端 TUI 上做一次人工验收
+
+已知例外：
+
+- 第三方 SDK 的原始日志和错误文本保持原文，不做翻译；
+- 动态流式调试消息会按当前语言输出 `msg`，但没有稳定的 `msgKey`；
+- 诊断探测中的底层文件名、命令名保留英文/原样。
+
 ## 6. 变更文件
 
-| 文件                                    | 变更                                  |
-| --------------------------------------- | ------------------------------------- |
-| `src/infra/i18n.ts`                     | 新增语言类型、`t()`、语言切换         |
-| `src/infra/i18n/en-us.ts`               | 英文文案表                            |
-| `src/infra/i18n/zh-cn.ts`               | 中文文案表                            |
-| `src/infra/settings.ts`                 | 新增 `language` 解析与校验            |
-| `src/infra/power-status.ts`             | 新增电量探测和缓存                    |
-| `src/qq/status-report.ts`               | 新增纯格式化函数                      |
-| `index.ts`                              | 收集状态数据、初始化 i18n、调用格式化 |
-| `src/qq/inbound-command.ts`             | 命令回复走 i18n                       |
-| `src/qq/qq-message-handler.ts`          | 入站错误/提示走 i18n                  |
-| `src/attachments/attachment-failure.ts` | 附件失败文案走 i18n                   |
-| `src/relay/stream-block-format.ts`      | 思考/工具占位符走 i18n                |
-| `test/qq/status-report.test.ts`         | 新增状态格式测试                      |
-| `test/infra/power-status.test.ts`       | 新增电量解析测试                      |
-| `test/infra/i18n.test.ts`               | 新增语言/回退测试                     |
-| `README.md` / `README-zh.md`            | 状态与语言配置说明                    |
-| `CHANGELOG.md`                          | `[Unreleased]` 增加变更               |
+| 文件                                     | 变更                                    |
+| ---------------------------------------- | --------------------------------------- |
+| `src/infra/i18n.ts`                      | 语言类型、`t()`、中英文案表、日志消息表 |
+| `src/infra/settings.ts`                  | 新增 `language` 解析与校验              |
+| `src/infra/file-logger.ts`               | 日志 `msgKey`、本地化 `msg`             |
+| `src/infra/power-status.ts`              | 新增电量探测和缓存                      |
+| `src/qq/status-report.ts`                | 新增纯格式化函数                        |
+| `index.ts`                               | 收集状态数据、初始化 i18n、调用格式化   |
+| `src/qq/inbound-command.ts`              | 命令回复走 i18n                         |
+| `src/qq/qq-message-handler.ts`           | 入站错误/提示走 i18n                    |
+| `src/qq/qq-diagnostics.ts`               | 诊断命令输出走 i18n                     |
+| `src/attachments/attachment-failure.ts`  | 附件失败文案走 i18n                     |
+| `src/attachments/attachment-download.ts` | 下载错误文案走 i18n                     |
+| `src/relay/stream-block-format.ts`       | 思考/工具占位符走 i18n                  |
+| `src/relay/stream-session.ts`            | 流式调试日志走 i18n                     |
+| `test/qq/status-report.test.ts`          | 新增状态格式测试                        |
+| `test/infra/power-status.test.ts`        | 新增电量解析测试                        |
+| `test/infra/i18n.test.ts`                | 新增语言/回退测试                       |
+| `README.md` / `README-zh.md`             | 状态与语言配置说明                      |
+| `CHANGELOG.md`                           | `[Unreleased]` 增加变更                 |
 
 ## 7. 已确认
 

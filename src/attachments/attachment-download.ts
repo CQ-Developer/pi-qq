@@ -1,4 +1,5 @@
 import { formatBytes } from "../infra/display-format";
+import { t } from "../infra/i18n";
 
 export interface InboundAttachmentLike {
   content_type: string;
@@ -19,7 +20,9 @@ async function readBodyLimited(response: Response, limit: number, kind: string):
   if (!response.body) {
     const body = Buffer.from(await response.arrayBuffer());
     if (body.byteLength > limit) {
-      throw new Error(`${kind} too large (${formatBytes(body.byteLength)} > ${formatBytes(limit)})`);
+      throw new Error(
+        t("attachments.tooLarge", { kind, size: formatBytes(body.byteLength), limit: formatBytes(limit) }),
+      );
     }
     return body;
   }
@@ -35,14 +38,14 @@ async function readBodyLimited(response: Response, limit: number, kind: string):
       total += value.byteLength;
       if (total > limit) {
         await reader.cancel();
-        throw new Error(`${kind} too large (>${formatBytes(limit)})`);
+        throw new Error(t("attachments.tooLargeShort", { kind, limit: formatBytes(limit) }));
       }
       chunks.push(value);
     }
   } finally {
     reader.releaseLock();
   }
-  if (total === 0) throw new Error(`empty ${kind} content`);
+  if (total === 0) throw new Error(t("attachments.empty", { kind }));
   return Buffer.concat(chunks, total);
 }
 
@@ -52,10 +55,10 @@ export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
   try {
     parsed = new URL(opts.url);
   } catch {
-    throw new Error(`invalid ${opts.kind} URL`);
+    throw new Error(t("attachments.invalidUrl", { kind: opts.kind }));
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`unsupported ${opts.kind} URL protocol`);
+    throw new Error(t("attachments.unsupportedProtocol", { kind: opts.kind }));
   }
 
   const controller = new AbortController();
@@ -64,19 +67,21 @@ export async function downloadLimited(opts: DownloadOptions): Promise<Buffer> {
   try {
     const response = await fetchImpl(parsed.toString(), { signal: controller.signal, redirect: "follow" });
     if (!response.ok) {
-      throw new Error(`download failed (HTTP ${response.status})`);
+      throw new Error(t("attachments.httpFailed", { status: response.status }));
     }
 
     const lengthHeader = response.headers.get("content-length");
     const contentLength = lengthHeader ? Number(lengthHeader) : NaN;
     if (Number.isFinite(contentLength) && contentLength > limit) {
       await response.body?.cancel();
-      throw new Error(`${opts.kind} too large (${formatBytes(contentLength)} > ${formatBytes(limit)})`);
+      throw new Error(
+        t("attachments.tooLarge", { kind: opts.kind, size: formatBytes(contentLength), limit: formatBytes(limit) }),
+      );
     }
     return await readBodyLimited(response, limit, opts.kind);
   } catch (err) {
     if (controller.signal.aborted) {
-      throw new Error(`download timed out after ${opts.timeoutMs / 1000}s`, { cause: err });
+      throw new Error(t("attachments.timeout", { seconds: opts.timeoutMs / 1000 }), { cause: err });
     }
     throw err;
   } finally {

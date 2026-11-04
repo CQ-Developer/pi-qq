@@ -120,15 +120,17 @@ QQ 侧命令：
 ```json
 {
   "thinkingRelay": true,
+  "language": "zh-cn",
   "logLevel": "silent"
 }
 ```
 
 | 配置项          | 默认值     | 说明                                                   |
 | --------------- | ---------- | ------------------------------------------------------ |
-| `thinkingRelay` | `true`     | 以 `💭 思考` 标题的纯文本回传思考；`false` 时隐藏      |
+| `thinkingRelay` | `true`     | 以本地化的 `💭` 标题纯文本回传思考；`false` 时隐藏     |
 | `deliverAs`     | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
 | `fileMaxSize`   | `52428800` | QQ 附件下载上限（字节，50MB）                          |
+| `language`      | `"zh-cn"`  | UI 和日志语言：`zh-cn` 或 `en-us`                      |
 | `logLevel`      | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
 
 配置在 pi 会话启动时读取；修改文件后请重启 pi。未知配置项会被忽略，无效值会回退到默认值并给出提示。

@@ -5,6 +5,7 @@ import { downloadLimited, type InboundAttachmentLike } from "./attachment-downlo
 import type { AttachmentFailure } from "./attachment-failure";
 import { formatBytes } from "../infra/display-format";
 import { log } from "../infra/file-logger";
+import { t } from "../infra/i18n";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const UPLOAD_INDEX_FILENAME = ".index.json";
@@ -179,7 +180,7 @@ async function saveOrReuse(
     return { file: { path: candidatePath }, changed: true };
   }
 
-  throw new Error("Could not allocate a unique filename");
+  throw new Error(t("attachments.noUniqueName"));
 }
 
 export async function saveInboundFiles(
@@ -207,7 +208,13 @@ export async function saveInboundFiles(
     const fallback = `file-${position + 1}`;
     const filename = sanitizeFilename(attachment.filename, fallback);
     if (typeof attachment.size === "number" && attachment.size > limit) {
-      failures.push({ filename, reason: `file too large (${formatBytes(attachment.size)} > ${formatBytes(limit)})` });
+      failures.push({
+        filename,
+        reason: t("attachments.fileTooLarge", {
+          size: formatBytes(attachment.size),
+          limit: formatBytes(limit),
+        }),
+      });
       continue;
     }
 
@@ -216,14 +223,14 @@ export async function saveInboundFiles(
         url: attachment.url,
         maxSize: limit,
         timeoutMs: DOWNLOAD_TIMEOUT_MS,
-        kind: "file",
+        kind: t("attachments.kindFile"),
         fetchImpl,
       });
       const result = await saveOrReuse(uploadDir, filename, body, index);
       indexChanged ||= result.changed;
       addFile(result.file);
     } catch (err) {
-      failures.push({ filename, reason: err instanceof Error ? err.message : "Download failed" });
+      failures.push({ filename, reason: err instanceof Error ? err.message : t("attachments.downloadFailed") });
     }
   }
 

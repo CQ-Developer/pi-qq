@@ -1,7 +1,8 @@
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { configureI18n } from "../../src/infra/i18n";
 import {
   formatAttachmentPrompt,
   pruneUploadIndex,
@@ -30,6 +31,8 @@ function fetchByUrl(bodies: Record<string, string | Uint8Array>): typeof fetch {
 async function readIndex(uploadDir: string): Promise<Record<string, string>> {
   return JSON.parse(await readFile(uploadIndexPath(uploadDir), "utf8")) as Record<string, string>;
 }
+
+beforeEach(() => configureI18n("en-us"));
 
 describe("sanitizeFilename", () => {
   it("去掉路径，只保留 basename", () => {

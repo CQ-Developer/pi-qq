@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { configureI18n } from "../../src/infra/i18n";
 import type { BudgetSnapshot } from "../../src/quota/reply-quota";
 import { formatBudgetStatus } from "../../src/quota/reply-quota-report";
+
+beforeEach(() => configureI18n("en-us"));
 
 const t0 = 1_700_000_000_000;
 

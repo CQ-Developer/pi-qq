@@ -2,6 +2,7 @@ import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { ReplyBudget } from "../quota/reply-quota";
 import { AppendStream } from "../relay/stream-session";
 import { log } from "../infra/file-logger";
+import { t } from "../infra/i18n";
 
 export const TEXT_CHUNK_LIMIT = 4500;
 
@@ -131,15 +132,15 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
         try {
           log.warn("outbound", "passive send failed; retrying proactively", { targetId: ch.boundOpenid });
           await bot.sendText({ scope: "c2c", targetId: ch.boundOpenid }, chunk);
-          ch.onWarn?.("Passive reply failed; falling back to proactive.");
+          ch.onWarn?.(t("outbound.passiveFailed"));
           continue;
         } catch (retryErr) {
           log.error("outbound", "proactive retry failed", { targetId: ch.boundOpenid, err: retryErr });
-          ch.onWarn?.(`Proactive send failed: ${(retryErr as Error).message}`);
+          ch.onWarn?.(t("outbound.proactiveFailed", { message: (retryErr as Error).message }));
           continue;
         }
       }
-      ch.onWarn?.(`Send failed: ${(err as Error).message}`);
+      ch.onWarn?.(t("outbound.sendFailed", { message: (err as Error).message }));
     }
   }
 }

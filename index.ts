@@ -8,8 +8,10 @@ import { registerQQDiagnostics } from "./src/qq/qq-diagnostics";
 import { markdownToPlain, sendReply } from "./src/qq/reply-sender";
 import { ReplyBudget } from "./src/quota/reply-quota";
 import { RunFeedback } from "./src/relay/run-stream-relay";
-import { formatTokenCount } from "./src/infra/display-format";
 import { configureLogger, flushLogs, isLogEnabled, log, previewForLog } from "./src/infra/file-logger";
+import { configureI18n, t } from "./src/infra/i18n";
+import { getPowerStatus } from "./src/infra/power-status";
+import { formatStatusReport } from "./src/qq/status-report";
 import { pruneUploadIndex, sessionUploadDir } from "./src/attachments/file-attachments";
 
 interface LoginState {
@@ -43,10 +45,9 @@ const runFeedback = new RunFeedback({
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
 });
 
-const fmtTokens = (n: number | null): string => (n === null ? "unknown" : formatTokenCount(n));
-
 export default function (pi: ExtensionAPI) {
-  const maskAppId = (appId: string) => `${appId.slice(0, 4)}****`;
+  activeSettings = getSettings(readConfig().config);
+  configureI18n(activeSettings.language);
 
   const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getDeliverAs = () => activeSettings.deliverAs;
@@ -56,6 +57,7 @@ export default function (pi: ExtensionAPI) {
   const applyConfig = (ctx: ExtensionContext) => {
     const { config, error } = readConfig();
     activeSettings = getSettings(config);
+    configureI18n(activeSettings.language);
     if (error) ctx.ui.notify(`pi-qq ${error}`, "error");
     return { settings: activeSettings, error };
   };
@@ -63,18 +65,23 @@ export default function (pi: ExtensionAPI) {
   const getStatusLines = (ctx: ExtensionContext | undefined = sessionCtx): string[] => {
     const login = getLoginState();
     const usage = ctx?.getContextUsage();
-    const model = ctx?.model;
-    return [
-      "pi-qq status",
-      `Login: ${login ? `QR login (AppID ${maskAppId(login.credentials.appId)})` : "not logged in"}`,
-      `Connection: ${lastState}${stateDetail ? ` (${stateDetail})` : ""}`,
-      `Model: ${model?.name ?? "none"}`,
-      usage
-        ? `Context: ${fmtTokens(usage.tokens)}/${fmtTokens(usage.contextWindow)} (${usage.percent?.toFixed(1) ?? "?"}%)`
-        : "Context: unknown",
-      `Bound user: ${login?.allowedOpenid ?? "none"}`,
-      `Settings: ~/.pi/agent/pi-qq.json`,
-    ];
+    return formatStatusReport({
+      login: login ? { appId: login.credentials.appId, openid: login.allowedOpenid } : undefined,
+      connection: { state: lastState, detail: stateDetail },
+      agent: {
+        running: ctx ? !ctx.isIdle() : runFeedback.isQQRunActive(),
+        qq: runFeedback.isQQRunActive(),
+      },
+      model: ctx?.model ? { name: ctx.model.name } : undefined,
+      usage: usage
+        ? {
+            tokens: usage.tokens,
+            contextWindow: usage.contextWindow,
+            percent: usage.percent,
+          }
+        : undefined,
+      power: getPowerStatus(),
+    });
   };
 
   const stopIfRunning = () => {
@@ -124,8 +131,8 @@ export default function (pi: ExtensionAPI) {
       onStateChange: (state, detail) => {
         lastState = state;
         stateDetail = detail;
-        if (state === "connected") ctx.ui.notify("pi-qq connected", "info");
-        else if (state === "blocked") ctx.ui.notify(`pi-qq ${detail ?? "connection blocked"}`, "error");
+        if (state === "connected") ctx.ui.notify(t("notify.connected"), "info");
+        else if (state === "blocked") ctx.ui.notify(`pi-qq ${detail ?? t("notify.connectionBlocked")}`, "error");
         else if (state === "stopped" && detail) ctx.ui.notify(`pi-qq ${detail}`, "warning");
       },
     });
@@ -147,7 +154,7 @@ export default function (pi: ExtensionAPI) {
     if (login) {
       await startWithCredentials(ctx, login.credentials, login.allowedOpenid);
     } else if (ctx.hasUI) {
-      ctx.ui.notify("pi-qq: run /qq-login to scan a QR code.", "warning");
+      ctx.ui.notify(t("notify.loginRequired"), "warning");
     }
   });
 
@@ -228,7 +235,7 @@ export default function (pi: ExtensionAPI) {
 
     let text: string;
     if (isError) {
-      text = `⚠️ Model error: ${msg.errorMessage ?? "unknown error"}`;
+      text = t("errors.model", { message: msg.errorMessage ?? t("status.unknown") });
     } else {
       text = msg.content
         .filter((b) => b.type === "text")
@@ -253,7 +260,7 @@ export default function (pi: ExtensionAPI) {
     const bound = getLoginState()?.allowedOpenid;
     if (!bound) {
       log.warn("pi", "no bound user; reply skipped");
-      ctx.ui.notify("pi-qq: no bound QQ user; skipping reply.", "warning");
+      ctx.ui.notify(t("notify.noBoundUser"), "warning");
       return;
     }
 
@@ -266,7 +273,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("qq-login", {
-    description: "pi-qq: log in with a QR code and bind the scanning QQ user",
+    description: t("commands.descQqLogin"),
     handler: async (_args, ctx) => {
       applyConfig(ctx);
       stopIfRunning();
@@ -276,13 +283,13 @@ export default function (pi: ExtensionAPI) {
         result = await runQrLogin(ctx);
       } catch (err) {
         log.error("login", "QR login command failed", { err });
-        ctx.ui.notify("Error: QR login failed", "error");
+        ctx.ui.notify(t("login.failed"), "error");
         return;
       }
       if (!result) return;
       if (!result.userOpenid) {
         log.error("login", "QR login did not return a user openid");
-        ctx.ui.notify("Error: QR login failed", "error");
+        ctx.ui.notify(t("login.failed"), "error");
         return;
       }
 
@@ -292,36 +299,36 @@ export default function (pi: ExtensionAPI) {
         await startWithCredentials(ctx, credentials, result.userOpenid);
       } catch (err) {
         log.error("login", "starting bot after login failed", { err });
-        ctx.ui.notify("Error: QQ bot start failed", "error");
+        ctx.ui.notify(t("login.startFailed"), "error");
       }
     },
   });
 
   pi.registerCommand("qq-status", {
-    description: "pi-qq: show login, connection, and bound QQ user",
+    description: t("commands.descQqStatus"),
     handler: async (_args, ctx) => {
       ctx.ui.notify(getStatusLines(ctx).join("\n"), "info");
     },
   });
 
   pi.registerCommand("qq-logout", {
-    description: "pi-qq: log out and clear credentials",
+    description: t("commands.descQqLogout"),
     handler: async (_args, ctx) => {
       stopIfRunning();
       setLoginState(undefined);
-      ctx.ui.notify("pi-qq logged out.", "info");
+      ctx.ui.notify(t("notify.loggedOut"), "info");
     },
   });
 
   pi.registerCommand("qq-new", {
-    description: "pi-qq: reset the current session (used by QQ /new)",
+    description: t("commands.descQqNew"),
     handler: async (_args, ctx) => {
       if (!ctx.isIdle()) {
-        ctx.ui.notify("pi-qq: the agent is busy; run /stop before resetting the session.", "warning");
+        ctx.ui.notify(t("notify.busyReset"), "warning");
         return;
       }
       const { cancelled } = await ctx.newSession();
-      if (cancelled) ctx.ui.notify("pi-qq: session reset cancelled.", "warning");
+      if (cancelled) ctx.ui.notify(t("notify.resetCancelled"), "warning");
     },
   });
 

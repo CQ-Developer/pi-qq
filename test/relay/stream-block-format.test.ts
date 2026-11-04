@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { configureI18n } from "../../src/infra/i18n";
 import { formatToolLine, formatToolResult } from "../../src/relay/stream-block-format";
+
+beforeEach(() => configureI18n("zh-cn"));
 
 describe("工具格式化", () => {
   it("主参数按字段顺序提取", () => {
@@ -17,8 +20,8 @@ describe("工具格式化", () => {
   it("结果代码块、失败前缀与空结果", () => {
     expect(formatToolResult("12 passed", false)).toBe("```text\n12 passed\n```\n");
     expect(formatToolResult("boom", true)).toBe("```text\n❌ boom\n```\n");
-    expect(formatToolResult("", false)).toBe("```text\n(no output)\n```\n");
-    expect(formatToolResult("", true)).toBe("```text\n❌ (no output)\n```\n");
+    expect(formatToolResult("", false)).toBe("```text\n（无输出）\n```\n");
+    expect(formatToolResult("", true)).toBe("```text\n❌ （无输出）\n```\n");
   });
 
   it("工具结果对象提取 content 文本", () => {

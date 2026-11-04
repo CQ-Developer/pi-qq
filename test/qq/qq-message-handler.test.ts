@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { configureI18n } from "../../src/infra/i18n";
 import { createInboundHandler } from "../../src/qq/qq-message-handler";
 import { ReplyBudget } from "../../src/quota/reply-quota";
+
+beforeEach(() => configureI18n("en-us"));
 
 const UPLOAD_DIR = "/workspace/pi-qq-test/.pi/pi-qq/session-test/uploads";
 const savedAttachment = (name: string) => ({ path: `${UPLOAD_DIR}/${name}` });

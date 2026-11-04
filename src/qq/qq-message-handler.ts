@@ -9,6 +9,7 @@ import {
   type SavedFile,
 } from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
+import { t } from "../infra/i18n";
 import { handleInboundCommand, type InboundCommandDeps } from "./inbound-command";
 import { PendingAttachments, resolveInboundContent } from "./inbound-attachments";
 
@@ -107,7 +108,7 @@ export function createInboundHandler(deps: InboundDeps) {
     const attachments = msg.attachments ?? [];
     if (!contentText && attachments.length === 0) {
       log.warn("inbound", "unsupported message: no text and no attachments", { messageId: msg.messageId });
-      await reply("Unsupported message type.");
+      await reply(t("inbound.unsupported"));
       return;
     }
 
