@@ -7,11 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.3.2] - 2026-11-04
+## [1.3.3] - 2026-11-04
 
 ### Added
 
 - QQ `/last` command: push the last completed assistant message as a new stream bubble, or restart the current output while a run is active.
+
+## [1.3.2] - 2026-11-04
+
+### Added
+
 - GitHub Releases now attach the npm tarball and a `SHA256SUMS` file.
 
 ### Changed
@@ -56,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.2.3...v1.3.0
