@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MediaFileType, UploadDailyLimitExceededError, type QQBot } from "@tencent-connect/qqbot-nodejs";
+import { ApiError, MediaFileType, UploadDailyLimitExceededError, type QQBot } from "@tencent-connect/qqbot-nodejs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { configureI18n } from "../../src/infra/i18n";
 import { log } from "../../src/infra/file-logger";
@@ -329,6 +329,16 @@ describe("media tool execute", () => {
       /额度/,
     );
     expect(h.sendMediaMessage).not.toHaveBeenCalled();
+  });
+
+  it("maps api errors with biz code and message", async () => {
+    const h = makeHarness({ target: false });
+    await writeMedia("shot.png", "image-data");
+    h.sendMediaMessage.mockRejectedValueOnce(new ApiError("boom", 500, "/v2/users/x/messages", 12345, "bad request"));
+
+    await expect(
+      h.tool.execute("call-api", { path: "shot.png" }, undefined, undefined, { cwd: tempDir }),
+    ).rejects.toThrow(/12345.*bad request/);
   });
 
   it("does not upload when validation fails", async () => {

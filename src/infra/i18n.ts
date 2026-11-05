@@ -389,7 +389,7 @@ const zhCN: Record<TranslationKey, string> = {
   "mediaTool.kindImage": "图片",
   "mediaTool.kindVideo": "视频",
   "mediaTool.kindFile": "文件",
-  "mediaTool.sent": "已通过{mode}回复将{kind} {name}发送到 QQ。",
+  "mediaTool.sent": "已通过{mode}回复将{kind} {name} 发送到 QQ。",
 
   "settings.invalidRoot": "配置文件无效（{path}）：应为 JSON 对象；使用默认值。",
   "settings.invalidFields": "配置文件无效（{path}）：{errors}；无效值已忽略。",
