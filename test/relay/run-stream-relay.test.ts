@@ -378,7 +378,7 @@ describe("RunFeedback 直推", () => {
     rf.onToolEnd("read", false, "---\nname: playwright-cli\n---\n", "skill-1");
     await rf.onAgentEnd();
 
-    expect(bubbleContents(calls)).toEqual(["## 🧩 Skill\n\n`playwright-cli`\n"]);
+    expect(bubbleContents(calls)).toEqual(["## 🧩 技能\n\n`playwright-cli`\n"]);
     expect(streamContent(calls)).not.toContain("SKILL.md");
     expect(streamContent(calls)).not.toContain("📖 read");
   });
@@ -394,7 +394,7 @@ describe("RunFeedback 直推", () => {
 
     const bubbles = bubbleContents(calls);
     expect(bubbles).toHaveLength(2);
-    expect(bubbles[0]).toBe("## 🧩 Skill\n\n`playwright-cli`\n");
+    expect(bubbles[0]).toBe("## 🧩 技能\n\n`playwright-cli`\n");
     expect(bubbles[1]).toContain("## 💻 bash");
     expect(bubbles[1]).toContain("```bash");
     expect(bubbles[1]).toContain("next");

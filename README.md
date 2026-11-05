@@ -75,7 +75,7 @@ Debug logs include the raw `asr_refer_text` and attachment metadata when `logLev
 
 ### Reply format
 
-- **Thinking**: its own bubble, plain text, starting with `**💭 思考**`. Long thinking may continue in a new bubble with the header repeated.
+- **Thinking**: its own bubble, plain text, starting with `## 💭 思考`. Long thinking may continue in a new bubble with the header repeated.
 - **Tools**: one bubble per call: `## <icon> <name>`; `bash` commands use a `bash` code block, other arguments use inline code, and results use `text`, `markdown`, `python`, `json`, etc. depending on the tool and file type.
 - **Regular messages**: raw text with no header.
 - **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
@@ -127,7 +127,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 
 | Key             | Default    | Description                                                  |
 | --------------- | ---------- | ------------------------------------------------------------ |
-| `thinkingRelay` | `true`     | Relay thinking as plain text with a localized `💭` header    |
+| `thinkingRelay` | `true`     | Relay thinking as plain text with a localized `## 💭` header |
 | `deliverAs`     | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
 | `fileMaxSize`   | `52428800` | QQ attachment download limit in bytes (50MB)                 |
 | `language`      | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |

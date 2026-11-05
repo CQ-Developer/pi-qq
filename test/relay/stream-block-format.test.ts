@@ -6,9 +6,18 @@ import {
   formatToolLine,
   formatToolResult,
   resultLanguage,
+  thinkingHeader,
 } from "../../src/relay/stream-block-format";
 
 beforeEach(() => configureI18n("zh-cn"));
+
+describe("思考格式化", () => {
+  it("标题使用 ## 并跟随语言设置", () => {
+    expect(thinkingHeader()).toBe("## 💭 思考\n\n");
+    configureI18n("en-us");
+    expect(thinkingHeader()).toBe("## 💭 Thinking\n\n");
+  });
+});
 
 describe("工具格式化", () => {
   it("标题使用 ##，bash 命令使用 bash 代码块", () => {
@@ -108,7 +117,9 @@ describe("skill formatting", () => {
     expect(detectSkillRead("read", { path: "SKILL.md" })).toBeUndefined();
   });
 
-  it("formats a fixed English skill block", () => {
+  it("skill 块标题跟随语言设置", () => {
+    expect(formatSkillBlock("playwright-cli")).toBe("## 🧩 技能\n\n`playwright-cli`\n");
+    configureI18n("en-us");
     expect(formatSkillBlock("playwright-cli")).toBe("## 🧩 Skill\n\n`playwright-cli`\n");
   });
 });

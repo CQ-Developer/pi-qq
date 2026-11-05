@@ -138,7 +138,8 @@ const enUS = {
   "diagnostics.budget.expired": "expired",
   "diagnostics.budget.recorded": "Recorded: passive {passive} / stream {stream} / {tracked} msgId(s)",
 
-  "stream.thinking": "思考",
+  "stream.thinking": "Thinking",
+  "stream.skill": "Skill",
   "stream.noOutput": "(no output)",
   "stream.unavailable": "Stream unavailable; falling back to text ({reason}).",
   "outbound.passiveFailed": "Passive reply failed; falling back to proactive.",
@@ -353,6 +354,7 @@ const zhCN: Record<TranslationKey, string> = {
   "diagnostics.budget.recorded": "已记录：被动 {passive} / 流式 {stream} / {tracked} 个 msgId",
 
   "stream.thinking": "思考",
+  "stream.skill": "技能",
   "stream.noOutput": "（无输出）",
   "stream.unavailable": "流式不可用，回退为文本（{reason}）。",
   "outbound.passiveFailed": "被动回复失败，改用主动消息。",

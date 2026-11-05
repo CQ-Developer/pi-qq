@@ -1,7 +1,7 @@
 import { t } from "../infra/i18n";
 
 export function thinkingHeader(): string {
-  return `**💭 ${t("stream.thinking")}**\n\n`;
+  return `## 💭 ${t("stream.thinking")}\n\n`;
 }
 const ARG_MAX_CHARS = 200;
 const RESULT_MAX_CHARS = 600;
@@ -99,7 +99,7 @@ export function detectSkillRead(toolName: string, args: unknown): SkillRead | un
 }
 
 export function formatSkillBlock(name: string): string {
-  return `## 🧩 Skill\n\n${inlineCode(name)}\n`;
+  return `## 🧩 ${t("stream.skill")}\n\n${inlineCode(name)}\n`;
 }
 
 export function formatToolLine(name: string, args: unknown): string {
