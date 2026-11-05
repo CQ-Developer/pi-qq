@@ -196,6 +196,43 @@ if (msgId) deps.budget.commitPassive(msgId);
 | 大小       | 按 `getMaxUploadSize(fileType)` 校验    |
 | 文件名     | `basename`；`file` 类型可用 `name` 覆盖 |
 
+### 5.2 Debug 日志
+
+本次功能只规划以下关键点，统一 `scope: "media"`、`log.debug`，用 `toolCallId` 串联；默认 `silent`，开启 `logLevel: "debug"` 后写入 `.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。
+
+1. **激活/停用**：QQ 登录成功、登出/停止时记录 `active`、`hasTool`、`activeCount`。
+2. **工具入口**：`toolCallId`、`path`、`kind`、`captionLength`。
+3. **校验结果**：成功记录 `fileType`、`sizeBytes`、`displayName`；失败记录 `reason`。
+4. **上传结果**：开始/结束各一条；结束记录 `fileUuid`、`ttlSec`、`elapsedMs`。
+5. **预算选择**：`mode`（passive/proactive）、`msgId`、`remaining`。
+6. **发送结果**：`mode`、`messageId`、`elapsedMs`；被动失败记录 `err` 和主动重试。
+7. **最终错误**：`toolCallId`、`err`、阶段（`validate`/`upload`/`send`）。
+
+约定：不记录文件内容、base64、`file_info` 原文、caption 正文；只记录 ID、大小、路径和长度。
+
+### 5.3 Debug 日志 bugfix（追加）
+
+**问题**：debug 日志只有 QQ 登录后、且 QQ 触发的 run 才比较完整。调查确认不是 `configureLogger()` 的问题，而是日志调用被 QQ 条件挡住（详见 `doc/research.md` §4.6）。
+
+修复：
+
+1. `message_end`：把 assistant 消息的 debug 日志移到 `!running` 判断之前。
+   - 前置条件只保留 `msg.role !== "assistant"`。
+   - 日志字段增加 `fromQQ`、`hasBot`、`hasLogin`，便于区分本地/QQ run。
+   - 本地 run 仍然不发送 QQ 回复，只记录日志。
+2. `agent_start` / `agent_end`：增加 debug 标记，记录 `fromQQ`、`hasBot`、`hasLogin`，让本地 run 也有生命周期起止。
+3. `src/relay/` 下的 stream/relay 日志保持 QQ 专属：本地 run 没有 relay，不强行生成这类日志。
+4. 不改变默认行为：`logLevel` 默认 `silent`；只有显式开 debug 才写日志。
+
+修复后的覆盖范围：
+
+| 场景                      | 通用 debug 日志（agent/message/tool） | QQ relay 日志 |
+| ------------------------- | ------------------------------------- | ------------- |
+| 未登录，本地 TUI run      | 有                                    | 无（预期）    |
+| 已登录，本地 TUI run      | 有                                    | 无（预期）    |
+| 已登录，QQ 触发 run       | 有                                    | 有            |
+| 默认 `logLevel: "silent"` | 无                                    | 无            |
+
 ## 6. 错误处理
 
 | 场景                              | 错误/提示                                                   |
@@ -233,16 +270,16 @@ Sent image shot.png to QQ (msg-id).
 
 ## 8. 模块改动
 
-| 文件                               | 改动                                                                               |
-| ---------------------------------- | ---------------------------------------------------------------------------------- |
-| `src/qq/media-tool.ts`             | 新增：schema、execute、路径/类型/大小校验、上传发送、激活控制器                    |
-| `index.ts`                         | 注册 `defaultActive: false`；`startWithCredentials()` 激活，`stopIfRunning()` 停用 |
-| `src/relay/stream-block-format.ts` | `TOOL_ICONS` 增加 `qq_send_media`                                                  |
-| `src/infra/i18n.ts`                | 增加 `mediaTool.*` 文案                                                            |
-| `test/qq/media-tool.test.ts`       | 新增                                                                               |
-| `test/index.test.ts`               | fake pi 增加 `getActiveTools`/`setActiveTools`，验证登录成功/登出激活              |
-| `README.md` / `README-zh.md`       | 说明工具用法、登录后激活、调用时机、配额                                           |
-| `CHANGELOG.md`                     | Unreleased 条目                                                                    |
+| 文件                               | 改动                                                                                                                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/qq/media-tool.ts`             | 新增：schema、execute、路径/类型/大小校验、上传发送、激活控制器、关键点 debug 日志                                                                                    |
+| `index.ts`                         | 注册 `defaultActive: false`；`startWithCredentials()` 激活，`stopIfRunning()` 停用；记录激活/停用日志；修复 `message_end`/`agent_start`/`agent_end` 的通用 debug 日志 |
+| `src/relay/stream-block-format.ts` | `TOOL_ICONS` 增加 `qq_send_media`                                                                                                                                     |
+| `src/infra/i18n.ts`                | 增加 `mediaTool.*` 文案                                                                                                                                               |
+| `test/qq/media-tool.test.ts`       | 新增                                                                                                                                                                  |
+| `test/index.test.ts`               | fake pi 增加 `getActiveTools`/`setActiveTools`，验证登录成功/登出激活、未登录/本地 run 的 debug 日志                                                                  |
+| `README.md` / `README-zh.md`       | 说明工具用法、登录后激活、调用时机、配额                                                                                                                              |
+| `CHANGELOG.md`                     | Unreleased 条目                                                                                                                                                       |
 
 不需要改 `src/qq/qq-message-handler.ts`，不需要新增配置项，不需要确认状态机。
 
@@ -262,6 +299,10 @@ Sent image shot.png to QQ (msg-id).
 - 被动失败：复用同一个 `file_info` 主动重试，不重复上传，不 `commitPassive`，触发 `onWarn`。
 - 上传失败：不再调用 `sendMediaMessage`；`UploadDailyLimitExceededError` 被翻译。
 - `caption` 截断到 4500 字符。
+- 开启 `logLevel: "debug"` 后，§5.2 的关键点都有 `scope: "media"` 日志；默认 `silent` 无输出。
+- 未登录本地 run：`agent_start`/`agent_end`/`message_end` 有通用 debug 日志；`src/relay/` 日志不出现。
+- 已登录本地 run：通用 debug 日志存在；只有 QQ run 才出现 relay 日志。
+- 旧行为不回归：本地 run 仍然不向 QQ 发送回复。
 - 手动激活但未登录 / bot 未启动时 `execute` 报错；正常路径下未登录时工具不可见。
 
 ### 9.2 手工验证
@@ -288,11 +329,12 @@ Sent image shot.png to QQ (msg-id).
 
 ## 11. 实施顺序
 
-1. `media-tool.ts`：schema、校验、上传/发送、激活控制器。
-2. 工具描述与 `promptGuidelines`。
-3. `index.ts` 注册（`defaultActive: false`）+ `startWithCredentials()` 激活 / `stopIfRunning()` 停用 + 依赖注入。
-4. `TOOL_ICONS`、i18n、README、CHANGELOG。
-5. 真机验证：启动未激活、登录后激活、登出停用、重连保持激活、多语言请求、非请求不调用、工具气泡、配额、大小限制。
+1. Debug 日志 bugfix：`message_end` 日志前移；`agent_start`/`agent_end` 增加 debug 标记；补测试。
+2. `media-tool.ts`：schema、校验、上传/发送、激活控制器、关键点 debug 日志。
+3. 工具描述与 `promptGuidelines`。
+4. `index.ts` 注册（`defaultActive: false`）+ `startWithCredentials()` 激活 / `stopIfRunning()` 停用 + 依赖注入 + 激活/停用日志。
+5. `TOOL_ICONS`、i18n、README、CHANGELOG。
+6. 真机验证：启动未激活、登录后激活、登出停用、重连保持激活、多语言请求、非请求不调用、工具气泡、配额、大小限制。
 
 ## 12. 参考
 

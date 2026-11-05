@@ -232,6 +232,29 @@ pi-qq 已经封装为 `ReplyBudget`：
 
 `index.ts` 的 `message_end` 处理器会在每条 assistant 消息结束时处理最终文本，并通过 `sendReply()` 发出。发送前会先经过 `markdownToPlain()`：Markdown 图片语法会被降级成替代文字，**不能靠 Markdown 图片回传效果图**，这也是需要媒体工具的直接原因。媒体工具通常在工具执行阶段发送，因此用户通常会先看到媒体，再看到最终文本；顺序符合“先看效果”的预期。
 
+### 4.6 Debug 日志现状与 bug
+
+现象：只有 QQ 登录后、且由 QQ 触发的 run 才看得到较完整的 debug 日志。
+
+调查结论：**不是 `configureLogger()` 没有执行**。`session_start` 里已经按 `settings.logLevel` 配置了 logger（`index.ts:195`），`startWithCredentials()` 里又配置了一次（`index.ts:149`）；未登录的本地会话也会配置。问题出在具体日志调用被 QQ 条件挡住：
+
+1. `message_end` 在写 assistant 消息 debug 日志前就 `return` 了：
+   - `index.ts:313`：`if (msg.role !== "assistant" || !running) return;`
+   - 只有 QQ bot 已启动（`running` 存在，即登录后）才会走到 `index.ts:317` 的 `log.debug("pi", "assistant message ended", ...)`。
+   - 未登录时，本地 TUI 的 assistant 消息 debug 日志直接丢失。
+2. `RunFeedback` / `BubbleWriter` 的 debug 日志只在 QQ run 存在时执行：
+   - `RunFeedback` 需要 `markQQTrigger()` 后由 `onAgentStart()` 建立 `run`；
+   - 本地 TUI run 没有 `run`，所以 `src/relay/` 下的 stream/relay 日志不会出现。这部分是 QQ relay 专属日志，本地 run 本来就不应该产生。
+3. `agent_start` / `agent_end` 只有 `info` 日志，没有 debug 的 run 标记；本地 run 缺少可关联的 debug 生命周期起点/终点。
+4. `tool_execution_*` 的 debug 日志没有 QQ 条件，本地 run 实际会记录；所以“完全没有日志”并不准确，丢的是 assistant/run 相关的 debug 日志。
+
+修复方向：
+
+- 把 `message_end` 的 debug 日志移到 `!running` / `fromQQ` 判断之前，只保留 `msg.role !== "assistant"` 的前置条件。
+- 在 `agent_start` / `agent_end` 增加带 `fromQQ`、`hasBot` 的 debug 标记，覆盖未登录/本地 run。
+- `src/relay/` 下的流式日志保持 QQ 专属，不强行给本地 run 造 relay 日志。
+- 为上述行为补测试：未登录、本地 run、QQ run 三种情况都能产生对应的通用 debug 日志；默认 `silent` 不输出。
+
 ---
 
 ## 5. 推荐方案
