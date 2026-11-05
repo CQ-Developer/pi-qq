@@ -3,7 +3,6 @@ import {
   ApiError,
   MediaFileType,
   UploadDailyLimitExceededError,
-  getFileTypeName,
   getMaxUploadSize,
   sanitizeFileName,
   type QQBot,
@@ -87,6 +86,12 @@ function mediaErrorMessage(err: unknown): Error {
     );
   }
   return err instanceof Error ? err : new Error(String(err));
+}
+
+function mediaKindLabel(fileType: MediaFileType): string {
+  if (fileType === MediaFileType.IMAGE) return t("mediaTool.kindImage");
+  if (fileType === MediaFileType.VIDEO) return t("mediaTool.kindVideo");
+  return t("mediaTool.kindFile");
 }
 
 export function normalizeMediaPath(cwd: string, rawPath: string): string {
@@ -320,10 +325,9 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
             {
               type: "text",
               text: t("mediaTool.sent", {
-                kind: getFileTypeName(prepared.fileType),
+                kind: mediaKindLabel(prepared.fileType),
                 name: prepared.displayName,
                 mode,
-                messageId: message.id,
               }),
             },
           ],
@@ -385,10 +389,9 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
               {
                 type: "text",
                 text: t("mediaTool.sent", {
-                  kind: getFileTypeName(prepared.fileType),
+                  kind: mediaKindLabel(prepared.fileType),
                   name: prepared.displayName,
                   mode,
-                  messageId: message.id,
                 }),
               },
             ],

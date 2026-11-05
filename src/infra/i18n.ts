@@ -156,7 +156,10 @@ const enUS = {
   "mediaTool.apiFailed": "QQ API error ({code}): {message}",
   "mediaTool.modePassive": "passive",
   "mediaTool.modeProactive": "proactive",
-  "mediaTool.sent": "Sent {kind} {name} to QQ via {mode} reply ({messageId}).",
+  "mediaTool.kindImage": "image",
+  "mediaTool.kindVideo": "video",
+  "mediaTool.kindFile": "file",
+  "mediaTool.sent": "Sent {kind} {name} to QQ via {mode} reply.",
 
   "settings.invalidRoot": "Invalid config file ({path}): expected a JSON object; using defaults.",
   "settings.invalidFields": "Invalid config file ({path}): {errors}; invalid values were ignored.",
@@ -383,7 +386,10 @@ const zhCN: Record<TranslationKey, string> = {
   "mediaTool.apiFailed": "QQ API 错误（{code}）：{message}",
   "mediaTool.modePassive": "被动",
   "mediaTool.modeProactive": "主动",
-  "mediaTool.sent": "已通过{mode}回复发送{kind} {name}到 QQ（{messageId}）。",
+  "mediaTool.kindImage": "图片",
+  "mediaTool.kindVideo": "视频",
+  "mediaTool.kindFile": "文件",
+  "mediaTool.sent": "已通过{mode}回复将{kind} {name}发送到 QQ。",
 
   "settings.invalidRoot": "配置文件无效（{path}）：应为 JSON 对象；使用默认值。",
   "settings.invalidFields": "配置文件无效（{path}）：{errors}；无效值已忽略。",
