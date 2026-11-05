@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configureLogger, log } from "../src/infra/file-logger";
+import { configureLogger, flushLogs, getLogFilePath, log, setLogGate } from "../src/infra/file-logger";
 
 const feedback = vi.hoisted(() => ({
   dispose: vi.fn(),
@@ -107,6 +107,8 @@ function makeCtx(): ExtensionContext {
 
 afterEach(() => {
   delete (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY];
+  setLogGate(undefined);
+  feedback.isQQRunActive.mockReturnValue(false);
   configureLogger("silent");
   vi.restoreAllMocks();
   vi.clearAllMocks();
@@ -167,10 +169,9 @@ describe("extension lifecycle", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("执行：已完成"), "info");
   });
 
-  it("logs agent and assistant message debug events without qq login", async () => {
+  it("does not log local runs without qq login", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
     configureLogger("debug", dir);
-    const debugSpy = vi.spyOn(log, "debug");
 
     const { pi, handlers } = makePi();
     extension(pi);
@@ -185,24 +186,11 @@ describe("extension lifecycle", () => {
     await handlers.get("message_end")!({ message }, ctx);
     await handlers.get("agent_end")!({}, ctx);
 
-    expect(debugSpy).toHaveBeenCalledWith(
-      "agent",
-      "run state",
-      expect.objectContaining({ phase: "start", fromQQ: false, hasBot: false, hasLogin: false }),
-    );
-    expect(debugSpy).toHaveBeenCalledWith(
-      "pi",
-      "assistant message ended",
-      expect.objectContaining({ fromQQ: false, hasBot: false, hasLogin: false, textPreview: "hello" }),
-    );
-    expect(debugSpy).toHaveBeenCalledWith(
-      "agent",
-      "run state",
-      expect.objectContaining({ phase: "end", fromQQ: false, hasBot: false, hasLogin: false }),
-    );
+    await flushLogs();
+    await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
   });
 
-  it("logs local runs after qq login", async () => {
+  it("does not log local runs after qq login", async () => {
     (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
       credentials: { appId: "app", appSecret: "secret" },
       allowedOpenid: "openid-u",
@@ -216,7 +204,6 @@ describe("extension lifecycle", () => {
 
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
     configureLogger("debug", dir);
-    const debugSpy = vi.spyOn(log, "debug");
     const message = {
       role: "assistant",
       stopReason: "stop",
@@ -227,20 +214,67 @@ describe("extension lifecycle", () => {
     await handlers.get("message_end")!({ message }, ctx);
     await handlers.get("agent_end")!({}, ctx);
 
+    await flushLogs();
+    await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
+  });
+
+  it("logs qq-triggered runs", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    feedback.isQQRunActive.mockReturnValue(true);
+
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
+    configureLogger("debug", dir);
+    const debugSpy = vi.spyOn(log, "debug");
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [{ type: "text", text: "remote" }],
+    };
+
+    await handlers.get("agent_start")!({}, ctx);
+    await handlers.get("message_end")!({ message }, ctx);
+    await handlers.get("agent_end")!({}, ctx);
+
+    expect(debugSpy).toHaveBeenCalledWith(
+      "agent",
+      "run state",
+      expect.objectContaining({ phase: "start", fromQQ: true, hasLogin: true }),
+    );
     expect(debugSpy).toHaveBeenCalledWith(
       "pi",
       "assistant message ended",
-      expect.objectContaining({ fromQQ: false, hasBot: true, hasLogin: true, textPreview: "local" }),
+      expect.objectContaining({ fromQQ: true, hasLogin: true, textPreview: "remote" }),
+    );
+
+    await flushLogs();
+    const records = (await readFile(getLogFilePath(), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scope: "pi",
+          msgKey: "log.assistantMessageEnded",
+          textPreview: "remote",
+        }),
+      ]),
     );
   });
 
-  it("does not write debug logs when level is silent", async () => {
+  it("does not write logs when level is silent", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
     configureLogger("silent", dir);
 
     const { pi, handlers } = makePi();
     extension(pi);
-    const debugSpy = vi.spyOn(log, "debug");
     const ctx = makeCtx();
     const message = {
       role: "assistant",
@@ -252,6 +286,7 @@ describe("extension lifecycle", () => {
     await handlers.get("message_end")!({ message }, ctx);
     await handlers.get("agent_end")!({}, ctx);
 
-    expect(debugSpy).not.toHaveBeenCalled();
+    await flushLogs();
+    await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
   });
 });

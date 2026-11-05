@@ -18,6 +18,7 @@ const DEFAULT_LOG_LEVEL: LogLevel = "silent";
 let activeLevel: LogLevel = DEFAULT_LOG_LEVEL;
 let activeDir: string | undefined;
 let writeQueue: Promise<void> = Promise.resolve();
+let logGate: (() => boolean) | undefined;
 
 function isLogLevel(value: unknown): value is LogLevel {
   return typeof value === "string" && Object.hasOwn(LEVEL_WEIGHT, value);
@@ -42,6 +43,19 @@ export async function flushLogs(): Promise<void> {
 export function configureLogger(level: LogLevel, dir?: string): void {
   activeLevel = normalizeLogLevel(level);
   activeDir = dir;
+}
+
+export function setLogGate(gate: (() => boolean) | undefined): void {
+  logGate = gate;
+}
+
+function isLogAllowed(): boolean {
+  if (!logGate) return true;
+  try {
+    return logGate();
+  } catch {
+    return false;
+  }
 }
 
 function resolveLogDir(): string {
@@ -77,6 +91,7 @@ function stringifyError(err: unknown): string {
 
 function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message: string, data?: unknown): void {
   if (!isLevelEnabled(activeLevel, level)) return;
+  if (!isLogAllowed()) return;
 
   const localized = localizeLogMessage(message);
   const record: LogFields = {

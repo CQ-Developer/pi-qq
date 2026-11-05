@@ -126,7 +126,7 @@ These terminal commands are intended for troubleshooting:
 | `/qq-test-md [text]` | Send a Markdown test message                            |
 | `/qq-test-stream`    | Run a streamed timeline diagnostic (`resume` for probe) |
 
-With `logLevel: "debug"`, general agent/message/tool logs are written for local and QQ runs, and `scope: "media"` covers media-tool steps. QQ relay logs only appear for QQ-triggered runs.
+With `logLevel: "debug"`, logs are written only while a QQ-triggered run is active after login; local runs, login, and idle periods are not logged. `scope: "media"` covers media-tool steps during those runs, and QQ relay logs only appear for QQ-triggered runs.
 
 ## Settings
 
@@ -150,7 +150,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 
 Settings are read when a pi session starts; restart pi after editing the file. Unknown keys are ignored, and invalid values fall back to defaults with a warning.
 
-When logging is enabled, logs are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`. `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads.
+When logging is enabled, records are written only while a QQ-triggered run is active. Logs go to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads.
 
 ## Development
 

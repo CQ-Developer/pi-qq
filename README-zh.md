@@ -126,7 +126,7 @@ QQ 侧命令：
 | `/qq-test-md [text]` | 发送 Markdown 测试消息                  |
 | `/qq-test-stream`    | 运行流式时间线诊断（`resume` 验证续写） |
 
-将 `logLevel` 设为 `debug` 时，本地 run 和 QQ run 都会写入通用的 agent/message/tool 日志；`scope: "media"` 记录媒体工具的关键步骤。QQ relay 日志只在 QQ 触发的 run 中出现。
+将 `logLevel` 设为 `debug` 时，只有在登录后由 QQ 消息触发的 run 期间才会写入 agent/message/tool 日志；本地 run、登录流程和空闲时段不写日志。`scope: "media"` 记录媒体工具在这些 run 中的关键步骤，QQ relay 日志也只在 QQ 触发的 run 中出现。
 
 ## 设置
 
@@ -150,7 +150,7 @@ QQ 侧命令：
 
 配置在 pi 会话启动时读取；修改文件后请重启 pi。未知配置项会被忽略，无效值会回退到默认值并给出提示。
 
-启用日志后，日志写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`。可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。
+启用日志后，只有 QQ 触发的 run 处于活动状态时才会写入记录，路径为 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`；可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。
 
 ## 开发
 

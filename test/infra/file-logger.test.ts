@@ -14,11 +14,13 @@ import {
   logFileName,
   normalizeLogLevel,
   previewForLog,
+  setLogGate,
 } from "../../src/infra/file-logger";
 
 afterEach(async () => {
   configureLogger("silent");
   configureI18n(DEFAULT_LANGUAGE);
+  setLogGate(undefined);
   await flushLogs();
 });
 
@@ -155,6 +157,55 @@ describe("file output", () => {
       else process.env.PI_QQ_LOG_DIR = previous;
       await rm(envDir, { recursive: true, force: true });
       await rm(configuredDir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips records while the log gate is closed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-gate-"));
+    try {
+      configureLogger("debug", dir);
+      setLogGate(() => false);
+      log.info("test", "hidden");
+      await flushLogs();
+      await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
+
+      setLogGate(() => true);
+      log.info("test", "visible");
+      await flushLogs();
+      const lines = (await readFile(getLogFilePath(), "utf8")).trim().split("\n");
+      expect(lines).toHaveLength(1);
+      expect((JSON.parse(lines[0]!) as Record<string, unknown>).msg).toBe("visible");
+    } finally {
+      setLogGate(undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a throwing gate as closed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-gate-"));
+    try {
+      configureLogger("debug", dir);
+      setLogGate(() => {
+        throw new Error("gate failed");
+      });
+      expect(() => log.info("test", "hidden")).not.toThrow();
+      await flushLogs();
+      await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
+    } finally {
+      setLogGate(undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not write debug logs when level is silent", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-"));
+    try {
+      configureLogger("silent", dir);
+      log.debug("test", "hidden");
+      await flushLogs();
+      await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

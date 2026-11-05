@@ -9,7 +9,7 @@ import { registerQQDiagnostics } from "./src/qq/qq-diagnostics";
 import { markdownToPlain, sendReply } from "./src/qq/reply-sender";
 import { ReplyBudget } from "./src/quota/reply-quota";
 import { RunFeedback } from "./src/relay/run-stream-relay";
-import { configureLogger, flushLogs, isLogEnabled, log, previewForLog } from "./src/infra/file-logger";
+import { configureLogger, flushLogs, isLogEnabled, log, previewForLog, setLogGate } from "./src/infra/file-logger";
 import { configureI18n, t } from "./src/infra/i18n";
 import { getPowerStatus } from "./src/infra/power-status";
 import { formatStatusReport } from "./src/qq/status-report";
@@ -97,6 +97,8 @@ function stopEventLoopMonitor(): void {
 }
 
 export default function (pi: ExtensionAPI) {
+  setLogGate(() => Boolean(getLoginState()) && runFeedback.isQQRunActive());
+
   mediaTool = registerMediaTool(pi, {
     getBot: () => running?.bot,
     getLogin: () => getLoginState(),
@@ -204,7 +206,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const { settings, error } = applyConfig(ctx);
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
-    startEventLoopMonitor();
 
     const login = getLoginState();
     log.info("session", "started", {
@@ -229,8 +230,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_start", () => {
-    log.info("agent", "run started");
     runFeedback.onAgentStart();
+    log.info("agent", "run started");
     if (isLogEnabled("debug")) {
       log.debug("agent", "run state", {
         phase: "start",

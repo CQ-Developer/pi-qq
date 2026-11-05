@@ -343,12 +343,12 @@ export class RunFeedback {
       lastCompletedTextLength: this.lastCompletedText?.length ?? 0,
       ...this.diagnostics(run),
     });
-    this.run = null;
     log.debug("run", "run ended", {
       phase: "finished",
       msgId: run.msgId?.slice(0, 8) ?? "?",
       elapsedMs: Date.now() - run.startedAt,
     });
+    this.run = null;
     if (!run.writer.hasPushed) {
       run.writer.dispose();
       this.finishEnd();
