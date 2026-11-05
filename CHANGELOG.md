@@ -7,13 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-05
+
 ### Added
 
 - Added the `qq_send_media` tool for sending local images, videos, and files back to the bound QQ private chat. The tool is registered inactive and activates after QQ login.
+- Added `scope: "media"` debug logs for registration, activation, validation, upload, budget selection, send, and result.
+
+### Changed
+
+- Consolidated the v5 research, feature, and implementation plan into `doc/archive/delivery-v5.md`; removed the three working documents.
 
 ### Fixed
 
 - Debug logs for local and logged-out sessions: assistant message and agent lifecycle events are now logged even when no QQ run is active. QQ relay logs remain specific to QQ-triggered runs.
+- Avoided action-method calls during extension loading when registering the media tool.
+- Localized media result labels and removed the long message id from the user-facing tool result.
 
 ## [1.4.2] - 2026-11-05
 
@@ -119,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.6...v1.4.0
