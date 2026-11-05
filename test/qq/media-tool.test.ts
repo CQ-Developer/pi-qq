@@ -169,6 +169,28 @@ describe("media type helpers", () => {
 });
 
 describe("media tool registration", () => {
+  it("registers without calling action methods during extension load", () => {
+    const registerTool = vi.fn();
+    const getActiveTools = vi.fn(() => {
+      throw new Error("action methods are unavailable during extension loading");
+    });
+    const setActiveTools = vi.fn();
+    const pi = { registerTool, getActiveTools, setActiveTools } as unknown as ExtensionAPI;
+    const fake = makeBot();
+
+    expect(() =>
+      registerMediaTool(pi, {
+        getBot: () => fake.bot,
+        getLogin: () => ({ allowedOpenid: "openid-u" }),
+        budget: new ReplyBudget(),
+        onWarn: vi.fn(),
+      }),
+    ).not.toThrow();
+    expect(registerTool).toHaveBeenCalledTimes(1);
+    expect(getActiveTools).not.toHaveBeenCalled();
+    expect(setActiveTools).not.toHaveBeenCalled();
+  });
+
   it("registers inactive and activates/deactivates without touching other tools", () => {
     const { pi, tools, state } = makePi();
     const fake = makeBot();

@@ -421,7 +421,6 @@ export function registerMediaTool(pi: ExtensionAPI, deps: MediaToolDeps): MediaT
   log.debug("media", "media tool", {
     phase: "tool.registered",
     defaultActive: false,
-    activeCount: pi.getActiveTools().length,
   });
 
   return {
