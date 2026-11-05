@@ -1,7 +1,7 @@
 # qq_send_media 执行计划
 
 - 关联设计：[`doc/research.md`](./research.md)、[`doc/feature.md`](./feature.md)
-- 当前状态：设计已确认，尚未开始实现
+- 当前状态：核心实现与自动化测试完成，待真机验证/提交
 - 最后更新：2026-11-05
 
 ## 1. 目标与范围
@@ -64,25 +64,25 @@
 
 目标：`qq_send_media` 能独立完成参数校验、上传和发送，不依赖入口接线。
 
-- [ ] T1.1 新建 `src/qq/media-tool.ts`
+- [x] T1.1 新建 `src/qq/media-tool.ts`
   - 常量：`MEDIA_TOOL_NAME = "qq_send_media"`、caption 上限（4500）。
   - 类型：`MediaToolDeps`、`MediaToolController`、`PreparedMedia`。
   - 依赖注入：`getBot`、`getLogin`、`budget`、`onWarn`。
-- [ ] T1.2 定义 schema 与工具描述
+- [x] T1.2 定义 schema 与工具描述
   - `path`：string，必填。
   - `kind`：`auto | image | video | file`，可选，默认 `auto`。
   - `caption`：string，可选。
   - `name`：string，可选，仅 `file` 类型使用。
   - 使用 `Type.Object` / `StringEnum`；`typebox` 来自宿主，不新增依赖。
   - 写入 `doc/feature.md` §3 的 description、`promptSnippet`、`promptGuidelines`。
-- [ ] T1.3 实现 `prepareMedia(params, cwd)`
+- [x] T1.3 实现 `prepareMedia(params, cwd)`
   - 去掉路径前导 `@`；相对路径按 `cwd` resolve。
   - `lstat`：拒绝符号链接、目录、设备等非普通文件；拒绝空文件。
   - 类型识别：图片/视频扩展名白名单；音频按 `FILE`；显式 `kind` 覆盖。
   - 大小校验：`getMaxUploadSize(fileType)`；图片 30 MB、视频/文件 100 MB。
   - 文件名：`basename`；`file` 类型允许 `name` 覆盖。
   - 不限制根目录；不检查文件是否在 cwd 内。
-- [ ] T1.4 实现 `execute()`
+- [x] T1.4 实现 `execute()`
   - 检查 `getBot()`、`getLogin()`；未登录/未启动返回 `mediaTool.notConnected`。
   - 检查 `signal.aborted`；开始时和上传后各检查一次。
   - 上传：`bot.uploadMedia({ target: c2c + allowedOpenid, fileType, localPath, fileName, srvSendMsg: false, onProgress })`。
@@ -93,18 +93,18 @@
   - `details` 在 partial（`onUpdate`）和最终结果中保持同一结构。
   - `executionMode: "sequential"`。
   - 同时补齐 `mediaTool.*` 的 i18n key（中英文），供本阶段使用。
-- [ ] T1.5 实现激活控制器
+- [x] T1.5 实现激活控制器
   - `registerMediaTool(pi, deps)` 返回 `{ activate, deactivate, isActive }`。
   - 注册工具时 `defaultActive: false`。
   - `activate()`：保留其它 active tools，加入 `qq_send_media`；幂等。
   - `deactivate()`：只移除 `qq_send_media`；幂等。
-- [ ] T1.6 单元测试 `test/qq/media-tool.test.ts`
+- [x] T1.6 单元测试 `test/qq/media-tool.test.ts`
   - schema/描述/`defaultActive`。
   - 路径规范化、符号链接、目录、空文件、超限。
   - 类型识别和 `kind` 覆盖。
   - 被动成功、主动发送、被动失败复用 `file_info`、上传失败、错误映射。
   - caption 截断、`executionMode`、激活/停用幂等。
-- [ ] T1.7 关键点 debug 日志
+- [x] T1.7 关键点 debug 日志
   - 按 `doc/feature.md` §5.2：激活/停用、工具入口、校验结果、上传开始/结束、预算选择、发送结果、最终错误。
   - 统一 `scope: "media"`、`log.debug`，用 `toolCallId` 串联。
   - 不记录文件内容、base64、`file_info` 原文、caption 正文。
@@ -116,22 +116,22 @@
 
 目标：工具在启动时未激活；QQ 登录成功后激活；登出/停止后停用。
 
-- [ ] T2.1 在 `index.ts` 创建控制器
+- [x] T2.1 在 `index.ts` 创建控制器
   - 在 `pi` 扩展加载时调用 `registerMediaTool(pi, { getBot: () => running?.bot, getLogin: () => getLoginState(), budget, onWarn })`。
   - 将返回的 controller 保存在闭包变量中；确保 `stopIfRunning()` 可以引用（必要时先声明再赋值）。
-- [ ] T2.2 激活/停用接线
+- [x] T2.2 激活/停用接线
   - `startWithCredentials()`：`startBot()` 之后调用 `mediaTool.activate()`。
   - `stopIfRunning()`：调用 `mediaTool.deactivate()`。
   - 覆盖 `/qq-login`、`/qq-logout`、`session_start`、`session_shutdown`。
   - 不监听 `onStateChange`；断线/重连不改变 active 状态。
   - 激活/停用时记录关键点 debug 日志。
-- [ ] T2.3 更新 `test/index.test.ts`
+- [x] T2.3 更新 `test/index.test.ts`
   - fake pi 增加 `registerTool`、`getActiveTools`、`setActiveTools`。
   - 验证扩展加载后工具注册为 `defaultActive: false`。
   - 验证 login 成功后 active set 包含 `qq_send_media`。
   - 验证 `/qq-logout`/`stopIfRunning` 后从 active set 移除。
   - 验证其它工具保持不变。
-- [ ] T2.4 回归检查
+- [x] T2.4 回归检查
   - `test/qq/qq-message-handler.test.ts` 无需改动；确认没有新增依赖。
   - `test/index.test.ts` 原有生命周期用例仍通过。
 
@@ -141,17 +141,17 @@
 
 目标：修复“只有 QQ 登录后、QQ 触发的 run 才有较完整 debug 日志”的问题；不改变默认 `silent` 行为。
 
-- [ ] T2.5 根因确认
+- [x] T2.5 根因确认
   - 确认 `configureLogger()` 在 `session_start` 已按 `settings.logLevel` 执行，不依赖登录。
   - 确认 `message_end` 的 `if (msg.role !== "assistant" || !running) return;` 在 debug 日志之前，未登录时日志被丢弃。
   - 确认 `src/relay/` 日志只在 QQ run 存在时产生，属于预期；不强行给本地 run 造 relay 日志。
   - 结论写入 `doc/research.md` §4.6。
-- [ ] T2.6 修复日志调用
+- [x] T2.6 修复日志调用
   - `message_end`：只保留 `msg.role !== "assistant"` 前置判断，把 debug 日志移到 `!running`/`!fromQQ` 之前。
   - 日志字段增加 `fromQQ`、`hasBot`、`hasLogin`。
   - `agent_start` / `agent_end`：增加 debug 标记（`fromQQ`、`hasBot`、`hasLogin`），覆盖未登录/本地 run。
   - 不修改 `src/relay/`；relay 日志仍只属于 QQ run。
-- [ ] T2.7 回归测试
+- [x] T2.7 回归测试
   - 未登录 + 本地 run：`agent_start`/`agent_end`/`message_end` 有 debug 日志；无 relay 日志。
   - 已登录 + 本地 run：通用 debug 日志存在；无 relay 日志。
   - 已登录 + QQ run：通用日志和 relay 日志都存在。
@@ -162,23 +162,23 @@
 
 ### Phase 3：工具气泡、文案与文档
 
-- [ ] T3.1 `src/relay/stream-block-format.ts`
+- [x] T3.1 `src/relay/stream-block-format.ts`
   - `TOOL_ICONS` 增加 `qq_send_media: "📤"`。
   - 不增加 `renderCall`/`renderResult`，不修改 `BubbleWriter`/`RunFeedback`。
   - 增加/更新测试，确认 `formatToolLine("qq_send_media", ...)` 输出 `## 📤 qq_send_media`。
-- [ ] T3.2 `src/infra/i18n.ts`
+- [x] T3.2 `src/infra/i18n.ts`
   - Phase 1 已添加 `mediaTool.*` 基础 key；本阶段复核文案，并补齐 `test/infra/i18n.test.ts` 的必要断言。
-- [ ] T3.3 `README.md` / `README-zh.md`
+- [x] T3.3 `README.md` / `README-zh.md`
   - 新增“回传媒体到 QQ”小节：工具名、调用时机（用户明确要求）、登录后激活、文件上限、被动回复配额、工具气泡。
   - 说明不限制路径根目录；说明模型判断是软约束。
-- [ ] T3.4 `CHANGELOG.md`
+- [x] T3.4 `CHANGELOG.md`
   - `[Unreleased]` 增加 Added/Changed 条目。
 
 **Phase 3 验收**：工具气泡格式正确；中英文文案完整；README/CHANGELOG 与实际行为一致。
 
 ### Phase 4：全量验证与手工测试
 
-- [ ] T4.1 本地质量门禁
+- [x] T4.1 本地质量门禁
   - `npm run lint`
   - `npm test`
   - `npm run typecheck`
@@ -208,19 +208,19 @@
 
 ### 5.1 必做
 
-- [ ] `src/qq/media-tool.ts` 新建并实现。
-- [ ] `index.ts` 注册、激活、停用。
-- [ ] `index.ts` debug 日志 bugfix：`message_end` 日志前移，`agent_start`/`agent_end` 增加 debug 标记。
-- [ ] `src/relay/stream-block-format.ts` 图标。
-- [ ] `src/infra/i18n.ts` 文案。
-- [ ] `test/qq/media-tool.test.ts`。
-- [ ] `test/index.test.ts` 更新（生命周期 + debug 日志覆盖）。
-- [ ] `README.md` / `README-zh.md`。
-- [ ] `CHANGELOG.md`。
+- [x] `src/qq/media-tool.ts` 新建并实现。
+- [x] `index.ts` 注册、激活、停用。
+- [x] `index.ts` debug 日志 bugfix：`message_end` 日志前移，`agent_start`/`agent_end` 增加 debug 标记。
+- [x] `src/relay/stream-block-format.ts` 图标。
+- [x] `src/infra/i18n.ts` 文案。
+- [x] `test/qq/media-tool.test.ts`。
+- [x] `test/index.test.ts` 更新（生命周期 + debug 日志覆盖）。
+- [x] `README.md` / `README-zh.md`。
+- [x] `CHANGELOG.md`。
 
 ### 5.2 按需
 
-- [ ] 补充 `test/relay/stream-block-format.test.ts` 的图标断言。
+- [x] 补充 `test/relay/stream-block-format.test.ts` 的图标断言。
 - [ ] 补充 `test/infra/i18n.test.ts` 的新 key 断言。
 - [ ] 在 `doc/research.md` 补充真机验证结果。
 
@@ -321,12 +321,13 @@
 | #   | 提交      | 内容                                                                  | 状态   |
 | --- | --------- | --------------------------------------------------------------------- | ------ |
 | 0   | `c360c70` | `docs: add qq media tool research and design`                         | 已提交 |
-| 1   | 待定      | `fix: emit debug logs for non-qq runs`（message_end/agent 日志）      | 计划   |
-| 2   | 待定      | `feat: add qq_send_media tool core`（media-tool + 单测 + debug 日志） | 计划   |
-| 3   | 待定      | `feat: activate qq_send_media after qq login`（index + 生命周期测试） | 计划   |
-| 4   | 待定      | `feat: add qq_send_media icon`（relay + 测试）                        | 计划   |
-| 5   | 待定      | `docs: document qq_send_media`（README/CHANGELOG）                    | 计划   |
-| 6   | 待定      | `chore: release x.y.z`（如需要，交给 GitHub CI）                      | 可选   |
+| 1   | `a0e4d93` | `docs: plan debug logging fix and media tool implementation`          | 已提交 |
+| 2   | 待定      | `fix: emit debug logs for non-qq runs`（message_end/agent 日志）      | 计划   |
+| 3   | 待定      | `feat: add qq_send_media tool core`（media-tool + 单测 + debug 日志） | 计划   |
+| 4   | 待定      | `feat: activate qq_send_media after qq login`（index + 生命周期测试） | 计划   |
+| 5   | 待定      | `feat: add qq_send_media icon`（relay + 测试）                        | 计划   |
+| 6   | 待定      | `docs: document qq_send_media`（README/CHANGELOG）                    | 计划   |
+| 7   | 待定      | `chore: release x.y.z`（如需要，交给 GitHub CI）                      | 可选   |
 
 提交要求：
 
@@ -337,12 +338,12 @@
 
 ## 10. Definition of Done
 
-- [ ] `src/qq/media-tool.ts` 完成并通过单测。
-- [ ] `index.ts` 的登录激活/登出停用接线完成并通过生命周期测试。
-- [ ] 工具气泡、i18n、README、CHANGELOG 更新完成。
-- [ ] 关键点 debug 日志完成，单测覆盖。
-- [ ] Debug 日志 bugfix 完成：未登录/本地 run 也有通用 debug 日志；relay 日志仍只属于 QQ run。
-- [ ] `npm run lint` / `npm test` / `npm run typecheck` / `npm run format:check` / `npm pack --dry-run` 全绿。
+- [x] `src/qq/media-tool.ts` 完成并通过单测。
+- [x] `index.ts` 的登录激活/登出停用接线完成并通过生命周期测试。
+- [x] 工具气泡、i18n、README、CHANGELOG 更新完成。
+- [x] 关键点 debug 日志完成，单测覆盖。
+- [x] Debug 日志 bugfix 完成：未登录/本地 run 也有通用 debug 日志；relay 日志仍只属于 QQ run。
+- [x] `npm run lint` / `npm test` / `npm run typecheck` / `npm run format:check` / `npm pack --dry-run` 全绿。
 - [ ] 真机验证完成，结果记录在案。
 - [ ] 没有遗留的阻塞性 todo；非阻塞项明确记录。
 - [ ] 提交记录已更新。

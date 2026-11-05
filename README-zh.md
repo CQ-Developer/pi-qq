@@ -61,6 +61,19 @@ pi 看到的提示词示例：
 Summarize this file.
 ```
 
+### 回传媒体到 QQ
+
+`qq_send_media` 在启动时注册但未激活；QQ 登录成功后激活，`/qq-logout` 后停用。断线重连不会停用。
+
+明确告诉 pi，例如“把截图发给我”“回传刚才的图片”。模型根据工具描述判断是否调用；请求模糊时应先追问。没有关键词匹配，也没有额外确认步骤。
+
+- 图片：`.jpg`、`.jpeg`、`.png`、`.gif`、`.webp`、`.bmp`，最大 30 MB。
+- 视频：`.mp4`、`.mov`、`.avi`、`.mkv`、`.webm`、`.flv`、`.wmv`，最大 100 MB。
+- 其他文件：最大 100 MB；音频按普通文件发送。
+- 允许任意可读的普通文件；符号链接、目录、设备会被拒绝。
+- 每条媒体消息消耗一次被动回复；超过限制后自动降级为主动消息。
+- 工具气泡与其它工具一致：`## 📤 qq_send_media`。
+
 ### 语音消息
 
 语音消息使用 QQ 内置 ASR（`asr_refer_text`）。转写文本会作为普通用户文本交给 pi；pi 不会收到音频文件。
@@ -112,6 +125,8 @@ QQ 侧命令：
 | `/qq-test-budget`    | 显示被动回复额度和流式气泡诊断信息      |
 | `/qq-test-md [text]` | 发送 Markdown 测试消息                  |
 | `/qq-test-stream`    | 运行流式时间线诊断（`resume` 验证续写） |
+
+将 `logLevel` 设为 `debug` 时，本地 run 和 QQ run 都会写入通用的 agent/message/tool 日志；`scope: "media"` 记录媒体工具的关键步骤。QQ relay 日志只在 QQ 触发的 run 中出现。
 
 ## 设置
 

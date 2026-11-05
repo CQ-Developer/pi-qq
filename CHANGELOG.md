@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the `qq_send_media` tool for sending local images, videos, and files back to the bound QQ private chat. The tool is registered inactive and activates after QQ login.
+
+### Fixed
+
+- Debug logs for local and logged-out sessions: assistant message and agent lifecycle events are now logged even when no QQ run is active. QQ relay logs remain specific to QQ-triggered runs.
+
 ## [1.4.2] - 2026-11-05
 
 ### Changed

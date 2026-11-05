@@ -14,6 +14,7 @@ import { configureI18n, t } from "./src/infra/i18n";
 import { getPowerStatus } from "./src/infra/power-status";
 import { formatStatusReport } from "./src/qq/status-report";
 import { pruneUploadIndex, sessionUploadDir } from "./src/attachments/file-attachments";
+import { registerMediaTool, type MediaToolController } from "./src/qq/media-tool";
 
 interface LoginState {
   credentials: Credentials;
@@ -37,6 +38,7 @@ let running: RunningBot | undefined;
 let lastState: BotState = "stopped";
 let stateDetail: string | undefined;
 let sessionCtx: ExtensionContext | undefined;
+let mediaTool: MediaToolController | undefined;
 let activeSettings: ResolvedSettings = getSettings({});
 const budget = new ReplyBudget();
 const runFeedback = new RunFeedback({
@@ -95,6 +97,13 @@ function stopEventLoopMonitor(): void {
 }
 
 export default function (pi: ExtensionAPI) {
+  mediaTool = registerMediaTool(pi, {
+    getBot: () => running?.bot,
+    getLogin: () => getLoginState(),
+    budget,
+    onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
+  });
+
   activeSettings = getSettings(readConfig().config);
   configureI18n(activeSettings.language);
 
@@ -134,6 +143,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   const stopIfRunning = () => {
+    mediaTool?.deactivate();
     running?.stop();
     running = undefined;
     lastState = "stopped";
@@ -188,6 +198,7 @@ export default function (pi: ExtensionAPI) {
         else if (state === "stopped" && detail) ctx.ui.notify(`pi-qq ${detail}`, "warning");
       },
     });
+    mediaTool?.activate();
   };
 
   pi.on("session_start", async (_event, ctx) => {
@@ -220,10 +231,26 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_start", () => {
     log.info("agent", "run started");
     runFeedback.onAgentStart();
+    if (isLogEnabled("debug")) {
+      log.debug("agent", "run state", {
+        phase: "start",
+        fromQQ: runFeedback.isQQRunActive(),
+        hasBot: Boolean(running),
+        hasLogin: Boolean(getLoginState()),
+      });
+    }
   });
 
   pi.on("agent_end", () => {
     log.info("agent", "run ended");
+    if (isLogEnabled("debug")) {
+      log.debug("agent", "run state", {
+        phase: "end",
+        fromQQ: runFeedback.isQQRunActive(),
+        hasBot: Boolean(running),
+        hasLogin: Boolean(getLoginState()),
+      });
+    }
     void runFeedback.onAgentEnd();
   });
 
@@ -310,12 +337,14 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("message_end", async (event, ctx) => {
     const msg = event.message;
-    if (msg.role !== "assistant" || !running) return;
+    if (msg.role !== "assistant") return;
 
     const fromQQ = runFeedback.isQQRunActive();
     if (isLogEnabled("debug")) {
       log.debug("pi", "assistant message ended", {
         fromQQ,
+        hasBot: Boolean(running),
+        hasLogin: Boolean(getLoginState()),
         stopReason: msg.stopReason,
         contentTypes: msg.content.map((block) => block.type),
         textPreview: previewForLog(
@@ -326,7 +355,7 @@ export default function (pi: ExtensionAPI) {
         ),
       });
     }
-    if (!fromQQ) return;
+    if (!running || !fromQQ) return;
 
     const isError = msg.stopReason === "error";
 

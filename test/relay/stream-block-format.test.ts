@@ -45,6 +45,7 @@ describe("工具格式化", () => {
     expect(formatToolLine("write", { path: "a.ts", content: "x" })).toBe("## 📝 write\n\n`a.ts`");
     expect(formatToolLine("custom", { foo: "bar" })).toBe('## 🔧 custom\n\n`{"foo":"bar"}`');
     expect(formatToolLine("ping", undefined)).toBe("## 🔧 ping");
+    expect(formatToolLine("qq_send_media", { path: "shot.png" })).toBe("## 📤 qq_send_media\n\n`shot.png`");
   });
 
   it("结果代码块、失败前缀与空结果", () => {

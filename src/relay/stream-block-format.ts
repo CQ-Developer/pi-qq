@@ -23,6 +23,7 @@ const TOOL_ICONS: Record<string, string> = {
   remove: "❌",
   todo: "✅",
   test: "🧪",
+  qq_send_media: "📤",
 };
 
 function backtickFence(text: string, minimum: number): string {

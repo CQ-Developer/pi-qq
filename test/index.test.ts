@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configureLogger, log } from "../src/infra/file-logger";
 
 const feedback = vi.hoisted(() => ({
   dispose: vi.fn(),
@@ -60,9 +64,13 @@ function makePi(): {
   pi: ExtensionAPI;
   commands: Map<string, (args: string, ctx: ExtensionContext) => Promise<void> | void>;
   handlers: Map<string, (event: unknown, ctx: ExtensionContext) => unknown>;
+  tools: Map<string, unknown>;
+  state: { activeTools: string[] };
 } {
   const commands = new Map<string, (args: string, ctx: ExtensionContext) => Promise<void> | void>();
   const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
+  const tools = new Map<string, unknown>();
+  const state = { activeTools: ["read", "bash"] };
   const pi = {
     on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
       handlers.set(event, handler);
@@ -70,8 +78,18 @@ function makePi(): {
     registerCommand(name: string, options: { handler: (args: string, ctx: ExtensionContext) => Promise<void> | void }) {
       commands.set(name, options.handler);
     },
+    registerTool(tool: { name: string; defaultActive?: boolean }) {
+      tools.set(tool.name, tool);
+      if (tool.defaultActive !== false) state.activeTools.push(tool.name);
+    },
+    getActiveTools() {
+      return [...state.activeTools];
+    },
+    setActiveTools(names: string[]) {
+      state.activeTools = [...names];
+    },
   } as unknown as ExtensionAPI;
-  return { pi, commands, handlers };
+  return { pi, commands, handlers, tools, state };
 }
 
 function makeCtx(): ExtensionContext {
@@ -89,6 +107,8 @@ function makeCtx(): ExtensionContext {
 
 afterEach(() => {
   delete (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY];
+  configureLogger("silent");
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -115,6 +135,27 @@ describe("extension lifecycle", () => {
     expect((globalThis as Record<string, unknown>)[LOGIN_STATE_KEY]).toBeUndefined();
   });
 
+  it("registers the media tool inactive and activates it after login", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    bot.startBot.mockReturnValue({ bot: {}, stop: bot.stop });
+
+    const { pi, commands, handlers, tools, state } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+
+    expect(tools.has("qq_send_media")).toBe(true);
+    expect(state.activeTools).not.toContain("qq_send_media");
+
+    await handlers.get("session_start")!({ type: "session_start", reason: "startup" }, ctx);
+    expect(state.activeTools).toContain("qq_send_media");
+
+    await commands.get("qq-logout")!("", ctx);
+    expect(state.activeTools).not.toContain("qq_send_media");
+  });
+
   it("qq-status reports the localized agent state", async () => {
     const { pi, commands } = makePi();
     extension(pi);
@@ -124,5 +165,93 @@ describe("extension lifecycle", () => {
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("pi-qq 状态"), "info");
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("执行：已完成"), "info");
+  });
+
+  it("logs agent and assistant message debug events without qq login", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
+    configureLogger("debug", dir);
+    const debugSpy = vi.spyOn(log, "debug");
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [{ type: "text", text: "hello" }],
+    };
+
+    await handlers.get("agent_start")!({}, ctx);
+    await handlers.get("message_end")!({ message }, ctx);
+    await handlers.get("agent_end")!({}, ctx);
+
+    expect(debugSpy).toHaveBeenCalledWith(
+      "agent",
+      "run state",
+      expect.objectContaining({ phase: "start", fromQQ: false, hasBot: false, hasLogin: false }),
+    );
+    expect(debugSpy).toHaveBeenCalledWith(
+      "pi",
+      "assistant message ended",
+      expect.objectContaining({ fromQQ: false, hasBot: false, hasLogin: false, textPreview: "hello" }),
+    );
+    expect(debugSpy).toHaveBeenCalledWith(
+      "agent",
+      "run state",
+      expect.objectContaining({ phase: "end", fromQQ: false, hasBot: false, hasLogin: false }),
+    );
+  });
+
+  it("logs local runs after qq login", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    bot.startBot.mockReturnValue({ bot: {}, stop: bot.stop });
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+    await handlers.get("session_start")!({ type: "session_start", reason: "startup" }, ctx);
+
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
+    configureLogger("debug", dir);
+    const debugSpy = vi.spyOn(log, "debug");
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [{ type: "text", text: "local" }],
+    };
+
+    await handlers.get("agent_start")!({}, ctx);
+    await handlers.get("message_end")!({ message }, ctx);
+    await handlers.get("agent_end")!({}, ctx);
+
+    expect(debugSpy).toHaveBeenCalledWith(
+      "pi",
+      "assistant message ended",
+      expect.objectContaining({ fromQQ: false, hasBot: true, hasLogin: true, textPreview: "local" }),
+    );
+  });
+
+  it("does not write debug logs when level is silent", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-log-"));
+    configureLogger("silent", dir);
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const debugSpy = vi.spyOn(log, "debug");
+    const ctx = makeCtx();
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [{ type: "text", text: "quiet" }],
+    };
+
+    await handlers.get("agent_start")!({}, ctx);
+    await handlers.get("message_end")!({ message }, ctx);
+    await handlers.get("agent_end")!({}, ctx);
+
+    expect(debugSpy).not.toHaveBeenCalled();
   });
 });

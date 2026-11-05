@@ -61,6 +61,19 @@ Example prompt seen by pi:
 Summarize this file.
 ```
 
+### Sending media back to QQ
+
+After QQ login, pi-qq activates the `qq_send_media` tool. It is registered inactive at startup and after `/qq-logout`; a reconnect does not disable it.
+
+Ask pi explicitly, for example `send me the screenshot` or `把截图发给我`. The model decides from the tool description; ambiguous requests should be clarified first. There is no keyword matching or extra confirmation step.
+
+- Images: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.bmp`; up to 30 MB.
+- Videos: `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`, `.flv`, `.wmv`; up to 100 MB.
+- Other files: up to 100 MB; audio is sent as a file.
+- Any readable regular file is allowed. Symlinks, directories, and devices are rejected.
+- Each media message consumes one passive reply; after the limit, pi-qq falls back to a proactive message.
+- The tool bubble is the same as any other tool: `## 📤 qq_send_media`.
+
 ### Voice messages
 
 Voice messages use QQ's built-in ASR (`asr_refer_text`). The transcript is sent to pi as normal user text; pi never receives the audio file.
@@ -112,6 +125,8 @@ These terminal commands are intended for troubleshooting:
 | `/qq-test-budget`    | Show passive-reply budget and stream-bubble diagnostics |
 | `/qq-test-md [text]` | Send a Markdown test message                            |
 | `/qq-test-stream`    | Run a streamed timeline diagnostic (`resume` for probe) |
+
+With `logLevel: "debug"`, general agent/message/tool logs are written for local and QQ runs, and `scope: "media"` covers media-tool steps. QQ relay logs only appear for QQ-triggered runs.
 
 ## Settings
 
