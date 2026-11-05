@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-11-05
+
+### Changed
+
+- Thinking bubbles now start with the `## 💭 <label>` heading, matching the `##` heading syntax used by tool and skill blocks.
+- The English `en-us` thinking label is now `Thinking` instead of `思考`.
+- Skill blocks are localized: `## 🧩 Skill` in `en-us` and `## 🧩 技能` in `zh-cn`.
+
 ## [1.4.1] - 2026-11-04
 
 ### Changed
@@ -103,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/CQ-Developer/pi-qq/compare/v1.3.5...v1.3.6
