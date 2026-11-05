@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-05
+
 ### Changed
 
 - Logs are now written only during QQ-triggered runs after login. Local runs, login/QR flows, bot lifecycle events, and idle periods no longer create log files.
