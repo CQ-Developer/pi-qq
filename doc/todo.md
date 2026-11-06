@@ -1,10 +1,13 @@
 # TODO
 
+> 2026-11-06 更新：已基于 2026-11-05 / 2026-11-06 的真实使用记录完成首轮分析。TODO 1 的启动帧和参数传递已确认正常；TODO 2 仍未复现，等待真正的多分钟单命令日志。详见各条目的“日志验证结果”。
+
 ## 1. 长运行 bash 工具的参数延迟显示
 
-> 状态：TODO，等待长期使用日志  
-> 记录日期：2026-11-04  
-> 相关版本：pi-qq 1.3.6（仅增加 debug 日志）
+> 状态：启动帧已验证正常；待确认 QQ 客户端渲染
+> 记录日期：2026-11-04
+> 分析日期：2026-11-06
+> 相关版本：pi-qq 1.3.6（仅增加 debug 日志）；本次日志来自 1.4.0 之后的版本
 
 ### 现象
 
@@ -16,11 +19,7 @@
 - 500ms 定时器不依赖工具 Promise；长工具的启动帧曾在工具结束前通过 `stream_messages` 发出。
 - pi 内置 bash 使用异步 `spawn`，正常情况下不会阻塞 Node 事件循环。
 - 本地异步子进程可持续触发 500ms timer，说明“bash 子进程本身”不是必然的事件循环阻塞源。
-- 当前还没有这次 e2e 的长期使用日志，无法判断：
-  - 启动帧是否真的发出；
-  - `content_raw` 是否包含命令；
-  - timer/队列/事件循环是否被延迟；
-  - QQ 是否把长行内代码折叠成了一个点。
+- 2026-11-05 的真实使用记录已覆盖启动帧、`content_raw`、timer/队列和事件循环；但最长单条 bash 只有 94 秒的 docker build，仍没有“数分钟 e2e”样本。分析结果见下文。
 
 ### 已经添加的诊断日志
 
@@ -51,37 +50,43 @@
 <cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log
 ```
 
-### 下次日志分析步骤
+### 日志验证结果（2026-11-06）
 
-1. 找到 e2e 的 `toolStart`：
-   - `scope: "tool"`
-   - `toolName: "bash"`
-   - `args` 是否包含完整 `command`。
-2. 找到随后 `scope: "stream"` 的时序日志：
-   - `tool queued` 时间；
-   - `append start` 的 `waitedMs`；
-   - `append done` 的 `totalMs`；
-   - `append: buffered` / `timer: fired` / `flush: start` 时间。
-3. 找到对应的 `POST .../stream_messages`：
-   - 请求时间；
-   - `content_raw` 是否包含命令参数。
-4. 对照 `scope: "event-loop"` 的 `maxMs` / `p99Ms`：
-   - 如果事件循环延迟达到数秒/数分钟，说明 Node 主线程被饿死；
-   - 如果 event-loop 正常，但 `append start` 的 `waitedMs` 很大，说明前面的流/队列阻塞；
-   - 如果 POST 很快且 `content_raw` 有命令，但 QQ 只显示一个点，说明是 QQ 渲染/截断。
+基于 2026-11-05 / 2026-11-06 的真实使用记录（`logLevel: "debug"`）验证。11-05 有 4 个 QQ 触发的 run（约 8 / 21 / 29 / 23 分钟），共 529 个启动帧（483 个工具行 + 46 个 skill 块）。
+
+**启动帧确实发出，且带完整参数：**
+
+- 94.2 秒的 docker build：
+  - 11:49:38.449 `tool start`，`args` 包含完整 `command`；
+  - 11:49:39.032 发出 `POST .../stream_messages`，`content_raw` 以 `## 💻 bash` 开头，命令放在 `bash` fenced code block 中，完整内容为 `cd .../xuanji-mock && docker compose ... build 2>&1 | tail -6`；
+  - 11:49:39.643 收到 200 OK；
+  - 工具在 11:51:12.689 才结束，结果帧在 11:51:12.690 发出、11:51:13.323 收到 200。
+- 529 个启动帧全部能在 `stream_messages` 请求体中找到：
+  `93 bash + 194 write + 150 read + 28 codemode + 18 edit + 46 skill = 529`。
+- 最长的 bash 命令为 1108 字符；`content_raw` 为完整的 1134 字符（标题 + fence + 命令），没有被截断。
+- `append start` 的 `waitedMs` 最大 1ms；`append done` 的 `totalMs` 中位数约 1.3s、最大 2.1s。延迟来自关旧气泡、开新流和网络往返，不是队列积压。
+- 94s 工具的启动帧不是被 500ms 节流拖住的：日志为 `append: immediate`，`flush` 在 `stream open` 后立即开始。
+- QQ run 期间 `event-loop` 的 `maxMs` 最大 258ms，`driftMs` 最大 82ms；没有数秒级阻塞。
+
+**结论：** 在这些日志覆盖的场景中，TODO 1 中列出的四种可能——启动帧没发出、`content_raw` 没命令、queue/timer 延迟、事件循环饥饿——均不成立。pi-qq 侧在工具开始后约 1.2 秒内已经把带完整命令的启动帧交给 QQ API。
+
+### 尚未验证
+
+- QQ 客户端如何渲染这个 fenced code block。日志只能证明请求体里有完整命令，不能证明手机 QQ 一定把代码块展开显示。
+- 如果手机 QQ 仍只显示“bash 和一个点”，优先检查 QQ 对带 `bash` 语言标记的 fenced block、长代码块或新气泡的折叠/渲染，而不是继续排查 relay。
 
 ### 下一步
 
-- 收集长期使用日志后，确定是事件循环、队列、网络还是 QQ 渲染问题。
-- 如果是队列/缓冲问题，考虑给工具启动行增加 `flushAfter`。
-- 长命令参数已改为 bash fenced code block；如果仍显示异常，检查 QQ 对代码块的渲染并考虑缩短命令摘要。
-- 如果是 e2e CPU 导致的事件循环饥饿，需要评估 TUI/tool output 的同步开销，或把 relay 移出主进程。
-- 修复后补测试，更新 `doc/todo.md` / `CHANGELOG.md`，再发布版本。
+- 不需要给工具启动行增加 `flushAfter`；当前无队列/节流延迟证据。
+- 做一次 QQ 渲染 A/B：同一命令分别用带 `bash` 语言标记的 fenced block、无语言标记的 fenced block、行内代码发送，确认是否只在某种格式下显示异常。
+- 如果确认是 QQ 渲染问题，再考虑缩短命令摘要或改用普通文本/行内代码；如果确认正常，可直接关闭 TODO 1。
+- 若最终需要改格式，补测试并更新 `CHANGELOG.md`，再发布版本。
 
 ## 2. 长耗时命令导致 QQ 侧无输出/失去响应
 
-> 状态：TODO，等待长期使用日志
+> 状态：仍未复现；等待多分钟单命令日志
 > 记录日期：2026-11-04
+> 分析日期：2026-11-06
 > 相关版本：pi-qq 1.4.0
 > 详细调研：`doc/archive/delivery-v4.md`
 
@@ -116,6 +121,7 @@ QQ 侧的 `/last` 已可用于手动恢复：
 
 - 暂不实施 v4 归档中的错误分类、预算、心跳、自动重绑等行为修改。
 - 只追加可验证的 debug 日志，等待长期使用日志后再决定修复范围。
+- 2026-11-06 首轮日志未复现失败路径，继续维持“只加日志、不改行为”的决定；详见“日志验证结果”。
 - 新增诊断日志在 `logLevel: "debug"` 时写入；`stream error` / `stream unavailable` 原本就是 `warn`，保留为错误记录，不改变行为。
 
 ### 已追加的诊断日志
@@ -141,7 +147,27 @@ QQ 侧的 `/last` 已可用于手动恢复：
 - `scope: "inbound"`：`/stop` 记录 `wait start` / `wait done` 及 `waitedMs`。
 - `scope: "event-loop"`：增加 `driftMs`，用于发现 timer 被事件循环延迟。
 
-### 下次日志分析步骤
+### 日志验证结果（2026-11-06）
+
+基于 2026-11-05 / 2026-11-06 的真实使用记录验证。
+
+**没有复现失败：**
+
+- 最长的单条命令是 94.2 秒的 docker build；其余 e2e jest 命令为 4.2–6.8 秒。日志中没有“数分钟到数十分钟”的单条 bash。
+- 94s 工具期间从启动帧到结果帧有 93.7 秒没有新流式帧，说明长工具确实没有进度帧；但结果帧在工具结束后 0.6 秒发出并收到 200，没有丢失。
+- `stream error` / `stream unavailable` / `phase: "frame failed"`：0 条。
+- TODO 点名的错误码 `304103`、`40034005`、`40034128`、`40034024`、`429`、`50002`：0 次。
+- 529 个工具全部有 `queued → output started → result recorded → output finished`，没有 `ignored: stream dead`。
+- 4 个 run 结束时均为 `dead=false`、`hasPendingResume=false`、`resumeAttempts=0`、`hasPendingTools=false`、`hadError=false`；2055 组 `AppendStream` 的 `flush start/done` 一一对应。
+- 2026-11-05 有 4 个 QQ run：约 8 / 21 / 29 / 23 分钟；29 分钟的 run 结束时 `streamBubbles=184`、`streamBubblesTotal=502`，但 `budget.remaining=4`。这验证了“流式气泡没有计入 4 次被动回复上限”这个前提，但没有观察到因此失败；同一 `msg_id` 在数十分钟内仍能继续发流式帧。
+- `/last` 有 3 次有效调用，全部在 run 已结束后：分别重发 1410、2320、1827 字符，均收到 200 + done。没有 `last repush`（运行中恢复）记录。日志中没有运行中收到的普通消息，也没有 `/stop`，所以 steer 阻塞和非阻塞 `/stop` 仍未验证。
+- 2026-11-06 的 `event-loop maxMs=41,266,045.8` 样本与机器休眠/恢复一致，不是事件循环被阻塞 11 小时：它出现在 23:32:06.970，与 WebSocket 1006 关闭/重连同一时刻，下一次采样已回到 259ms。
+
+**结论：** 这些日志不能验证“长命令后 QQ 无输出/失去响应”的失败路径，也不能据此实施错误分类、预算或自动重绑修复。它们只支持两个前提：长工具期间没有进度帧；流式气泡没有计入被动回复预算。真正的触发条件仍需一次单条命令运行数分钟（最好 >5 分钟，甚至 >1 小时）的日志。
+
+### 复现时仍需采集/分析
+
+本次日志没有出现这些错误，以下步骤保留给下次复现时使用。
 
 1. 找到长命令的 `scope: "tool"` `start` / `end`：
    - `durationMs` 是否与用户感知一致；
@@ -166,7 +192,7 @@ QQ 侧的 `/last` 已可用于手动恢复：
 
 ### 需要提供的信息
 
-复现后请提供：
+本次日志没有覆盖多分钟单命令、运行中收到的普通消息、`/stop` 和 `/qq-test-budget` 输出；复现时请按以下清单提供：
 
 - `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`；
 - 长命令内容、开始时间和结束时间；
@@ -177,8 +203,10 @@ QQ 侧的 `/last` 已可用于手动恢复：
 
 ### 下一步
 
-- 如果日志确认 `msg_id` 过期/被动次数超限：按 `doc/archive/delivery-v4.md` 的“Long-running tools”建议实现错误分类和预算修复。
-- 如果日志显示流一直存活但没有新帧：优先实现长工具心跳和 `tool_execution_update` 转发。
-- 如果事件循环 `driftMs` / `p99Ms` 很高：排查 e2e CPU、TUI 渲染和同步工具代码。
+- 本次日志未复现失败；不要据此实施错误分类、预算或自动重绑修复。
+- 继续等待一次真正的多分钟单命令日志（最好 >5 分钟，并覆盖 >1 小时的 `msg_id` 生命周期）；复现时按上面的“复现时仍需采集/分析”执行。
+- 如果目标只是改善长工具期间的体感：优先实现长工具心跳和 `tool_execution_update` 转发，这不依赖失败复现。
+- 如果后续日志确认 `msg_id` 过期/被动次数超限：再按 `doc/archive/delivery-v4.md` 的“Long-running tools”建议实现错误分类和预算修复。
 - 如果 `/stop` 的 `wait done` 缺失或 `waitedMs` 很大：实现非阻塞 `/stop`。
-- 如果 `/last` 已能稳定恢复，保持为手动兜底，不急于自动重绑。
+- `/last` 目前作为手动兜底可用，保持现状，不急于自动重绑。
+- 修复后补测试，更新 `doc/todo.md` / `CHANGELOG.md`，再发布版本。
