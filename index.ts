@@ -45,7 +45,22 @@ const runFeedback = new RunFeedback({
   bot: () => running?.bot,
   budget,
   getThinkingRelay: () => activeSettings.thinkingRelay,
+  getReplyType: () => activeSettings.replyType,
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
+  onFallbackReply: (text) => {
+    const bot = running?.bot;
+    const bound = getLoginState()?.allowedOpenid;
+    if (!bot || !bound) {
+      log.warn("pi", "fallback reply skipped: no bot or bound user");
+      return;
+    }
+    log.info("pi", "sending fallback reply", { textLength: text.length });
+    void sendReply(bot, markdownToPlain(text), {
+      budget,
+      boundOpenid: bound,
+      onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
+    });
+  },
 });
 
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 100 });
@@ -111,6 +126,7 @@ export default function (pi: ExtensionAPI) {
 
   const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getDeliverAs = () => activeSettings.deliverAs;
+  const getReplyType = () => activeSettings.replyType;
 
   const onWarn = (ctx: ExtensionContext) => (msg: string) => ctx.ui.notify(`pi-qq ${msg}`, "warning");
 
@@ -141,6 +157,7 @@ export default function (pi: ExtensionAPI) {
           }
         : undefined,
       power: getPowerStatus(),
+      replyType: activeSettings.replyType,
     });
   };
 
@@ -171,6 +188,7 @@ export default function (pi: ExtensionAPI) {
       cwd: ctx.cwd,
       model: ctx.model?.name ?? null,
       logLevel: settings.logLevel,
+      replyType: settings.replyType,
       uploadDir,
       indexedFiles: Object.keys(uploadIndex).length,
     });
@@ -183,6 +201,7 @@ export default function (pi: ExtensionAPI) {
         budget,
         getAllowedOpenid,
         getDeliverAs,
+        getReplyType,
         getFileMaxSize: () => activeSettings.fileMaxSize,
         getStatusLines,
         getLastMessage: () => runFeedback.getLastMessage(),
@@ -213,6 +232,7 @@ export default function (pi: ExtensionAPI) {
       hasUI: ctx.hasUI,
       model: ctx.model?.name ?? null,
       logLevel: settings.logLevel,
+      replyType: settings.replyType,
       login: login ? { appId: login.credentials.appId, allowedOpenid: login.allowedOpenid } : null,
       configError: error ?? null,
     });

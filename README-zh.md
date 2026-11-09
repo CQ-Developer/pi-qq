@@ -135,6 +135,9 @@ QQ 侧命令：
 ```json
 {
   "thinkingRelay": true,
+  "replyType": "full",
+  "deliverAs": "steer",
+  "fileMaxSize": 52428800,
   "language": "zh-cn",
   "logLevel": "silent"
 }
@@ -143,6 +146,7 @@ QQ 侧命令：
 | 配置项          | 默认值     | 说明                                                   |
 | --------------- | ---------- | ------------------------------------------------------ |
 | `thinkingRelay` | `true`     | 以本地化的 `## 💭` 标题纯文本回传思考；`false` 时隐藏  |
+| `replyType`     | `"full"`   | 推送到 QQ 的内容粒度：`full`、`simple`、`last`         |
 | `deliverAs`     | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
 | `fileMaxSize`   | `52428800` | QQ 附件下载上限（字节，50MB）                          |
 | `language`      | `"zh-cn"`  | UI 和日志语言：`zh-cn` 或 `en-us`                      |
@@ -150,7 +154,57 @@ QQ 侧命令：
 
 配置在 pi 会话启动时读取；修改文件后请重启 pi。未知配置项会被忽略，无效值会回退到默认值并给出提示。
 
-启用日志后，只有 QQ 触发的 run 处于活动状态时才会写入记录，路径为 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`；可用 `PI_QQ_LOG_DIR` 覆盖目录。`info` 只记录元数据；`debug` 记录完整事件、附件、提示词和工具参数/结果。
+### `replyType`
+
+一次 run 中哪些内容会被推送到 QQ。
+
+| 模式     | QQ 收到的内容                                                 |
+| -------- | ------------------------------------------------------------- |
+| `full`   | 思考块、工具调用、工具结果，以及每一条 assistant 消息（默认） |
+| `simple` | 只推 assistant 消息，每条一个气泡                             |
+| `last`   | 只推 run 中最后一条 assistant 消息，在 run 结束时送出         |
+
+- `full` 是默认值，保持 pi-qq 1.5.x 的行为，也是唯一会应用 `thinkingRelay` 的模式。
+- `simple` 会实时流出每一条 assistant 消息，一条消息一个气泡。
+- `last` 在任务运行期间不推送任何内容；运行期间执行 `/last` 会回复“任务仍在进行中”。
+- 无论哪种模式，模型错误消息都会立即以普通消息发出。
+- `simple` 与 `last` 不回传工具输出，但 `qq_send_media` 发送的文件仍然会送达。
+
+### `thinkingRelay`
+
+是否把模型的思考单独回传成一个气泡。
+
+- `true`（默认）：以本地化的 `## 💭` 标题纯文本回传思考。
+- `false`：丢弃思考。
+- 只在 `replyType: "full"` 下生效；`simple` 与 `last` 不会回传思考。
+
+### `deliverAs`
+
+任务正在运行时，QQ 消息如何进入 pi。
+
+- `steer`（默认）：在下一个安全点注入当前任务。
+- `followUp`：排队，等当前任务结束后再处理。
+
+### `fileMaxSize`
+
+入站附件的大小上限，单位为字节（默认 `52428800`，即 50MB）。超过上限的附件会被拒绝并提示，不会下载，避免占满本地磁盘和下载额度。
+
+### `language`
+
+UI 提示与日志的语言。
+
+- `zh-cn`（默认）：简体中文。
+- `en-us`：英文。
+
+### `logLevel`
+
+日志阈值。只有 QQ 触发的 run 处于活动状态时才会写记录，路径为 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`；可用 `PI_QQ_LOG_DIR` 覆盖目录。
+
+- `silent`（默认）：完全不写日志文件。
+- `error`：只记录失败。
+- `warn`：记录失败与可恢复的问题。
+- `info`：额外记录 run 元信息——消息 id、内容长度、agent 开始与结束。
+- `debug`：记录全部内容，包括工具参数与结果、附件元数据、提示词和语音转写原文。
 
 ## 开发
 

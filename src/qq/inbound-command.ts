@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ReplyType } from "../infra/reply-type";
 import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 
@@ -17,6 +18,7 @@ export interface InboundCommandDeps {
   ctx: InboundContext;
   getStatusLines: () => string[];
   getLastMessage?: () => string | undefined;
+  getReplyType?: () => ReplyType;
   onStop?: () => void;
   waitForEnd?: () => Promise<void>;
 }
@@ -77,6 +79,10 @@ export async function handleInboundCommand(
       break;
     case "/last": {
       if (!deps.ctx.isIdle()) {
+        if (deps.getReplyType?.() === "last") {
+          await reply(t("commands.last.running"));
+          break;
+        }
         extras.restartPush?.();
       } else {
         const text = deps.getLastMessage?.();

@@ -3,10 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { normalizeLogLevel, type LogLevel } from "./file-logger";
 import { DEFAULT_LANGUAGE, getLanguage, isLanguage, translate, type Language } from "./i18n";
+import { DEFAULT_REPLY_TYPE, isReplyType, type ReplyType } from "./reply-type";
 
 export interface PiQQSettings {
   thinkingRelay?: boolean;
   deliverAs?: "steer" | "followUp";
+  replyType?: ReplyType;
   fileMaxSize?: number;
   logLevel?: LogLevel;
   language?: Language;
@@ -61,6 +63,10 @@ export function parseConfig(raw: unknown): ReadConfigResult {
     if (raw.deliverAs === "steer" || raw.deliverAs === "followUp") config.deliverAs = raw.deliverAs;
     else errors.push(translate(language, "settings.deliverAs"));
   }
+  if (raw.replyType !== undefined) {
+    if (isReplyType(raw.replyType)) config.replyType = raw.replyType;
+    else errors.push(translate(language, "settings.replyType"));
+  }
   if (raw.fileMaxSize !== undefined) {
     if (isPositiveSize(raw.fileMaxSize)) config.fileMaxSize = raw.fileMaxSize;
     else errors.push(translate(language, "settings.fileMaxSize"));
@@ -112,6 +118,7 @@ export function getSettings(config: PiQQSettings): ResolvedSettings {
   return {
     thinkingRelay: config.thinkingRelay ?? true,
     deliverAs: config.deliverAs ?? "steer",
+    replyType: config.replyType ?? DEFAULT_REPLY_TYPE,
     fileMaxSize: config.fileMaxSize ?? 50 * 1024 * 1024,
     logLevel,
     language: config.language ?? DEFAULT_LANGUAGE,

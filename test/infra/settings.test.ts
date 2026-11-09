@@ -95,9 +95,42 @@ describe("getSettings", () => {
     expect(settings).toEqual({
       thinkingRelay: true,
       deliverAs: "steer",
+      replyType: "full",
       fileMaxSize: 50 * 1024 * 1024,
       logLevel: "silent",
       language: "zh-cn",
     });
+  });
+});
+
+describe("replyType settings", () => {
+  it("默认为 full", () => {
+    expect(getSettings({}).replyType).toBe("full");
+  });
+
+  it("接受合法取值", () => {
+    expect(getSettings({ replyType: "full" }).replyType).toBe("full");
+    expect(getSettings({ replyType: "simple" }).replyType).toBe("simple");
+    expect(getSettings({ replyType: "last" }).replyType).toBe("last");
+  });
+
+  it("解析时保留合法取值", () => {
+    expect(parseConfig({ replyType: "full" })).toEqual({ config: { replyType: "full" } });
+    expect(parseConfig({ replyType: "last" })).toEqual({ config: { replyType: "last" } });
+  });
+
+  it("忽略非法取值并报错", () => {
+    const { config, error } = parseConfig({ replyType: "verbose" });
+    expect(config).toEqual({});
+    expect(error).toContain("replyType");
+
+    const numeric = parseConfig({ replyType: 1 });
+    expect(numeric.config).toEqual({});
+    expect(numeric.error).toContain("replyType");
+  });
+
+  it("非法取值在解析阶段被丢弃，最终回退到默认模式", () => {
+    const { config } = parseConfig({ replyType: "verbose" });
+    expect(getSettings(config).replyType).toBe("full");
   });
 });

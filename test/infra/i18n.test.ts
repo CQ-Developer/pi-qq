@@ -44,6 +44,18 @@ describe("i18n", () => {
     expect(isLanguage("fr-fr")).toBe(false);
   });
 
+  it("localizes reply type labels and hints", () => {
+    configureI18n("en-us");
+    expect(t("status.replyType")).toBe("Reply type");
+    expect(t("settings.replyType")).toContain("replyType");
+    expect(t("commands.last.running")).toContain("still running");
+
+    configureI18n("zh-cn");
+    expect(t("status.replyType")).toBe("回复模式");
+    expect(t("settings.replyType")).toContain("replyType");
+    expect(t("commands.last.running")).toContain("仍在进行");
+  });
+
   it("localizes known log messages and leaves SDK messages raw", () => {
     configureI18n("zh-cn");
     expect(localizeLogMessage("starting bot")).toEqual({

@@ -1,6 +1,8 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { BubbleWriter } from "./bubble-writer";
+import { policyFor, type ReplyPolicy } from "./reply-policy";
 import type { ReplyBudget } from "../quota/reply-quota";
+import type { ReplyType } from "../infra/reply-type";
 import { isLogEnabled, log } from "../infra/file-logger";
 import { detectSkillRead } from "./stream-block-format";
 
@@ -8,7 +10,9 @@ export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;
   budget: ReplyBudget;
   getThinkingRelay: () => boolean;
+  getReplyType: () => ReplyType;
   onWarn: (msg: string) => void;
+  onFallbackReply?: (text: string) => void;
 }
 
 interface ToolCall {
@@ -34,8 +38,14 @@ interface RunState {
   deferredThinking: string;
   deferredText: string;
   hadError: boolean;
+  lastText: string;
   writer: BubbleWriter;
   typingTimer?: ReturnType<typeof setInterval>;
+}
+
+interface LastDelivery {
+  text: string;
+  streamed: boolean;
 }
 
 const TYPING_INTERVAL_MS = 50_000;
@@ -150,6 +160,7 @@ export class RunFeedback {
       deferredThinking: "",
       deferredText: "",
       hadError: false,
+      lastText: "",
       writer,
     };
     this.run = run;
@@ -158,6 +169,7 @@ export class RunFeedback {
         msgId: run.msgId?.slice(0, 8) ?? "?",
         source: target === pending ? "pending" : "recovery",
         targetAgeMs: now - target.at,
+        replyType: this.deps.getReplyType(),
         budget: this.deps.budget.snapshot(),
       });
     }
@@ -242,6 +254,16 @@ export class RunFeedback {
     const run = this.run;
     if (!run) return;
 
+    const policy = this.policy();
+
+    if (!policy.relayTextLive) {
+      if (snapshotText.trim()) {
+        run.currentText = snapshotText;
+        run.lastText = snapshotText;
+      }
+      return;
+    }
+
     const full = [run.finalizedText, snapshotText].filter((part) => part.trim()).join("\n\n");
     if (full.trim()) run.currentText = full;
 
@@ -250,7 +272,7 @@ export class RunFeedback {
     if (snapshotThinking.length > run.thinkingSentLen) {
       const thinkingDelta = snapshotThinking.slice(run.thinkingSentLen);
       run.thinkingSentLen = snapshotThinking.length;
-      if (this.deps.getThinkingRelay()) {
+      if (policy.relayThinking && this.deps.getThinkingRelay()) {
         if (this.hasPendingTools(run)) {
           run.deferredThinking += thinkingDelta;
         } else {
@@ -262,7 +284,7 @@ export class RunFeedback {
     const delta = full.slice(run.resultSentLen);
     if (!delta) return;
     run.resultSentLen = full.length;
-    if (this.hasPendingTools(run)) {
+    if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
       run.deferredText += delta;
       return;
     }
@@ -280,12 +302,32 @@ export class RunFeedback {
       return false;
     }
 
+    const policy = this.policy();
+
+    if (!policy.relayTextLive) {
+      run.finalizedText = "";
+      run.resultSentLen = 0;
+      run.thinkingSentLen = 0;
+      if (isError) {
+        run.hadError = true;
+        this.recovery = { openid: run.openid, msgId: run.msgId ?? "", at: Date.now() };
+        log.debug("run", "last buffered", { textLength: 0, isError: true });
+        return false;
+      }
+      if (text.trim()) {
+        run.lastText = text;
+        run.currentText = text;
+      }
+      log.debug("run", "last buffered", { textLength: run.lastText.length, isError: false });
+      return true;
+    }
+
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
     if (text.trim()) run.currentText = text;
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
     if (!isError && text && delta) {
-      if (this.hasPendingTools(run)) {
+      if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
         run.deferredText += delta;
       } else {
         run.writer.pushText(delta);
@@ -327,6 +369,7 @@ export class RunFeedback {
       this.finishEnd();
       return;
     }
+    const lastDelivery = this.planLastDelivery(run);
     await run.writer.whenIdle();
     const hasPendingTools = this.hasPendingTools(run);
     if (!hasPendingTools) this.flushDeferred(run);
@@ -348,15 +391,17 @@ export class RunFeedback {
       msgId: run.msgId?.slice(0, 8) ?? "?",
       elapsedMs: Date.now() - run.startedAt,
     });
-    this.run = null;
-    if (!run.writer.hasPushed) {
-      run.writer.dispose();
-      this.finishEnd();
-      return;
+    let delivered = false;
+    if (run.writer.hasPushed) {
+      const ok = await run.writer.flush();
+      if (ok) {
+        await run.writer.done();
+        delivered = true;
+      }
     }
-    const ok = await run.writer.flush();
-    if (ok) await run.writer.done();
     run.writer.dispose();
+    this.settleLastDelivery(lastDelivery, delivered);
+    if (this.run === run) this.run = null;
     this.finishEnd();
   }
 
@@ -377,6 +422,33 @@ export class RunFeedback {
   private finishEnd(): void {
     this.endResolve?.();
     this.endResolve = undefined;
+  }
+
+  private policy(): ReplyPolicy {
+    return policyFor(this.deps.getReplyType());
+  }
+
+  private planLastDelivery(run: RunState): LastDelivery | undefined {
+    if (!this.policy().deliverLastAtEnd) return undefined;
+    const text = run.lastText.trim() ? run.lastText : "";
+    if (!text) return undefined;
+    const fresh = this.deps.budget.snapshot().fresh;
+    if (fresh) {
+      run.writer.closeBlock();
+      run.writer.pushText(text);
+    }
+    return { text, streamed: fresh };
+  }
+
+  private settleLastDelivery(delivery: LastDelivery | undefined, delivered: boolean): void {
+    if (!delivery) return;
+    const ok = delivered && delivery.streamed;
+    log.debug("run", "last delivered", {
+      delivered: ok,
+      fallback: !ok,
+      textLength: delivery.text.length,
+    });
+    if (!ok) this.deps.onFallbackReply?.(delivery.text);
   }
 
   private hasPendingTools(run: RunState): boolean {
@@ -410,10 +482,12 @@ export class RunFeedback {
       skillName: tool.skillName ?? null,
       ...this.diagnostics(run),
     });
-    if (tool.skillName) {
-      run.writer.pushSkill(tool.skillName);
-    } else {
-      run.writer.pushTool(tool.name, tool.args);
+    if (this.policy().relayTools) {
+      if (tool.skillName) {
+        run.writer.pushSkill(tool.skillName);
+      } else {
+        run.writer.pushTool(tool.name, tool.args);
+      }
     }
     if (tool.result) this.finishTool(run, tool);
   }
@@ -428,7 +502,7 @@ export class RunFeedback {
       isError: tool.result.isError,
       ...this.diagnostics(run),
     });
-    if (!tool.skillName) {
+    if (this.policy().relayTools && !tool.skillName) {
       run.writer.pushToolResult(tool.result.result, tool.result.isError, tool.name, tool.args);
     }
     run.writer.schedule(() => {

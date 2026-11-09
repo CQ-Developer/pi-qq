@@ -9,6 +9,7 @@ import {
   type SavedFile,
 } from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
+import type { ReplyType } from "../infra/reply-type";
 import { t } from "../infra/i18n";
 import { handleInboundCommand, type InboundCommandDeps } from "./inbound-command";
 import { PendingAttachments, resolveInboundContent } from "./inbound-attachments";
@@ -17,6 +18,7 @@ export interface InboundDeps extends InboundCommandDeps {
   budget: ReplyBudget;
   getAllowedOpenid: () => string | undefined;
   getDeliverAs: () => "steer" | "followUp";
+  getReplyType: () => ReplyType;
   getFileMaxSize: () => number;
   saveFiles?: typeof saveInboundFiles;
   streamReply?: typeof sendStreamReply;

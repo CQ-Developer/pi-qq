@@ -1,5 +1,6 @@
 import type { PowerStatus } from "../infra/power-status";
 import { formatTokenCount } from "../infra/display-format";
+import type { ReplyType } from "../infra/reply-type";
 import { t, type TranslationKey } from "../infra/i18n";
 import type { BotState } from "./qq-bot";
 
@@ -10,6 +11,7 @@ export interface StatusReportInput {
   model?: { name: string };
   usage?: { tokens: number | null; contextWindow: number | null; percent?: number | null };
   power?: PowerStatus;
+  replyType?: ReplyType;
 }
 
 const STATE_ICONS: Record<BotState, string> = {
@@ -45,6 +47,7 @@ function label(
     | "status.connection"
     | "status.qqUser"
     | "status.battery"
+    | "status.replyType"
     | "status.settings",
   value: string,
 ): string {
@@ -107,6 +110,7 @@ export function formatStatusReport(input: StatusReportInput): string[] {
 
   const battery = batteryLine(input.power);
   if (battery) lines.push(battery);
+  if (input.replyType) lines.push(`💬 ${label("status.replyType", input.replyType)}`);
   lines.push(`⚙️ ${label("status.settings", "~/.pi/agent/pi-qq.json")}`);
   return lines;
 }

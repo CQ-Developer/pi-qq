@@ -77,4 +77,31 @@ describe("formatStatusReport", () => {
       }),
     ).toContain("⚡ Battery: AC");
   });
+
+  it("renders the reply type when provided", () => {
+    expect(
+      formatStatusReport({
+        connection: { state: "connected" },
+        agent: { running: false, qq: false },
+        replyType: "simple",
+      }),
+    ).toContain("💬 Reply type: simple");
+
+    configureI18n("zh-cn");
+    expect(
+      formatStatusReport({
+        connection: { state: "connected" },
+        agent: { running: false, qq: false },
+        replyType: "last",
+      }),
+    ).toContain("💬 回复模式：last");
+  });
+
+  it("omits the reply type when unknown", () => {
+    const lines = formatStatusReport({
+      connection: { state: "connected" },
+      agent: { running: false, qq: false },
+    });
+    expect(lines.some((line) => line.includes("Reply type") || line.includes("回复模式"))).toBe(false);
+  });
 });

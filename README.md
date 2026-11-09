@@ -135,6 +135,9 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 ```json
 {
   "thinkingRelay": true,
+  "replyType": "full",
+  "deliverAs": "steer",
+  "fileMaxSize": 52428800,
   "language": "zh-cn",
   "logLevel": "silent"
 }
@@ -143,6 +146,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 | Key             | Default    | Description                                                  |
 | --------------- | ---------- | ------------------------------------------------------------ |
 | `thinkingRelay` | `true`     | Relay thinking as plain text with a localized `## 💭` header |
+| `replyType`     | `"full"`   | How much of a run is pushed to QQ: `full`, `simple`, `last`  |
 | `deliverAs`     | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
 | `fileMaxSize`   | `52428800` | QQ attachment download limit in bytes (50MB)                 |
 | `language`      | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |
@@ -150,7 +154,57 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 
 Settings are read when a pi session starts; restart pi after editing the file. Unknown keys are ignored, and invalid values fall back to defaults with a warning.
 
-When logging is enabled, records are written only while a QQ-triggered run is active. Logs go to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory. `info` records metadata only; `debug` records full events, attachments, prompts, and tool payloads.
+### `replyType`
+
+How much of an agent run is pushed to QQ.
+
+| Value    | QQ receives                                                                      |
+| -------- | -------------------------------------------------------------------------------- |
+| `full`   | Thinking blocks, tool calls, tool results, and every assistant message (default) |
+| `simple` | Assistant messages only, one bubble each                                         |
+| `last`   | Only the last assistant message of the run, sent when the run ends               |
+
+- `full` is the default and keeps the behaviour of pi-qq 1.5.x; it is the only mode where `thinkingRelay` applies.
+- `simple` streams every assistant message live, one QQ bubble per message.
+- `last` sends nothing while the task is running; `/last` during a running task replies that the task is still running.
+- Model errors are always delivered immediately as a normal message, in every mode.
+- Tool output is not relayed in `simple` or `last`, but files sent with `qq_send_media` are still delivered.
+
+### `thinkingRelay`
+
+Whether the model's thinking is relayed to QQ as its own bubble.
+
+- `true` (default): thinking is relayed as plain text under a localized `## 💭` heading.
+- `false`: thinking is dropped.
+- Only applies to `replyType: "full"`; `simple` and `last` never relay thinking.
+
+### `deliverAs`
+
+How a QQ message reaches pi while a task is already running.
+
+- `steer` (default): the message is injected into the running task at the next safe point.
+- `followUp`: the message is queued and processed after the running task finishes.
+
+### `fileMaxSize`
+
+Maximum size of an inbound attachment, in bytes (default `52428800`, 50MB). Larger files are rejected with a notice instead of being downloaded, which keeps the local disk and the download quota under control.
+
+### `language`
+
+Language of the UI notifications and the log messages.
+
+- `zh-cn` (default): Simplified Chinese.
+- `en-us`: English.
+
+### `logLevel`
+
+Log threshold. Records are written only while a QQ-triggered run is active, to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory.
+
+- `silent` (default): no log file at all.
+- `error`: failures only.
+- `warn`: failures and recoverable problems.
+- `info`: run metadata as well — message ids, content lengths, agent start and end.
+- `debug`: everything, including tool arguments and results, attachment metadata, prompts, and raw voice transcripts.
 
 ## Development
 

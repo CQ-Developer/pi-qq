@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { configureI18n } from "../../src/infra/i18n";
+import type { ReplyType } from "../../src/infra/reply-type";
 import { createInboundHandler } from "../../src/qq/qq-message-handler";
 import { ReplyBudget } from "../../src/quota/reply-quota";
 
@@ -18,6 +19,7 @@ function makeInboundHarness(
     lastMessage?: string;
     streamReply?: (bot: unknown, text: string, target: unknown, budget: unknown) => Promise<void>;
     repushCurrent?: (openid: string, msgId: string) => boolean;
+    replyType?: ReplyType;
   } = {},
 ) {
   const sent: string[] = [];
@@ -49,6 +51,7 @@ function makeInboundHarness(
     budget: new ReplyBudget(),
     getAllowedOpenid: () => "openid-u",
     getDeliverAs: () => "steer",
+    getReplyType: () => opts.replyType ?? "full",
     getFileMaxSize: () => 50 * 1024 * 1024,
     saveFiles: opts.saveFiles,
     getStatusLines: () => [],
@@ -395,6 +398,30 @@ describe("inbound /last", () => {
     await harness.run({ content: "/last" });
     expect(harness.sent).toEqual([]);
     expect(harness.streamed).toEqual([]);
+  });
+
+  it("last 模式运行中回复提示且不重推当前输出", async () => {
+    let repushed = false;
+    const harness = makeInboundHarness(false, {
+      replyType: "last",
+      repushCurrent: () => {
+        repushed = true;
+        return true;
+      },
+    });
+    await harness.run({ content: "/last" });
+    expect(harness.sent).toEqual(["The task is still running; the final reply will be sent when it finishes."]);
+    expect(repushed).toBe(false);
+    expect(harness.streamed).toEqual([]);
+  });
+
+  it("last 模式空闲时仍重推最近一次完成的回复", async () => {
+    const harness = makeInboundHarness(true, {
+      replyType: "last",
+      lastMessage: "final answer",
+    });
+    await harness.run({ content: "/last" });
+    expect(harness.streamed).toEqual(["final answer"]);
   });
 
   it("空闲且没有历史消息时给出提示", async () => {

@@ -288,42 +288,57 @@ export class BubbleWriter {
         await this.rotateStream();
         if (this.streamDead || this.disposed) return;
       }
-      if (
-        !newBubble &&
-        this.bubbleChars >= MAX_BUBBLE_CHARS &&
-        this.cur &&
-        !this.pendingResume &&
-        !this.fenceOpen &&
-        !this.toolOpen &&
-        (blockBoundary || this.lastChar === "\n")
-      ) {
+      const cut = this.splitPoint(text, newBubble);
+      if (cut >= 0) {
+        await this.appendChunk(text.slice(0, cut + 1), { thinking, endTool, trace, queuedAt });
+        if (this.streamDead || this.disposed) return;
         await this.rotateStream();
         if (this.streamDead || this.disposed) return;
+        await this.appendChunk(text.slice(cut + 1), { thinking, endTool, trace, queuedAt });
+        return;
       }
-      const stream = this.ensureStream();
-      if (!stream) return;
-      this.pushedAny = true;
-      const outgoing = thinking && (!this.cur || this.bubbleChars === 0) ? `${thinkingHeader()}${text}` : text;
-      try {
-        await stream.append(outgoing);
-        this.bubbleChars += outgoing.length;
-        this.lastFrameAt = Date.now();
-        this.trackFences(outgoing);
-        this.lastChar = outgoing.slice(-1);
-        if (endTool) this.toolOpen = false;
-        if (trace && isLogEnabled("debug")) {
-          log.debug("stream", "stream timing", {
-            phase: "append done",
-            trace,
-            msgId: this.logMsgId(),
-            totalMs: Date.now() - queuedAt,
-            stats: this.stats(),
-          });
-        }
-      } catch (err) {
-        if (this.cur === stream) this.handleStreamError(err as Error);
-      }
+      await this.appendChunk(text, { thinking, endTool, trace, queuedAt });
     });
+  }
+
+  private splitPoint(text: string, newBubble: boolean): number {
+    if (newBubble) return -1;
+    if (!this.cur) return -1;
+    if (this.pendingResume) return -1;
+    if (this.fenceOpen) return -1;
+    if (this.toolOpen) return -1;
+    if (this.bubbleChars < MAX_BUBBLE_CHARS) return -1;
+    return text.indexOf("\n");
+  }
+
+  private async appendChunk(
+    text: string,
+    opts: { thinking?: boolean; endTool?: boolean; trace?: string; queuedAt?: number },
+  ): Promise<void> {
+    if (!text || this.streamDead || this.disposed) return;
+    const stream = this.ensureStream();
+    if (!stream) return;
+    this.pushedAny = true;
+    const outgoing = opts.thinking && (!this.cur || this.bubbleChars === 0) ? `${thinkingHeader()}${text}` : text;
+    try {
+      await stream.append(outgoing);
+      this.bubbleChars += outgoing.length;
+      this.lastFrameAt = Date.now();
+      this.trackFences(outgoing);
+      this.lastChar = outgoing.slice(-1);
+      if (opts.endTool) this.toolOpen = false;
+      if (opts.trace && isLogEnabled("debug")) {
+        log.debug("stream", "stream timing", {
+          phase: "append done",
+          trace: opts.trace,
+          msgId: this.logMsgId(),
+          totalMs: Date.now() - (opts.queuedAt ?? 0),
+          stats: this.stats(),
+        });
+      }
+    } catch (err) {
+      if (this.cur === stream) this.handleStreamError(err as Error);
+    }
   }
 
   private trackFences(text: string): void {
