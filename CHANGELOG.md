@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-09
+
+### Added
+
+- Added the `replyType` setting to control how much of an agent run is pushed to QQ: `full` (thinking, tool calls, and tool results), `simple` (assistant messages only, one bubble each), or `last` (only the last assistant message, delivered when the run ends). The default is `full`, so the default behaviour is unchanged; set `"replyType": "simple"` or `"last"` to push less to QQ.
+- Added the effective reply type to `/qq-status`.
+
+### Changed
+
+- In `last` mode, `/last` during a running task now replies that the task is still running instead of repushing partial output.
+- Consolidated the v6 design and delivery record into `doc/archive/delivery-v6.md`; removed the working document.
+
+### Fixed
+
+- The `last` reply mode now records its delivery result (`last delivered`) in the debug log before the run state is cleared, so the record is no longer dropped by the QQ-run log gate.
+- Bubbles that pass 12k characters are now split at the next line break found in the incoming text chunk. Previously the split only happened when a chunk happened to end with a newline, which almost never occurred, so long messages were split by the platform instead and thinking blocks lost their repeated heading.
+
 ## [1.5.1] - 2026-11-05
 
 ### Changed
