@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-11
+
 ### Changed
 
 - Settings are loaded when the extension starts and re-read on every inbound QQ message from the bound user, so edits to `pi-qq.json` take effect on the next message without restarting pi or logging in again. Config errors are reported once per distinct text.
@@ -159,7 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.4.2...v1.5.0
