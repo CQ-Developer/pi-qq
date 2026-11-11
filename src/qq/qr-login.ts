@@ -47,7 +47,7 @@ export async function runQrLogin(ctx: ExtensionContext): Promise<QrLoginResult |
             causeCode: cause && typeof cause === "object" ? (cause as NodeJS.ErrnoException).code : undefined,
             causeMessage: cause instanceof Error ? cause.message : undefined,
           });
-          ctx.ui.notify(t("login.failed"), "error");
+          ctx.ui.notify(`${t("login.failed")}: ${err.message}`, "error");
           finish();
           closeOverlay?.();
         },

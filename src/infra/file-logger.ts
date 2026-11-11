@@ -18,7 +18,7 @@ const DEFAULT_LOG_LEVEL: LogLevel = "silent";
 let activeLevel: LogLevel = DEFAULT_LOG_LEVEL;
 let activeDir: string | undefined;
 let writeQueue: Promise<void> = Promise.resolve();
-let logGate: (() => boolean) | undefined;
+let logGate: ((scope: string) => boolean) | undefined;
 
 function isLogLevel(value: unknown): value is LogLevel {
   return typeof value === "string" && Object.hasOwn(LEVEL_WEIGHT, value);
@@ -45,14 +45,14 @@ export function configureLogger(level: LogLevel, dir?: string): void {
   activeDir = dir;
 }
 
-export function setLogGate(gate: (() => boolean) | undefined): void {
+export function setLogGate(gate: ((scope: string) => boolean) | undefined): void {
   logGate = gate;
 }
 
-function isLogAllowed(): boolean {
+function isLogAllowed(scope: string): boolean {
   if (!logGate) return true;
   try {
-    return logGate();
+    return logGate(scope);
   } catch {
     return false;
   }
@@ -91,7 +91,7 @@ function stringifyError(err: unknown): string {
 
 function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message: string, data?: unknown): void {
   if (!isLevelEnabled(activeLevel, level)) return;
-  if (!isLogAllowed()) return;
+  if (!isLogAllowed(scope)) return;
 
   const msgKey = logMessageKey(message);
   const record: LogFields = {

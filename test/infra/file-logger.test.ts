@@ -170,6 +170,23 @@ describe("file output", () => {
     }
   });
 
+  it("passes the log scope to the gate", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-gate-scope-"));
+    try {
+      configureLogger("debug", dir);
+      setLogGate((scope) => scope === "login");
+      log.info("login", "visible login");
+      log.info("stream", "hidden stream");
+      await flushLogs();
+      const lines = (await readFile(getLogFilePath(), "utf8")).trim().split("\n");
+      expect(lines).toHaveLength(1);
+      expect((JSON.parse(lines[0]!) as Record<string, unknown>).msg).toBe("visible login");
+    } finally {
+      setLogGate(undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("treats a throwing gate as closed", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-gate-"));
     try {

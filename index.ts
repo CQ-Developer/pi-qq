@@ -120,7 +120,12 @@ function stopEventLoopMonitor(): void {
 }
 
 export default function (pi: ExtensionAPI) {
-  setLogGate(() => Boolean(getLoginState()) && runFeedback.isQQRunActive());
+  setLogGate((scope) => {
+    if (scope === "login") return true;
+    if (!getLoginState()) return false;
+    if (scope === "session" || scope === "bot") return true;
+    return runFeedback.isQQRunActive();
+  });
 
   const notifyConfigError = (ctx: ExtensionContext, error: string | undefined, dedupe: boolean) => {
     if (!error) {
