@@ -3,7 +3,7 @@
 > **Archived record.** Content reflects the delivery at that time and may reference removed modules or settings. See [README](../../README.md) for current behavior.
 > Status: v3 implemented and the main path has been verified on real QQ.
 > Note: later changes removed the image-specific pipeline; images now use the same save/pending path as files.
-> Previous: [delivery.2026.10.29.md](./delivery.2026.10.29.md), [delivery.2026.10.30.md](./delivery.2026.10.30.md).
+> Previous: [delivery.1.0.0.md](./delivery.1.0.0.md), [delivery.1.2.0.md](./delivery.1.2.0.md).
 
 ## 1. Scope
 

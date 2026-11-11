@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - In `last` mode, `/last` during a running task now replies that the task is still running instead of repushing partial output.
-- Consolidated the v6 design and delivery record into `doc/archive/delivery.2026.11.09.md`; removed the working document.
+- Consolidated the v6 design and delivery record into `doc/archive/delivery.1.6.0.md`; removed the working document.
 
 ### Fixed
 
@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Consolidated the v5 research, feature, and implementation plan into `doc/archive/delivery.2026.11.05.md`; removed the three working documents.
+- Consolidated the v5 research, feature, and implementation plan into `doc/archive/delivery.1.5.0.md`; removed the three working documents.
 
 ### Fixed
 
@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Tool bubbles now use `## <icon> <name>`, show `bash` commands in a `bash` code block without truncation, and choose result code-block languages from `read` file extensions (for example `markdown`, `python`, `json`).
-- Consolidated the v4 design and investigation records into `doc/archive/delivery.2026.11.04.md` and `doc/archive/delivery-v4-zh.md`.
+- Consolidated the v4 design and investigation records into `doc/archive/delivery.1.4.0.md` and `doc/archive/delivery-v4-zh.md`.
 
 ## [1.3.6] - 2026-11-04
 
