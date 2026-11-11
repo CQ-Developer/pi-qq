@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { configureI18n } from "../../src/infra/i18n";
-import { configureLogger, flushLogs, getLogFilePath, setLogGate } from "../../src/infra/file-logger";
+import { setLogGate } from "../../src/infra/file-logger";
 import type { ReplyType } from "../../src/infra/reply-type";
 import { RunFeedback } from "../../src/relay/run-stream-relay";
 import { thinkingHeader } from "../../src/relay/stream-block-format";
@@ -21,13 +18,11 @@ function makeRunHarness(
     replyType?: ReplyType;
     failNext?: number;
     alwaysFail?: boolean;
-    staleTarget?: boolean;
   } = {},
 ) {
   const calls: Array<Record<string, unknown>> = [];
   const attempts: Array<Record<string, unknown>> = [];
   const warns: string[] = [];
-  const fallbacks: string[] = [];
   let failuresLeft = options.failNext ?? 0;
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
@@ -46,17 +41,14 @@ function makeRunHarness(
     sendTyping: async () => {},
   };
   const budget = new ReplyBudget();
-  budget.observeInbound("openid-u", "msg-1", options.staleTarget ? Date.now() - 10 * 60_000 : Date.now());
+  budget.observeInbound("openid-u", "msg-1");
   const deps = {
     bot: () => bot,
     budget,
     getReplyType: () => options.replyType ?? "full",
     onWarn: (msg: string) => warns.push(msg),
-    onFallbackReply: (text: string) => {
-      fallbacks.push(text);
-    },
   };
-  return { rf: new RunFeedback(deps as never), calls, attempts, warns, fallbacks, budget };
+  return { rf: new RunFeedback(deps as never), calls, attempts, warns, budget };
 }
 
 function streamContent(calls: Array<Record<string, unknown>>): string {
@@ -378,7 +370,7 @@ describe("RunFeedback 直推", () => {
     const { rf, calls } = makeRunHarness();
     startRun(rf);
     rf.onAssistantDelta("partial", "");
-    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(true);
+    expect(rf.repushCurrent("openid-u", "msg-last").ok).toBe(true);
 
     await rf.onAssistantFinal("partial answer", false);
     await rf.onAgentEnd();
@@ -387,7 +379,7 @@ describe("RunFeedback 直推", () => {
     expect(calls.some((call) => call.msg_id === "msg-last")).toBe(true);
 
     startRun(rf, "msg-2");
-    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(false);
+    expect(rf.repushCurrent("openid-u", "msg-last")).toEqual({ ok: false, reason: "empty" });
     expect(rf.getLastMessage()).toBe("partial answer");
     await rf.onAgentEnd();
     expect(rf.getLastMessage()).toBe("partial answer");
@@ -397,7 +389,7 @@ describe("RunFeedback 直推", () => {
     const { rf } = makeRunHarness({ alwaysFail: true });
     startRun(rf);
     rf.onAssistantDelta("hello", "");
-    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(true);
+    expect(rf.repushCurrent("openid-u", "msg-last").ok).toBe(true);
     await rf.onAssistantFinal("hello", false);
     await rf.onAgentEnd();
     expect(rf.getLastMessage()).toBe("hello");
@@ -408,13 +400,133 @@ describe("RunFeedback 直推", () => {
     startRun(rf);
     rf.onAssistantDelta("first", "");
     await rf.onAssistantFinal("first", false);
-    expect(rf.repushCurrent("openid-u", "msg-last")).toBe(true);
+    expect(rf.repushCurrent("openid-u", "msg-last").ok).toBe(true);
 
     rf.onAssistantDelta("second", "");
     await rf.onAssistantFinal("second", false);
     await rf.onAgentEnd();
     expect(streamContent(calls)).toContain("second");
     expect(rf.getLastMessage()).toBe("second");
+  });
+
+  it("full 模式 /last 按思考、工具、文本顺序重推", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("current answer", "current thinking");
+    rf.onToolStart("bash", { command: "npm test" }, "call-1");
+    rf.onToolEnd("bash", false, "passed", "call-1");
+
+    expect(rf.repushCurrent("openid-u", "msg-last").ok).toBe(true);
+    await rf.onAgentEnd();
+
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    const thinkingAt = repush.indexOf("current thinking");
+    const toolAt = repush.indexOf("## 💻 bash");
+    const textAt = repush.indexOf("current answer");
+    expect(thinkingAt).toBeGreaterThanOrEqual(0);
+    expect(toolAt).toBeGreaterThan(thinkingAt);
+    expect(textAt).toBeGreaterThan(toolAt);
+  });
+
+  it("full 模式 /last 在只有思考时立即重推", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onAssistantDelta("", "当前思考");
+
+    const result = rf.repushCurrent("openid-u", "msg-last");
+    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ thinkingLength: 4, toolCount: 0, textLength: 0 });
+
+    await rf.onAgentEnd();
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    expect(repush).toBe(`${THINKING_HEADER}当前思考`);
+  });
+
+  it("full 模式 /last 在只有工具时立即重推启动行", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "npm test" }, "call-1");
+
+    const result = rf.repushCurrent("openid-u", "msg-last");
+    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ thinkingLength: 0, toolCount: 1, textLength: 0 });
+
+    await rf.onAgentEnd();
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    expect(repush).toContain("## 💻 bash");
+    expect(repush).toContain("npm test");
+  });
+
+  it("重推后的当前工具结果继续写入新流", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    rf.onToolStart("bash", { command: "npm test" }, "call-1");
+    expect(rf.repushCurrent("openid-u", "msg-last").ok).toBe(true);
+    rf.onToolEnd("bash", false, "12 passed", "call-1");
+
+    await rf.onAgentEnd();
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    expect(repush.match(/npm test/g)).toHaveLength(1);
+    expect(repush).toContain("12 passed");
+  });
+
+  it("writer 死亡后 /last 可以恢复思考快照", async () => {
+    const { rf, calls } = makeRunHarness({ failNext: 3 });
+    startRun(rf);
+    rf.onAssistantDelta("", "recoverable thinking");
+    expect(await rf.onAssistantFinal("", false)).toBe(false);
+
+    const result = rf.repushCurrent("openid-u", "msg-last");
+    expect(result.ok).toBe(true);
+    await rf.onAgentEnd();
+
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    expect(repush).toBe(`${THINKING_HEADER}recoverable thinking`);
+  });
+
+  it("writer 死亡后仍记录工具并可通过 /last 重推", async () => {
+    const { rf, calls } = makeRunHarness({ failNext: 3 });
+    startRun(rf);
+    rf.onAssistantDelta("", "before death");
+    expect(await rf.onAssistantFinal("", false)).toBe(false);
+
+    rf.onToolStart("bash", { command: "after death" }, "call-1");
+    rf.onToolEnd("bash", false, "recovered result", "call-1");
+    const result = rf.repushCurrent("openid-u", "msg-last");
+    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ thinkingLength: 12, toolCount: 1, textLength: 0 });
+
+    await rf.onAgentEnd();
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    expect(repush).toContain("before death");
+    expect(repush).toContain("after death");
+    expect(repush).toContain("recovered result");
+  });
+
+  it("快照只重推最近的工具", async () => {
+    const { rf, calls } = makeRunHarness();
+    startRun(rf);
+    for (let i = 0; i < 8; i++) {
+      rf.onToolStart("bash", { command: `cmd-${i}` }, `call-${i}`);
+      rf.onToolEnd("bash", false, `out-${i}`, `call-${i}`);
+    }
+
+    const result = rf.repushCurrent("openid-u", "msg-last");
+    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ toolCount: 3 });
+
+    await rf.onAgentEnd();
+    const repush = streamContent(calls.filter((call) => call.msg_id === "msg-last"));
+    expect(repush).toContain("cmd-7");
+    expect(repush).not.toContain("cmd-0");
+  });
+
+  it("simple 模式没有文本时 /last 返回 empty", async () => {
+    const { rf } = makeRunHarness({ replyType: "simple" });
+    startRun(rf);
+    rf.onAssistantDelta("", "只有思考");
+    expect(rf.repushCurrent("openid-u", "msg-last")).toEqual({ ok: false, reason: "empty" });
+    await rf.onAgentEnd();
   });
 
   it("dispose 清除待处理目标", () => {
@@ -664,108 +776,5 @@ describe("replyType simple", () => {
     rf.onToolEnd("bash", false, "done", "call-1");
     await rf.onAgentEnd();
     expect(streamContent(calls)).toContain("先说一句");
-  });
-});
-
-describe("replyType last", () => {
-  it("run 过程中不推送任何内容", async () => {
-    const { rf, calls } = makeRunHarness({ replyType: "last" });
-    startRun(rf);
-    rf.onAssistantDelta("中间消息", "");
-    expect(await rf.onAssistantFinal("中间消息", false)).toBe(true);
-    rf.onToolStart("bash", { command: "npm test" }, "call-1");
-    rf.onToolEnd("bash", false, "done", "call-1");
-    expect(calls).toEqual([]);
-  });
-
-  it("run 结束时只推送最后一条 assistant 消息", async () => {
-    const { rf, calls, fallbacks } = makeRunHarness({ replyType: "last" });
-    startRun(rf);
-    rf.onAssistantDelta("中间消息", "");
-    await rf.onAssistantFinal("中间消息", false);
-    rf.onAssistantDelta("最终答案", "");
-    await rf.onAssistantFinal("最终答案", false);
-    await rf.onAgentEnd();
-
-    expect(bubbleContents(calls)).toEqual(["最终答案"]);
-    expect(fallbacks).toEqual([]);
-  });
-
-  it("最后一条消息没有文本时保留上一条有文本的消息", async () => {
-    const { rf, calls } = makeRunHarness({ replyType: "last" });
-    startRun(rf);
-    rf.onAssistantDelta("有文本", "");
-    await rf.onAssistantFinal("有文本", false);
-    rf.onAssistantDelta("", "");
-    await rf.onAssistantFinal("", false);
-    await rf.onAgentEnd();
-
-    expect(bubbleContents(calls)).toEqual(["有文本"]);
-  });
-
-  it("模型错误交给普通消息通道，不占用最后一条", async () => {
-    const { rf, calls, fallbacks } = makeRunHarness({ replyType: "last" });
-    startRun(rf);
-    expect(await rf.onAssistantFinal("⚠️ Model error: boom", true)).toBe(false);
-    await rf.onAgentEnd();
-
-    expect(calls).toEqual([]);
-    expect(fallbacks).toEqual([]);
-  });
-
-  it("流式失败时降级为普通消息", async () => {
-    const { rf, calls, fallbacks } = makeRunHarness({ replyType: "last", alwaysFail: true });
-    startRun(rf);
-    rf.onAssistantDelta("最终答案", "");
-    await rf.onAssistantFinal("最终答案", false);
-    await rf.onAgentEnd();
-
-    expect(calls).toEqual([]);
-    expect(fallbacks).toEqual(["最终答案"]);
-  });
-
-  it("被动窗口过期时不走流式，直接降级为普通消息", async () => {
-    const { rf, calls, fallbacks } = makeRunHarness({ replyType: "last", staleTarget: true });
-    startRun(rf);
-    rf.onAssistantDelta("最终答案", "");
-    await rf.onAssistantFinal("最终答案", false);
-    await rf.onAgentEnd();
-
-    expect(calls).toEqual([]);
-    expect(fallbacks).toEqual(["最终答案"]);
-  });
-
-  it("三种模式都保留最后一条完成文本", async () => {
-    for (const replyType of ["full", "simple", "last"] as const) {
-      const { rf } = makeRunHarness({ replyType });
-      startRun(rf);
-      rf.onAssistantDelta("完成文本", "");
-      await rf.onAssistantFinal("完成文本", false);
-      await rf.onAgentEnd();
-      expect(rf.getLastMessage()).toBe("完成文本");
-    }
-  });
-
-  it("交付结果在日志门关闭前落盘", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pi-qq-relay-log-"));
-    configureLogger("debug", dir);
-    const { rf } = makeRunHarness({ replyType: "last" });
-    setLogGate(() => rf.isQQRunActive());
-
-    startRun(rf);
-    rf.onAssistantDelta("最终答案", "");
-    await rf.onAssistantFinal("最终答案", false);
-    await rf.onAgentEnd();
-
-    await flushLogs();
-    const records = (await readFile(getLogFilePath(), "utf8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ scope: "run", msg: "last delivered", delivered: true, fallback: false }),
-      ]),
-    );
   });
 });

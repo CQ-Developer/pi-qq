@@ -104,12 +104,17 @@ describe("replyType settings", () => {
   it("接受合法取值", () => {
     expect(getSettings({ replyType: "full" }).replyType).toBe("full");
     expect(getSettings({ replyType: "simple" }).replyType).toBe("simple");
-    expect(getSettings({ replyType: "last" }).replyType).toBe("last");
   });
 
   it("解析时保留合法取值", () => {
     expect(parseConfig({ replyType: "full" })).toEqual({ config: { replyType: "full" } });
-    expect(parseConfig({ replyType: "last" })).toEqual({ config: { replyType: "last" } });
+    expect(parseConfig({ replyType: "simple" })).toEqual({ config: { replyType: "simple" } });
+  });
+
+  it("移除了 last 模式并报错", () => {
+    const { config, error } = parseConfig({ replyType: "last" });
+    expect(config).toEqual({});
+    expect(error).toContain("replyType");
   });
 
   it("忽略非法取值并报错", () => {

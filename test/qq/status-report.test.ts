@@ -92,9 +92,9 @@ describe("formatStatusReport", () => {
       formatStatusReport({
         connection: { state: "connected" },
         agent: { running: false, qq: false },
-        replyType: "last",
+        replyType: "simple",
       }),
-    ).toContain("💬 回复模式：last");
+    ).toContain("💬 回复模式：simple");
   });
 
   it("omits the reply type when unknown", () => {

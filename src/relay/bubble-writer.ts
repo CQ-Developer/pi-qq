@@ -16,6 +16,16 @@ type BlockKind = "none" | "thinking" | "tool" | "text";
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
 
+export interface RepushTool {
+  name: string;
+  args?: unknown;
+  skillName?: string;
+  result?: { isError: boolean; result?: unknown };
+}
+
+export type RepushBlock =
+  { kind: "thinking"; text: string } | { kind: "tool"; tool: RepushTool } | { kind: "text"; text: string };
+
 export interface BubbleWriterDeps {
   bot: () => QQBot | undefined;
   budget: ReplyBudget;
@@ -147,7 +157,12 @@ export class BubbleWriter {
   }
 
   restartText(text: string, target?: { openid: string; msgId: string }): void {
-    if (!text || this.disposed) return;
+    if (!text) return;
+    this.restartSnapshot([{ kind: "text", text }], target);
+  }
+
+  restartSnapshot(blocks: RepushBlock[], target?: { openid: string; msgId: string }): void {
+    if (this.disposed || blocks.length === 0) return;
     void this.enqueue(async () => {
       if (this.disposed) return;
       if (this.fenceOpen) await this.closeOpenFence();
@@ -157,24 +172,43 @@ export class BubbleWriter {
         this.deps.openid = target.openid;
         this.deps.msgId = target.msgId;
       }
-      this.streamDead = false;
-      this.pendingResume = undefined;
-      this.resumeAttempts = 0;
-      this.lastKind = "none";
-      this.blockClosed = false;
-      this.toolOpen = false;
-      this.fenceOpen = false;
-      this.fenceLen = 0;
-      this.fenceQuoted = false;
-      this.lastChar = "";
-      this.thinkingAtLineStart = true;
-      this.bubbleChars = 0;
-      this.pushText(text);
+      this.resetForRestart();
+      for (const block of blocks) {
+        if (block.kind === "thinking") {
+          this.pushThinking(block.text);
+        } else if (block.kind === "text") {
+          this.pushText(block.text);
+        } else if (block.tool.skillName) {
+          this.pushSkill(block.tool.skillName);
+        } else {
+          this.pushTool(block.tool.name, block.tool.args);
+          if (block.tool.result) {
+            this.pushToolResult(block.tool.result.result, block.tool.result.isError, block.tool.name, block.tool.args);
+          }
+        }
+      }
     });
   }
 
   async whenIdle(): Promise<void> {
     await this.drainQueue();
+  }
+
+  private resetForRestart(): void {
+    this.cur?.dispose();
+    this.cur = null;
+    this.streamDead = false;
+    this.pendingResume = undefined;
+    this.resumeAttempts = 0;
+    this.lastKind = "none";
+    this.blockClosed = false;
+    this.toolOpen = false;
+    this.fenceOpen = false;
+    this.fenceLen = 0;
+    this.fenceQuoted = false;
+    this.lastChar = "";
+    this.thinkingAtLineStart = true;
+    this.bubbleChars = 0;
   }
 
   async flush(): Promise<boolean> {

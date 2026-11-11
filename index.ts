@@ -47,20 +47,6 @@ const runFeedback = new RunFeedback({
   budget,
   getReplyType: () => activeSettings.replyType,
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
-  onFallbackReply: (text) => {
-    const bot = running?.bot;
-    const bound = getLoginState()?.allowedOpenid;
-    if (!bot || !bound) {
-      log.warn("pi", "fallback reply skipped: no bot or bound user");
-      return;
-    }
-    log.info("pi", "sending fallback reply", { textLength: text.length });
-    void sendReply(bot, markdownToPlain(text), {
-      budget,
-      boundOpenid: bound,
-      onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
-    });
-  },
 });
 
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 100 });
@@ -146,7 +132,6 @@ export default function (pi: ExtensionAPI) {
 
   const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getDeliverAs = () => activeSettings.deliverAs;
-  const getReplyType = () => activeSettings.replyType;
 
   const onWarn = (ctx: ExtensionContext) => (msg: string) => ctx.ui.notify(`pi-qq ${msg}`, "warning");
 
@@ -214,7 +199,6 @@ export default function (pi: ExtensionAPI) {
         getAllowedOpenid,
         reloadSettings: () => applyConfig(ctx, { dedupeError: true }),
         getDeliverAs,
-        getReplyType,
         getFileMaxSize: () => activeSettings.fileMaxSize,
         getStatusLines,
         getLastMessage: () => runFeedback.getLastMessage(),

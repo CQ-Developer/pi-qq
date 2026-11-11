@@ -1,27 +1,16 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
-import { BubbleWriter } from "./bubble-writer";
-import { policyFor, type ReplyPolicy } from "./reply-policy";
+import { BubbleWriter, type RepushBlock, type RepushTool } from "./bubble-writer";
+import { RunTimeline, type TimelineTool } from "./run-timeline";
+import { policyFor } from "./reply-policy";
 import type { ReplyBudget } from "../quota/reply-quota";
 import type { ReplyType } from "../infra/reply-type";
 import { isLogEnabled, log } from "../infra/file-logger";
-import { detectSkillRead } from "./stream-block-format";
 
 export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;
   budget: ReplyBudget;
   getReplyType: () => ReplyType;
   onWarn: (msg: string) => void;
-  onFallbackReply?: (text: string) => void;
-}
-
-interface ToolCall {
-  id: string;
-  name: string;
-  args?: unknown;
-  result?: { isError: boolean; result?: unknown };
-  skillName?: string;
-  started: boolean;
-  finished: boolean;
 }
 
 interface RunState {
@@ -30,26 +19,35 @@ interface RunState {
   msgId?: string;
   thinkingSentLen: number;
   finalizedText: string;
-  currentText: string;
   resultSentLen: number;
-  tools: ToolCall[];
-  activeTool?: string;
   deferredThinking: string;
   deferredText: string;
-  hadError: boolean;
-  lastText: string;
+  timeline: RunTimeline;
   writer: BubbleWriter;
   typingTimer?: ReturnType<typeof setInterval>;
 }
 
-interface LastDelivery {
-  text: string;
-  streamed: boolean;
-}
+export type RepushResult =
+  | {
+      ok: true;
+      thinkingLength: number;
+      toolCount: number;
+      textLength: number;
+    }
+  | { ok: false; reason: "no-run" | "empty" };
 
 const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
 const RECOVERY_TTL_MS = 60_000;
+
+function toRepushTool(tool: TimelineTool): RepushTool {
+  return {
+    name: tool.name,
+    args: tool.args,
+    ...(tool.skillName ? { skillName: tool.skillName } : {}),
+    ...(tool.result ? { result: tool.result } : {}),
+  };
+}
 
 export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
@@ -85,28 +83,64 @@ export class RunFeedback {
     return this.lastCompletedText;
   }
 
-  repushCurrent(openid: string, msgId: string): boolean {
+  repushCurrent(openid: string, msgId: string): RepushResult {
     const run = this.run;
-    const text = run?.currentText;
-    if (!run || !text?.trim()) {
+    if (!run) {
       log.debug("run", "stream timing", {
         phase: "last repush ignored",
-        hasRun: Boolean(run),
-        textLength: text?.length ?? 0,
-        ...(run ? this.diagnostics(run) : {}),
+        reason: "no-run",
       });
-      return false;
+      return { ok: false, reason: "no-run" };
     }
+
+    const snapshot = run.timeline.snapshot();
+    const replyType = this.deps.getReplyType();
+    const blocks: RepushBlock[] = [];
+    if (replyType === "full") {
+      if (snapshot.thinking.trim()) {
+        blocks.push({ kind: "thinking", text: snapshot.thinking });
+      }
+      for (const tool of snapshot.tools) {
+        blocks.push({ kind: "tool", tool: toRepushTool(tool) });
+      }
+    }
+    if (snapshot.text.trim()) {
+      blocks.push({ kind: "text", text: snapshot.text });
+    }
+
+    const thinkingLength = snapshot.thinking.length;
+    const toolCount = blocks.filter((block) => block.kind === "tool").length;
+    const textLength = snapshot.text.length;
+    if (blocks.length === 0) {
+      log.debug("run", "stream timing", {
+        phase: "last repush ignored",
+        reason: "empty",
+        replyType,
+        textLength,
+        thinkingLength,
+        toolCount,
+        writerDead: run.writer.dead,
+        ...this.diagnostics(run),
+      });
+      return { ok: false, reason: "empty" };
+    }
+
     log.debug("run", "stream timing", {
       phase: "last repush",
       msgId: msgId.slice(0, 8),
-      textLength: text.length,
+      replyType,
+      textLength,
+      thinkingLength,
+      toolCount,
+      writerDead: run.writer.dead,
       ...this.diagnostics(run),
     });
     run.openid = openid;
     run.msgId = msgId;
-    run.writer.restartText(text, { openid, msgId });
-    return true;
+    run.writer.restartSnapshot(blocks, { openid, msgId });
+    run.deferredThinking = "";
+    run.deferredText = "";
+    return { ok: true, thinkingLength, toolCount, textLength };
   }
 
   onAgentStart(): void {
@@ -153,13 +187,10 @@ export class RunFeedback {
       msgId: target.msgId,
       thinkingSentLen: 0,
       finalizedText: "",
-      currentText: "",
       resultSentLen: 0,
-      tools: [],
       deferredThinking: "",
       deferredText: "",
-      hadError: false,
-      lastText: "",
+      timeline: new RunTimeline(),
       writer,
     };
     this.run = run;
@@ -187,33 +218,16 @@ export class RunFeedback {
       log.debug("run", "tool start", { phase: "ignored: no active run", toolName, toolCallId: id });
       return;
     }
-    if (run.writer.dead) {
-      log.debug("run", "tool start", {
-        phase: "ignored: stream dead",
-        toolName,
-        toolCallId: id,
-        ...this.diagnostics(run),
-      });
-      return;
-    }
-    if (run.tools.some((tool) => tool.id === id)) return;
-    const skill = detectSkillRead(toolName, args);
-    run.tools.push({
-      id,
-      name: toolName,
-      args,
-      ...(skill ? { skillName: skill.name } : {}),
-      started: false,
-      finished: false,
-    });
+    const tool = run.timeline.addTool(toolName, args, id);
+    if (!tool) return;
     log.debug("run", "tool start", {
       phase: "queued",
       toolName,
       toolCallId: id,
-      skillName: skill?.name ?? null,
+      skillName: tool.skillName ?? null,
       ...this.diagnostics(run),
     });
-    this.startNextTool(run);
+    this.advanceTools(run);
   }
 
   onToolEnd(toolName: string, isError: boolean, result?: unknown, toolCallId?: string): void {
@@ -223,22 +237,11 @@ export class RunFeedback {
       log.debug("run", "tool end", { phase: "ignored: no active run", toolName, toolCallId: id });
       return;
     }
-    const tool = run.tools.find((candidate) => candidate.id === id);
+    const tool = run.timeline.completeTool(id, isError, result);
     if (!tool) {
       log.debug("run", "tool end", { phase: "ignored: unknown tool", toolName, toolCallId: id });
       return;
     }
-    if (run.writer.dead) {
-      log.debug("run", "tool end", {
-        phase: "ignored: stream dead",
-        toolName,
-        toolCallId: id,
-        isError,
-        ...this.diagnostics(run),
-      });
-      return;
-    }
-    tool.result = { isError, result };
     log.debug("run", "tool end", {
       phase: "result recorded",
       toolName,
@@ -246,7 +249,7 @@ export class RunFeedback {
       isError,
       ...this.diagnostics(run),
     });
-    if (run.activeTool === id) this.finishTool(run, tool);
+    this.advanceTools(run);
   }
 
   onAssistantDelta(snapshotText: string, snapshotThinking: string): void {
@@ -254,24 +257,13 @@ export class RunFeedback {
     if (!run) return;
 
     const policy = this.policy();
-
-    if (!policy.relayTextLive) {
-      if (snapshotText.trim()) {
-        run.currentText = snapshotText;
-        run.lastText = snapshotText;
-      }
-      return;
-    }
-
     const full = [run.finalizedText, snapshotText].filter((part) => part.trim()).join("\n\n");
-    if (full.trim()) run.currentText = full;
-
-    if (run.writer.dead) return;
+    run.timeline.updateAssistant(full, snapshotThinking);
 
     if (snapshotThinking.length > run.thinkingSentLen) {
       const thinkingDelta = snapshotThinking.slice(run.thinkingSentLen);
       run.thinkingSentLen = snapshotThinking.length;
-      if (policy.relayThinking) {
+      if (!run.writer.dead && policy.relayThinking) {
         if (this.hasPendingTools(run)) {
           run.deferredThinking += thinkingDelta;
         } else {
@@ -283,6 +275,7 @@ export class RunFeedback {
     const delta = full.slice(run.resultSentLen);
     if (!delta) return;
     run.resultSentLen = full.length;
+    if (run.writer.dead) return;
     if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
       run.deferredText += delta;
       return;
@@ -302,30 +295,11 @@ export class RunFeedback {
     }
 
     const policy = this.policy();
-
-    if (!policy.relayTextLive) {
-      run.finalizedText = "";
-      run.resultSentLen = 0;
-      run.thinkingSentLen = 0;
-      if (isError) {
-        run.hadError = true;
-        this.recovery = { openid: run.openid, msgId: run.msgId ?? "", at: Date.now() };
-        log.debug("run", "last buffered", { textLength: 0, isError: true });
-        return false;
-      }
-      if (text.trim()) {
-        run.lastText = text;
-        run.currentText = text;
-      }
-      log.debug("run", "last buffered", { textLength: run.lastText.length, isError: false });
-      return true;
-    }
-
+    run.timeline.finishAssistant(text, isError);
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
-    if (text.trim()) run.currentText = text;
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
-    if (!isError && text && delta) {
+    if (!isError && text && delta && !run.writer.dead) {
       if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
         run.deferredText += delta;
       } else {
@@ -336,7 +310,6 @@ export class RunFeedback {
 
     run.thinkingSentLen = 0;
     if (isError) {
-      run.hadError = true;
       this.recovery = { openid: run.openid, msgId: run.msgId ?? "", at: Date.now() };
     }
 
@@ -368,14 +341,13 @@ export class RunFeedback {
       this.finishEnd();
       return;
     }
-    const lastDelivery = this.planLastDelivery(run);
     await run.writer.whenIdle();
     const hasPendingTools = this.hasPendingTools(run);
     if (!hasPendingTools) this.flushDeferred(run);
     await run.writer.whenIdle();
     this.clearTimers();
-    if (run.currentText.trim()) this.lastCompletedText = run.currentText;
-    if (!run.hadError && run.writer.hasPushed) this.recovery = null;
+    if (run.timeline.currentText.trim()) this.lastCompletedText = run.timeline.currentText;
+    if (!run.timeline.error && run.writer.hasPushed) this.recovery = null;
     log.debug("run", "run ended", {
       phase: "cleanup",
       msgId: run.msgId?.slice(0, 8) ?? "?",
@@ -390,16 +362,11 @@ export class RunFeedback {
       msgId: run.msgId?.slice(0, 8) ?? "?",
       elapsedMs: Date.now() - run.startedAt,
     });
-    let delivered = false;
     if (run.writer.hasPushed) {
       const ok = await run.writer.flush();
-      if (ok) {
-        await run.writer.done();
-        delivered = true;
-      }
+      if (ok) await run.writer.done();
     }
     run.writer.dispose();
-    this.settleLastDelivery(lastDelivery, delivered);
     if (this.run === run) this.run = null;
     this.finishEnd();
   }
@@ -423,35 +390,12 @@ export class RunFeedback {
     this.endResolve = undefined;
   }
 
-  private policy(): ReplyPolicy {
+  private policy() {
     return policyFor(this.deps.getReplyType());
   }
 
-  private planLastDelivery(run: RunState): LastDelivery | undefined {
-    if (!this.policy().deliverLastAtEnd) return undefined;
-    const text = run.lastText.trim() ? run.lastText : "";
-    if (!text) return undefined;
-    const fresh = this.deps.budget.snapshot().fresh;
-    if (fresh) {
-      run.writer.closeBlock();
-      run.writer.pushText(text);
-    }
-    return { text, streamed: fresh };
-  }
-
-  private settleLastDelivery(delivery: LastDelivery | undefined, delivered: boolean): void {
-    if (!delivery) return;
-    const ok = delivered && delivery.streamed;
-    log.debug("run", "last delivered", {
-      delivered: ok,
-      fallback: !ok,
-      textLength: delivery.text.length,
-    });
-    if (!ok) this.deps.onFallbackReply?.(delivery.text);
-  }
-
   private hasPendingTools(run: RunState): boolean {
-    return Boolean(run.activeTool) || run.tools.some((tool) => !tool.finished);
+    return run.timeline.hasPendingTools();
   }
 
   private flushDeferred(run: RunState): void {
@@ -468,49 +412,46 @@ export class RunFeedback {
     }
   }
 
-  private startNextTool(run: RunState): void {
-    if (run.writer.dead || run.activeTool) return;
-    const tool = run.tools.find((candidate) => !candidate.started);
-    if (!tool) return;
-    tool.started = true;
-    run.activeTool = tool.id;
-    log.debug("run", "tool start", {
-      phase: "output started",
-      toolName: tool.name,
-      toolCallId: tool.id,
-      skillName: tool.skillName ?? null,
-      ...this.diagnostics(run),
-    });
-    if (this.policy().relayTools) {
-      if (tool.skillName) {
-        run.writer.pushSkill(tool.skillName);
-      } else {
-        run.writer.pushTool(tool.name, tool.args);
+  private advanceTools(run: RunState): void {
+    const relayTools = this.policy().relayTools;
+    for (;;) {
+      const active = run.timeline.active;
+      if (active) {
+        if (!active.result) return;
+        if (!run.writer.dead && relayTools && !active.skillName) {
+          run.writer.pushToolResult(active.result.result, active.result.isError, active.name, active.args);
+        }
+        const finished = run.timeline.finishActiveTool();
+        if (finished) {
+          log.debug("run", "tool end", {
+            phase: "output finished",
+            toolName: finished.name,
+            toolCallId: finished.id,
+            isError: finished.result?.isError ?? false,
+            ...this.diagnostics(run),
+          });
+        }
+        if (!this.hasPendingTools(run)) this.flushDeferred(run);
+        continue;
       }
+      const tool = run.timeline.startNextTool();
+      if (!tool) return;
+      log.debug("run", "tool start", {
+        phase: "output started",
+        toolName: tool.name,
+        toolCallId: tool.id,
+        skillName: tool.skillName ?? null,
+        ...this.diagnostics(run),
+      });
+      if (!run.writer.dead && relayTools) {
+        if (tool.skillName) {
+          run.writer.pushSkill(tool.skillName);
+        } else {
+          run.writer.pushTool(tool.name, tool.args);
+        }
+      }
+      if (!tool.result) return;
     }
-    if (tool.result) this.finishTool(run, tool);
-  }
-
-  private finishTool(run: RunState, tool: ToolCall): void {
-    if (!tool.result || tool.finished) return;
-    tool.finished = true;
-    log.debug("run", "tool end", {
-      phase: "output finished",
-      toolName: tool.name,
-      toolCallId: tool.id,
-      isError: tool.result.isError,
-      ...this.diagnostics(run),
-    });
-    if (this.policy().relayTools && !tool.skillName) {
-      run.writer.pushToolResult(tool.result.result, tool.result.isError, tool.name, tool.args);
-    }
-    run.writer.schedule(() => {
-      if (this.run !== run) return;
-      if (run.activeTool !== tool.id) return;
-      run.activeTool = undefined;
-      this.startNextTool(run);
-      if (!this.hasPendingTools(run)) this.flushDeferred(run);
-    });
   }
 
   private clearTimers(): void {
@@ -524,24 +465,12 @@ export class RunFeedback {
     if (!isLogEnabled("debug")) return {};
     return {
       runElapsedMs: Date.now() - run.startedAt,
-      activeTool: run.activeTool ?? null,
-      toolCount: run.tools.length,
-      pendingToolCount: run.tools.filter((tool) => !tool.finished).length,
-      tools: run.tools.map((tool) => ({
-        id: tool.id,
-        name: tool.name,
-        started: tool.started,
-        finished: tool.finished,
-        hasResult: Boolean(tool.result),
-        isError: tool.result?.isError ?? null,
-      })),
+      ...run.timeline.diagnostics(),
       deferredTextLen: run.deferredText.length,
       deferredThinkingLen: run.deferredThinking.length,
-      currentTextLen: run.currentText.length,
       finalizedTextLen: run.finalizedText.length,
       resultSentLen: run.resultSentLen,
       thinkingSentLen: run.thinkingSentLen,
-      hadError: run.hadError,
       writer: run.writer.stats(),
       budget: this.deps.budget.snapshot(),
     };

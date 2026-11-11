@@ -99,14 +99,14 @@ Run these in the pi terminal:
 
 QQ-side commands:
 
-| Command    | Description                                                              |
-| ---------- | ------------------------------------------------------------------------ |
-| `/new`     | Start a new pi session                                                   |
-| `/stop`    | Abort the current run                                                    |
-| `/compact` | Compact the current context                                              |
-| `/status`  | Show session and context status                                          |
-| `/last`    | Push the last completed reply as a stream, or restart the current output |
-| `/help`    | Show command help                                                        |
+| Command    | Description                                                                |
+| ---------- | -------------------------------------------------------------------------- |
+| `/new`     | Start a new pi session                                                     |
+| `/stop`    | Abort the current run                                                      |
+| `/compact` | Compact the current context                                                |
+| `/status`  | Show session and context status                                            |
+| `/last`    | Repush current output while running, or the last completed reply when idle |
+| `/help`    | Show command help                                                          |
 
 ### Diagnostics
 
@@ -134,7 +134,7 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 
 | Key           | Default    | Description                                                  |
 | ------------- | ---------- | ------------------------------------------------------------ |
-| `replyType`   | `"full"`   | How much of a run is pushed to QQ: `full`, `simple`, `last`  |
+| `replyType`   | `"full"`   | How much of a run is pushed to QQ: `full` or `simple`        |
 | `deliverAs`   | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
 | `fileMaxSize` | `52428800` | QQ attachment download limit in bytes (50MB)                 |
 | `language`    | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |
@@ -150,13 +150,12 @@ How much of an agent run is pushed to QQ.
 | -------- | -------------------------------------------------------------------------------- |
 | `full`   | Thinking blocks, tool calls, tool results, and every assistant message (default) |
 | `simple` | Assistant messages only, one bubble each                                         |
-| `last`   | Only the last assistant message of the run, sent when the run ends               |
 
 - `full` is the default and keeps the behaviour of pi-qq 1.5.x; thinking is always relayed in this mode.
 - `simple` streams every assistant message live, one QQ bubble per message.
-- `last` sends nothing while the task is running; `/last` during a running task replies that the task is still running.
-- Model errors are always delivered immediately as a normal message, in every mode.
-- Tool output is not relayed in `simple` or `last`, but files sent with `qq_send_media` are still delivered.
+- Model errors are always delivered immediately as a normal message, in either mode.
+- Tool output is not relayed in `simple`, but files sent with `qq_send_media` are still delivered.
+- While a task is running, `/last` pushes the current thinking/tools/text snapshot in `full` mode; in `simple` mode it pushes the current text.
 
 ### `deliverAs`
 

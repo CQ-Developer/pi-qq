@@ -18,7 +18,7 @@ const feedback = vi.hoisted(() => ({
   cancelRecovery: vi.fn(),
   isQQRunActive: vi.fn(() => false),
   getLastMessage: vi.fn(() => undefined),
-  repushCurrent: vi.fn(() => false),
+  repushCurrent: vi.fn(() => ({ ok: false, reason: "empty" })),
 }));
 
 const bot = vi.hoisted(() => ({

@@ -1,6 +1,7 @@
 import type { QQBot, QQBotInboundMessage } from "@tencent-connect/qqbot-nodejs";
 import { sendReply, sendStreamReply, type ReplyChannel } from "./reply-sender";
 import type { ReplyBudget } from "../quota/reply-quota";
+import type { RepushResult } from "../relay/run-stream-relay";
 import { formatAttachmentFailures } from "../attachments/attachment-failure";
 import {
   formatAttachmentPrompt,
@@ -9,7 +10,6 @@ import {
   type SavedFile,
 } from "../attachments/file-attachments";
 import { log } from "../infra/file-logger";
-import type { ReplyType } from "../infra/reply-type";
 import { t } from "../infra/i18n";
 import { handleInboundCommand, type InboundCommandDeps } from "./inbound-command";
 import { PendingAttachments, resolveInboundContent } from "./inbound-attachments";
@@ -19,11 +19,10 @@ export interface InboundDeps extends InboundCommandDeps {
   getAllowedOpenid: () => string | undefined;
   reloadSettings: () => void;
   getDeliverAs: () => "steer" | "followUp";
-  getReplyType: () => ReplyType;
   getFileMaxSize: () => number;
   saveFiles?: typeof saveInboundFiles;
   streamReply?: typeof sendStreamReply;
-  repushCurrent: (openid: string, msgId: string) => boolean;
+  repushCurrent: (openid: string, msgId: string) => RepushResult;
   onWarn: (msg: string) => void;
   markQQTrigger: (openid: string, msgId: string) => void;
 }
@@ -103,7 +102,7 @@ export function createInboundHandler(deps: InboundDeps) {
           }
         },
         restartPush: () => {
-          deps.repushCurrent(msg.senderId, msg.messageId);
+          return deps.repushCurrent(msg.senderId, msg.messageId);
         },
       });
       return;
