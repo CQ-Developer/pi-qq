@@ -1,4 +1,5 @@
-import { getNextMsgSeq, StreamContentType, StreamInputState } from "@tencent-connect/qqbot-nodejs/protocol";
+import { StreamContentType, StreamInputState } from "@tencent-connect/qqbot-nodejs/protocol";
+import { allocateMsgSeq } from "./msg-seq";
 import type {
   Credentials,
   MessageApi,
@@ -145,7 +146,7 @@ export class AppendStream {
     this.flushing = true;
     let failed = false;
     try {
-      if (this.msgSeq === null) this.msgSeq = getNextMsgSeq(this.msgId);
+      if (this.msgSeq === null) this.msgSeq = allocateMsgSeq(this.msgId);
       const index = this.index++;
       const req = {
         input_mode: "append",

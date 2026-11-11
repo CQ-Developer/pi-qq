@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { AppendStream, type AppendStreamFrameInfo } from "../../src/relay/stream-session";
+import { resetMsgSeqAllocator } from "../../src/relay/msg-seq";
+
+beforeEach(() => resetMsgSeqAllocator());
 
 function makeFakeApi() {
   const calls: Array<Record<string, unknown>> = [];

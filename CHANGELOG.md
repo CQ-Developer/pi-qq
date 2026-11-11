@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Stream `msg_seq` values are now allocated monotonically per inbound `msgId` instead of using the SDK's random helper, eliminating collisions within a message.
+
 ## [1.6.2] - 2026-11-11
 
 ### Changed
