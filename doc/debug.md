@@ -240,7 +240,35 @@ watchdog 的目标：在平台返回 `40034020` 之前，主动处理长时间�
 6. 是否测试 `is_wakeup=true` 作为长任务续流方案？它可能只适用于召回消息，不能直接用于普通回复。
 7. 3500 B 是否需要按真实 API 再校准？当前是日志推断值。
 
-## 9. 参考
+## 9. 实验环境（2026-11-11）
+
+已在 `~/project/mine/pi-qq-test` 准备好真实 QQ 实验环境：
+
+- `run-experiment.sh`：启动本地 pi-qq（`-ne -e ../pi-qq`）和实验扩展，并设置 `PI_QQ_EXPERIMENTS=1`、独立的 `PI_QQ_LOG_DIR`。
+- `.pi/extensions/stream-exp.ts`：拦截 QQ 的 `EXP:` 消息，直接调用 `AppendStream` / `messageApi`，不经过模型。
+- `README-experiment.md`：启动步骤、命令、建议顺序和日志位置。
+
+QQ 命令：
+
+```text
+EXP: help
+EXP: idle <minutes>
+EXP: heartbeat <minutes> [intervalMinutes]
+EXP: expire <minutes>
+EXP: rotate <minutes>
+EXP: status
+EXP: stop
+EXP: ping
+```
+
+日志：
+
+- `.pi/pi-qq/experiments/exp-YYYY-MM-DD.jsonl`：帧级实验日志。
+- `.pi/pi-qq/experiment-logs/pi-qq-YYYY-MM-DD.log`：pi-qq 自身日志，与旧日志隔离。
+
+本地钩子：pi-qq 在 `PI_QQ_EXPERIMENTS=1` 时暴露 `__piQQExperimentDebug`（running bot、last target、cancelPending），仅用于实验；不设置该环境变量时不暴露。
+
+## 10. 参考
 
 - 日志：`~/project/mine/pi-qq-test/.pi/pi-qq/logs/pi-qq-2026-11-11.log`
 - 官方流式接口：`https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_stream_messages.post.html`

@@ -73,6 +73,10 @@ export class RunFeedback {
     this.recovery = null;
   }
 
+  cancelPending(): void {
+    this.pending = null;
+  }
+
   isQQRunActive(): boolean {
     return this.run !== null;
   }

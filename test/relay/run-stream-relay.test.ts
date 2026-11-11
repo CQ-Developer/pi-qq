@@ -769,6 +769,15 @@ describe("QQ run state", () => {
     await rf.onAgentEnd();
     expect(rf.isQQRunActive()).toBe(false);
   });
+
+  it("cancelPending drops a pending QQ target", async () => {
+    const { rf } = makeRunHarness();
+    rf.markQQTrigger("openid-u", "msg-1");
+    rf.cancelPending();
+    rf.onAgentStart();
+    expect(rf.isQQRunActive()).toBe(false);
+    await rf.onAgentEnd();
+  });
 });
 
 describe("replyType simple", () => {
