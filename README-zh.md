@@ -137,7 +137,7 @@ QQ 侧命令：
 | `replyType`   | `"full"`   | 推送到 QQ 的内容粒度：`full` 或 `simple`               |
 | `deliverAs`   | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
 | `fileMaxSize` | `52428800` | QQ 附件下载上限（字节，50MB）                          |
-| `language`    | `"zh-cn"`  | UI 和日志语言：`zh-cn` 或 `en-us`                      |
+| `language`    | `"zh-cn"`  | UI 语言：`zh-cn` 或 `en-us`；日志始终为英文            |
 | `logLevel`    | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
 
 配置在扩展加载时读取，并在每条来自已绑定用户的 QQ 消息处理前重新读取。修改后下一条消息即生效，无需重启 pi 或重新登录。未知配置项会被忽略，无效值会回退到默认值并给出提示。
@@ -170,7 +170,7 @@ QQ 侧命令：
 
 ### `language`
 
-UI 提示与日志的语言。
+UI 提示与回复的语言。日志文件始终使用英文，不受该配置影响。
 
 - `zh-cn`（默认）：简体中文。
 - `en-us`：英文。

@@ -104,7 +104,7 @@ describe("file output", () => {
     }
   });
 
-  it("localizes known log messages and writes msgKey", async () => {
+  it("keeps known log messages English and writes msgKey", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-i18n-"));
     try {
       configureLogger("debug", dir);
@@ -114,7 +114,7 @@ describe("file output", () => {
       let lines = (await readFile(getLogFilePath(), "utf8")).trim().split("\n");
       let record = JSON.parse(lines[0]!) as Record<string, unknown>;
       expect(record.msgKey).toBe("log.sessionStartingBot");
-      expect(record.msg).toBe("正在启动机器人");
+      expect(record.msg).toBe("starting bot");
 
       configureI18n("en-us");
       log.info("session", "starting bot", { appId: "a" });

@@ -56,10 +56,10 @@ describe("i18n", () => {
     expect(t("commands.last.empty")).toContain("仍在执行中");
   });
 
-  it("localizes known log messages and leaves SDK messages raw", () => {
+  it("keeps known log messages English regardless of UI language", () => {
     configureI18n("zh-cn");
     expect(localizeLogMessage("starting bot")).toEqual({
-      msg: "正在启动机器人",
+      msg: "starting bot",
       msgKey: "log.sessionStartingBot",
     });
     expect(localizeLogMessage("unknown SDK message")).toEqual({ msg: "unknown SDK message" });

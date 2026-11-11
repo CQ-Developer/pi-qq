@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - While a task is running in `replyType: "full"`, `/last` now pushes the current thinking, tools, and text snapshot to the new message immediately instead of waiting for assistant text. If the stream was dead, the repush opens a new stream and resumes later output. An empty snapshot now replies with a notice instead of staying silent.
+- Log files are now always written in English; the `language` setting only affects UI notifications and replies.
 
 ### Removed
 

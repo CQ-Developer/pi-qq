@@ -559,5 +559,5 @@ const LOG_MESSAGE_KEYS: Record<string, TranslationKey> = {
 
 export function localizeLogMessage(message: string): { msg: string; msgKey?: TranslationKey } {
   const key = LOG_MESSAGE_KEYS[message];
-  return key ? { msg: t(key), msgKey: key } : { msg: message };
+  return key ? { msg: translate("en-us", key), msgKey: key } : { msg: message };
 }

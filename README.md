@@ -132,13 +132,13 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 }
 ```
 
-| Key           | Default    | Description                                                  |
-| ------------- | ---------- | ------------------------------------------------------------ |
-| `replyType`   | `"full"`   | How much of a run is pushed to QQ: `full` or `simple`        |
-| `deliverAs`   | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
-| `fileMaxSize` | `52428800` | QQ attachment download limit in bytes (50MB)                 |
-| `language`    | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |
-| `logLevel`    | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
+| Key           | Default    | Description                                                   |
+| ------------- | ---------- | ------------------------------------------------------------- |
+| `replyType`   | `"full"`   | How much of a run is pushed to QQ: `full` or `simple`         |
+| `deliverAs`   | `"steer"`  | Queue new messages while busy: `steer` or `followUp`          |
+| `fileMaxSize` | `52428800` | QQ attachment download limit in bytes (50MB)                  |
+| `language`    | `"zh-cn"`  | UI language: `zh-cn` or `en-us`; log files are always English |
+| `logLevel`    | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug`  |
 
 Settings are loaded when the extension starts and re-read on every inbound QQ message from the bound user, so edits take effect on the next message without restarting pi or logging in again. Unknown keys are ignored, and invalid values fall back to defaults with a warning.
 
@@ -170,7 +170,7 @@ Maximum size of an inbound attachment, in bytes (default `52428800`, 50MB). Larg
 
 ### `language`
 
-Language of the UI notifications and the log messages.
+Language of UI notifications and replies. Log files are always written in English, regardless of this setting.
 
 - `zh-cn` (default): Simplified Chinese.
 - `en-us`: English.
