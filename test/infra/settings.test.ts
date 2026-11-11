@@ -15,7 +15,6 @@ describe("parseConfig", () => {
 
   it("keeps valid fields and reports invalid ones", () => {
     const { config, error } = parseConfig({
-      thinkingRelay: "yes",
       deliverAs: "bogus",
       fileMaxSize: "large",
       logLevel: "verbose",
@@ -23,7 +22,6 @@ describe("parseConfig", () => {
     });
 
     expect(config).toEqual({ debug: true });
-    expect(error).toContain("thinkingRelay");
     expect(error).toContain("deliverAs");
     expect(error).toContain("fileMaxSize");
     expect(error).toContain("logLevel");
@@ -31,13 +29,16 @@ describe("parseConfig", () => {
 
   it("accepts a fully valid config", () => {
     const raw = {
-      thinkingRelay: false,
       deliverAs: "followUp",
       fileMaxSize: 2048,
       logLevel: "debug",
       language: "en-us",
     } as const;
     expect(parseConfig(raw)).toEqual({ config: raw });
+  });
+
+  it("ignores the removed thinkingRelay key", () => {
+    expect(parseConfig({ thinkingRelay: false })).toEqual({ config: {} });
   });
 
   it("defaults language to zh-cn and rejects invalid values", () => {
@@ -74,16 +75,9 @@ describe("logLevel settings", () => {
 });
 
 describe("getSettings", () => {
-  it("thinkingRelay 默认开启", () => {
-    expect(getSettings({}).thinkingRelay).toBe(true);
-  });
-
-  it("thinkingRelay 可显式关闭", () => {
-    expect(getSettings({ thinkingRelay: false }).thinkingRelay).toBe(false);
-  });
-
   it("旧配置键被忽略", () => {
     const settings = getSettings({
+      thinkingRelay: false,
       streamFlushMs: 3000,
       streamAssistant: true,
       streamRelay: true,
@@ -93,7 +87,6 @@ describe("getSettings", () => {
       imageMaxSize: 1024,
     } as never);
     expect(settings).toEqual({
-      thinkingRelay: true,
       deliverAs: "steer",
       replyType: "full",
       fileMaxSize: 50 * 1024 * 1024,

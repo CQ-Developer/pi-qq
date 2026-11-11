@@ -17,6 +17,7 @@ import { PendingAttachments, resolveInboundContent } from "./inbound-attachments
 export interface InboundDeps extends InboundCommandDeps {
   budget: ReplyBudget;
   getAllowedOpenid: () => string | undefined;
+  reloadSettings: () => void;
   getDeliverAs: () => "steer" | "followUp";
   getReplyType: () => ReplyType;
   getFileMaxSize: () => number;
@@ -60,6 +61,7 @@ export function createInboundHandler(deps: InboundDeps) {
       return;
     }
 
+    deps.reloadSettings();
     deps.budget.observeInbound(msg.senderId, msg.messageId);
     log.info("inbound", "message received", {
       messageId: msg.messageId,

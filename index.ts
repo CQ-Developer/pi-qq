@@ -40,11 +40,11 @@ let stateDetail: string | undefined;
 let sessionCtx: ExtensionContext | undefined;
 let mediaTool: MediaToolController | undefined;
 let activeSettings: ResolvedSettings = getSettings({});
+let lastConfigError: string | undefined;
 const budget = new ReplyBudget();
 const runFeedback = new RunFeedback({
   bot: () => running?.bot,
   budget,
-  getThinkingRelay: () => activeSettings.thinkingRelay,
   getReplyType: () => activeSettings.replyType,
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
   onFallbackReply: (text) => {
@@ -114,6 +114,29 @@ function stopEventLoopMonitor(): void {
 export default function (pi: ExtensionAPI) {
   setLogGate(() => Boolean(getLoginState()) && runFeedback.isQQRunActive());
 
+  const notifyConfigError = (ctx: ExtensionContext, error: string | undefined, dedupe: boolean) => {
+    if (!error) {
+      lastConfigError = undefined;
+      return;
+    }
+    if (dedupe && error === lastConfigError) return;
+    lastConfigError = error;
+    ctx.ui.notify(`pi-qq ${error}`, "error");
+  };
+
+  const applyConfig = (ctx?: ExtensionContext, options: { dedupeError?: boolean } = {}) => {
+    const { config, error } = readConfig();
+    activeSettings = getSettings(config);
+    configureI18n(activeSettings.language);
+    if (ctx) {
+      configureLogger(activeSettings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
+      notifyConfigError(ctx, error, options.dedupeError ?? false);
+    }
+    return { settings: activeSettings, error };
+  };
+
+  let pendingConfigError = applyConfig().error;
+
   mediaTool = registerMediaTool(pi, {
     getBot: () => running?.bot,
     getLogin: () => getLoginState(),
@@ -121,22 +144,11 @@ export default function (pi: ExtensionAPI) {
     onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
   });
 
-  activeSettings = getSettings(readConfig().config);
-  configureI18n(activeSettings.language);
-
   const getAllowedOpenid = () => getLoginState()?.allowedOpenid;
   const getDeliverAs = () => activeSettings.deliverAs;
   const getReplyType = () => activeSettings.replyType;
 
   const onWarn = (ctx: ExtensionContext) => (msg: string) => ctx.ui.notify(`pi-qq ${msg}`, "warning");
-
-  const applyConfig = (ctx: ExtensionContext) => {
-    const { config, error } = readConfig();
-    activeSettings = getSettings(config);
-    configureI18n(activeSettings.language);
-    if (error) ctx.ui.notify(`pi-qq ${error}`, "error");
-    return { settings: activeSettings, error };
-  };
 
   const getStatusLines = (ctx: ExtensionContext | undefined = sessionCtx): string[] => {
     const login = getLoginState();
@@ -200,6 +212,7 @@ export default function (pi: ExtensionAPI) {
         ctx,
         budget,
         getAllowedOpenid,
+        reloadSettings: () => applyConfig(ctx, { dedupeError: true }),
         getDeliverAs,
         getReplyType,
         getFileMaxSize: () => activeSettings.fileMaxSize,
@@ -223,8 +236,10 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.on("session_start", async (_event, ctx) => {
-    const { settings, error } = applyConfig(ctx);
-    configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
+    const settings = activeSettings;
+    const configError = pendingConfigError;
+    pendingConfigError = undefined;
+    notifyConfigError(ctx, configError, false);
 
     const login = getLoginState();
     log.info("session", "started", {
@@ -234,7 +249,7 @@ export default function (pi: ExtensionAPI) {
       logLevel: settings.logLevel,
       replyType: settings.replyType,
       login: login ? { appId: login.credentials.appId, allowedOpenid: login.allowedOpenid } : null,
-      configError: error ?? null,
+      configError: configError ?? null,
     });
     if (login) {
       await startWithCredentials(ctx, login.credentials, login.allowedOpenid);
@@ -422,7 +437,6 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("qq-login", {
     description: t("commands.descQqLogin"),
     handler: async (_args, ctx) => {
-      applyConfig(ctx);
       stopIfRunning();
       setLoginState(undefined);
       let result: QrLoginResult | undefined;

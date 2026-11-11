@@ -6,7 +6,6 @@ import { DEFAULT_LANGUAGE, getLanguage, isLanguage, translate, type Language } f
 import { DEFAULT_REPLY_TYPE, isReplyType, type ReplyType } from "./reply-type";
 
 export interface PiQQSettings {
-  thinkingRelay?: boolean;
   deliverAs?: "steer" | "followUp";
   replyType?: ReplyType;
   fileMaxSize?: number;
@@ -54,10 +53,6 @@ export function parseConfig(raw: unknown): ReadConfigResult {
   if (raw.language !== undefined) {
     if (isLanguage(raw.language)) config.language = raw.language;
     else errors.push(translate(language, "settings.language"));
-  }
-  if (raw.thinkingRelay !== undefined) {
-    if (typeof raw.thinkingRelay === "boolean") config.thinkingRelay = raw.thinkingRelay;
-    else errors.push(translate(language, "settings.thinkingRelay"));
   }
   if (raw.deliverAs !== undefined) {
     if (raw.deliverAs === "steer" || raw.deliverAs === "followUp") config.deliverAs = raw.deliverAs;
@@ -116,7 +111,6 @@ export type ResolvedSettings = Required<Omit<PiQQSettings, "debug">>;
 export function getSettings(config: PiQQSettings): ResolvedSettings {
   const logLevel = normalizeLogLevel(config.logLevel ?? (config.debug ? "debug" : undefined));
   return {
-    thinkingRelay: config.thinkingRelay ?? true,
     deliverAs: config.deliverAs ?? "steer",
     replyType: config.replyType ?? DEFAULT_REPLY_TYPE,
     fileMaxSize: config.fileMaxSize ?? 50 * 1024 * 1024,

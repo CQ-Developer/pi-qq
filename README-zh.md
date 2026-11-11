@@ -134,7 +134,6 @@ QQ 侧命令：
 
 ```json
 {
-  "thinkingRelay": true,
   "replyType": "full",
   "deliverAs": "steer",
   "fileMaxSize": 52428800,
@@ -143,16 +142,15 @@ QQ 侧命令：
 }
 ```
 
-| 配置项          | 默认值     | 说明                                                   |
-| --------------- | ---------- | ------------------------------------------------------ |
-| `thinkingRelay` | `true`     | 以本地化的 `## 💭` 标题纯文本回传思考；`false` 时隐藏  |
-| `replyType`     | `"full"`   | 推送到 QQ 的内容粒度：`full`、`simple`、`last`         |
-| `deliverAs`     | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
-| `fileMaxSize`   | `52428800` | QQ 附件下载上限（字节，50MB）                          |
-| `language`      | `"zh-cn"`  | UI 和日志语言：`zh-cn` 或 `en-us`                      |
-| `logLevel`      | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
+| 配置项        | 默认值     | 说明                                                   |
+| ------------- | ---------- | ------------------------------------------------------ |
+| `replyType`   | `"full"`   | 推送到 QQ 的内容粒度：`full`、`simple`、`last`         |
+| `deliverAs`   | `"steer"`  | 忙碌时新消息的排队方式：`steer` 或 `followUp`          |
+| `fileMaxSize` | `52428800` | QQ 附件下载上限（字节，50MB）                          |
+| `language`    | `"zh-cn"`  | UI 和日志语言：`zh-cn` 或 `en-us`                      |
+| `logLevel`    | `"silent"` | 日志阈值：`silent`、`error`、`warn`、`info` 或 `debug` |
 
-配置在 pi 会话启动时读取；修改文件后请重启 pi。未知配置项会被忽略，无效值会回退到默认值并给出提示。
+配置在扩展加载时读取，并在每条来自已绑定用户的 QQ 消息处理前重新读取。修改后下一条消息即生效，无需重启 pi 或重新登录。未知配置项会被忽略，无效值会回退到默认值并给出提示。
 
 ### `replyType`
 
@@ -164,19 +162,11 @@ QQ 侧命令：
 | `simple` | 只推 assistant 消息，每条一个气泡                             |
 | `last`   | 只推 run 中最后一条 assistant 消息，在 run 结束时送出         |
 
-- `full` 是默认值，保持 pi-qq 1.5.x 的行为，也是唯一会应用 `thinkingRelay` 的模式。
+- `full` 是默认值，保持 pi-qq 1.5.x 的行为；该模式固定回传思考。
 - `simple` 会实时流出每一条 assistant 消息，一条消息一个气泡。
 - `last` 在任务运行期间不推送任何内容；运行期间执行 `/last` 会回复“任务仍在进行中”。
 - 无论哪种模式，模型错误消息都会立即以普通消息发出。
 - `simple` 与 `last` 不回传工具输出，但 `qq_send_media` 发送的文件仍然会送达。
-
-### `thinkingRelay`
-
-是否把模型的思考单独回传成一个气泡。
-
-- `true`（默认）：以本地化的 `## 💭` 标题纯文本回传思考。
-- `false`：丢弃思考。
-- 只在 `replyType: "full"` 下生效；`simple` 与 `last` 不会回传思考。
 
 ### `deliverAs`
 

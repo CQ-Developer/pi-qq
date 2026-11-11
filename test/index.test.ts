@@ -26,6 +26,12 @@ const bot = vi.hoisted(() => ({
   stop: vi.fn(),
 }));
 
+const settingsState = vi.hoisted(() => ({
+  current: {} as import("../src/infra/settings").PiQQSettings,
+  error: undefined as string | undefined,
+  reads: 0,
+}));
+
 vi.mock("../src/qq/qq-bot", () => ({
   startBot: bot.startBot,
 }));
@@ -52,7 +58,10 @@ vi.mock("../src/infra/settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/infra/settings")>();
   return {
     ...actual,
-    readConfig: () => ({ config: {}, error: undefined }),
+    readConfig: () => {
+      settingsState.reads += 1;
+      return { config: settingsState.current, error: settingsState.error };
+    },
   };
 });
 
@@ -88,6 +97,7 @@ function makePi(): {
     setActiveTools(names: string[]) {
       state.activeTools = [...names];
     },
+    sendUserMessage: vi.fn(),
   } as unknown as ExtensionAPI;
   return { pi, commands, handlers, tools, state };
 }
@@ -109,6 +119,9 @@ afterEach(() => {
   delete (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY];
   setLogGate(undefined);
   feedback.isQQRunActive.mockReturnValue(false);
+  settingsState.current = {};
+  settingsState.error = undefined;
+  settingsState.reads = 0;
   configureLogger("silent");
   vi.restoreAllMocks();
   vi.clearAllMocks();
@@ -135,6 +148,84 @@ describe("extension lifecycle", () => {
     expect(bot.stop).toHaveBeenCalled();
     expect(feedback.dispose).toHaveBeenCalled();
     expect((globalThis as Record<string, unknown>)[LOGIN_STATE_KEY]).toBeUndefined();
+  });
+
+  it("reloads the config file for every inbound QQ message", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    bot.startBot.mockReturnValue({ bot: {}, stop: bot.stop });
+    settingsState.current = { deliverAs: "followUp" };
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+    await handlers.get("session_start")!({ type: "session_start", reason: "startup" }, ctx);
+
+    const startOptions = bot.startBot.mock.calls.at(-1)?.[0] as
+      { onMessage?: (bot: unknown, msg: unknown) => Promise<void> } | undefined;
+    const onMessage = startOptions?.onMessage;
+    expect(onMessage).toBeTypeOf("function");
+
+    const incoming = { kind: "c2c", senderId: "openid-u", messageId: "msg-1", content: "hello", attachments: [] };
+    const readsBeforeMessages = settingsState.reads;
+    await onMessage?.({}, incoming);
+    expect(settingsState.reads).toBe(readsBeforeMessages + 1);
+    expect(pi.sendUserMessage).toHaveBeenLastCalledWith("hello", { deliverAs: "followUp" });
+
+    settingsState.current = { deliverAs: "steer" };
+    await onMessage?.({}, { ...incoming, messageId: "msg-2", content: "again" });
+    expect(settingsState.reads).toBe(readsBeforeMessages + 2);
+    expect(pi.sendUserMessage).toHaveBeenLastCalledWith("again", { deliverAs: "steer" });
+  });
+
+  it("reports the initial config error at session start without re-reading", async () => {
+    settingsState.error = "bad config";
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const readsAfterLoad = settingsState.reads;
+    const ctx = makeCtx();
+
+    await handlers.get("session_start")!({ type: "session_start", reason: "startup" }, ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("pi-qq bad config", "error");
+    expect(settingsState.reads).toBe(readsAfterLoad);
+  });
+
+  it("reports the same config error once for repeated QQ messages", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    bot.startBot.mockReturnValue({ bot: {}, stop: bot.stop });
+
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+    await handlers.get("session_start")!({ type: "session_start", reason: "startup" }, ctx);
+    const notify = vi.mocked(ctx.ui.notify);
+    notify.mockClear();
+
+    const startOptions = bot.startBot.mock.calls.at(-1)?.[0] as
+      { onMessage?: (bot: unknown, msg: unknown) => Promise<void> } | undefined;
+    const onMessage = startOptions?.onMessage;
+    const incoming = { kind: "c2c", senderId: "openid-u", messageId: "msg-1", content: "hello", attachments: [] };
+
+    settingsState.error = "bad config";
+    await onMessage?.({}, incoming);
+    await onMessage?.({}, { ...incoming, messageId: "msg-2" });
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith("pi-qq bad config", "error");
+
+    settingsState.error = undefined;
+    await onMessage?.({}, { ...incoming, messageId: "msg-3" });
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    settingsState.error = "another config error";
+    await onMessage?.({}, { ...incoming, messageId: "msg-4" });
+    expect(notify).toHaveBeenCalledTimes(2);
   });
 
   it("registers the media tool inactive and activates it after login", async () => {

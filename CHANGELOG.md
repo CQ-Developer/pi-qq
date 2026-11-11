@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Settings are loaded when the extension starts and re-read on every inbound QQ message from the bound user, so edits to `pi-qq.json` take effect on the next message without restarting pi or logging in again. Session start and `/qq-login` reuse the startup values. Config errors are reported once per distinct message.
+
+### Removed
+
+- Removed the `thinkingRelay` setting. `replyType: "full"` now always relays thinking, while `simple` and `last` never do. Existing `thinkingRelay` keys are ignored.
+
 ## [1.6.0] - 2026-11-09
 
 ### Added

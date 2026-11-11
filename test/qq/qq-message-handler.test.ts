@@ -20,6 +20,8 @@ function makeInboundHarness(
     streamReply?: (bot: unknown, text: string, target: unknown, budget: unknown) => Promise<void>;
     repushCurrent?: (openid: string, msgId: string) => boolean;
     replyType?: ReplyType;
+    getDeliverAs?: () => "steer" | "followUp";
+    reloadSettings?: () => void;
   } = {},
 ) {
   const sent: string[] = [];
@@ -28,6 +30,7 @@ function makeInboundHarness(
   const userMessages: Array<{ content: unknown; options: unknown }> = [];
   let triggers = 0;
   let stops = 0;
+  let reloads = 0;
   const bot = {
     async sendText(_target: unknown, text: string) {
       sent.push(text);
@@ -50,7 +53,11 @@ function makeInboundHarness(
     ctx,
     budget: new ReplyBudget(),
     getAllowedOpenid: () => "openid-u",
-    getDeliverAs: () => "steer",
+    reloadSettings: () => {
+      reloads += 1;
+      opts.reloadSettings?.();
+    },
+    getDeliverAs: opts.getDeliverAs ?? (() => "steer"),
     getReplyType: () => opts.replyType ?? "full",
     getFileMaxSize: () => 50 * 1024 * 1024,
     saveFiles: opts.saveFiles,
@@ -83,8 +90,37 @@ function makeInboundHarness(
         attachments: override.attachments ?? opts.attachments ?? [],
       } as never,
     );
-  return { run, sent, streamed, streamTargets, userMessages, triggers: () => triggers, stops: () => stops };
+  return {
+    run,
+    sent,
+    streamed,
+    streamTargets,
+    userMessages,
+    triggers: () => triggers,
+    stops: () => stops,
+    reloads: () => reloads,
+  };
 }
+
+describe("settings reload", () => {
+  it("reloads settings before every handled message", async () => {
+    let deliverAs: "steer" | "followUp" = "steer";
+    const harness = makeInboundHarness(true, {
+      content: "hello",
+      getDeliverAs: () => deliverAs,
+      reloadSettings: () => {
+        deliverAs = "followUp";
+      },
+    });
+
+    await harness.run();
+    expect(harness.reloads()).toBe(1);
+    expect(harness.userMessages).toEqual([{ content: "hello", options: { deliverAs: "followUp" } }]);
+
+    await harness.run({ content: "/help" });
+    expect(harness.reloads()).toBe(2);
+  });
+});
 
 describe("inbound image attachments", () => {
   const savedImage = savedAttachment("photo.png");

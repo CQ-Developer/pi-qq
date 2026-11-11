@@ -134,7 +134,6 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 
 ```json
 {
-  "thinkingRelay": true,
   "replyType": "full",
   "deliverAs": "steer",
   "fileMaxSize": 52428800,
@@ -143,16 +142,15 @@ Create `~/.pi/agent/pi-qq.json` to override defaults. It stores settings only; c
 }
 ```
 
-| Key             | Default    | Description                                                  |
-| --------------- | ---------- | ------------------------------------------------------------ |
-| `thinkingRelay` | `true`     | Relay thinking as plain text with a localized `## 💭` header |
-| `replyType`     | `"full"`   | How much of a run is pushed to QQ: `full`, `simple`, `last`  |
-| `deliverAs`     | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
-| `fileMaxSize`   | `52428800` | QQ attachment download limit in bytes (50MB)                 |
-| `language`      | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |
-| `logLevel`      | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
+| Key           | Default    | Description                                                  |
+| ------------- | ---------- | ------------------------------------------------------------ |
+| `replyType`   | `"full"`   | How much of a run is pushed to QQ: `full`, `simple`, `last`  |
+| `deliverAs`   | `"steer"`  | Queue new messages while busy: `steer` or `followUp`         |
+| `fileMaxSize` | `52428800` | QQ attachment download limit in bytes (50MB)                 |
+| `language`    | `"zh-cn"`  | UI and log language: `zh-cn` or `en-us`                      |
+| `logLevel`    | `"silent"` | Log threshold: `silent`, `error`, `warn`, `info`, or `debug` |
 
-Settings are read when a pi session starts; restart pi after editing the file. Unknown keys are ignored, and invalid values fall back to defaults with a warning.
+Settings are loaded when the extension starts and re-read on every inbound QQ message from the bound user, so edits take effect on the next message without restarting pi or logging in again. Unknown keys are ignored, and invalid values fall back to defaults with a warning.
 
 ### `replyType`
 
@@ -164,19 +162,11 @@ How much of an agent run is pushed to QQ.
 | `simple` | Assistant messages only, one bubble each                                         |
 | `last`   | Only the last assistant message of the run, sent when the run ends               |
 
-- `full` is the default and keeps the behaviour of pi-qq 1.5.x; it is the only mode where `thinkingRelay` applies.
+- `full` is the default and keeps the behaviour of pi-qq 1.5.x; thinking is always relayed in this mode.
 - `simple` streams every assistant message live, one QQ bubble per message.
 - `last` sends nothing while the task is running; `/last` during a running task replies that the task is still running.
 - Model errors are always delivered immediately as a normal message, in every mode.
 - Tool output is not relayed in `simple` or `last`, but files sent with `qq_send_media` are still delivered.
-
-### `thinkingRelay`
-
-Whether the model's thinking is relayed to QQ as its own bubble.
-
-- `true` (default): thinking is relayed as plain text under a localized `## 💭` heading.
-- `false`: thinking is dropped.
-- Only applies to `replyType: "full"`; `simple` and `last` never relay thinking.
 
 ### `deliverAs`
 

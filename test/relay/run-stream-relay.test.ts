@@ -18,7 +18,6 @@ const THINKING_HEADER = thinkingHeader();
 
 function makeRunHarness(
   options: {
-    thinkingRelay?: boolean;
     replyType?: ReplyType;
     failNext?: number;
     alwaysFail?: boolean;
@@ -51,7 +50,6 @@ function makeRunHarness(
   const deps = {
     bot: () => bot,
     budget,
-    getThinkingRelay: () => options.thinkingRelay ?? true,
     getReplyType: () => options.replyType ?? "full",
     onWarn: (msg: string) => warns.push(msg),
     onFallbackReply: (text: string) => {
@@ -207,15 +205,6 @@ describe("RunFeedback 直推", () => {
     await rf.onAgentEnd();
 
     expect(bubbleContents(calls)).toEqual(["one\n", "two"]);
-  });
-
-  it("thinkingRelay 关闭时不输出思考块", async () => {
-    const { rf, calls } = makeRunHarness({ thinkingRelay: false });
-    startRun(rf);
-    rf.onAssistantDelta("answer", "secret");
-    expect(await rf.onAssistantFinal("answer", false)).toBe(true);
-    await rf.onAgentEnd();
-    expect(streamContent(calls)).toBe("answer");
   });
 
   it("超过 12k 时在换行边界主动切泡", async () => {

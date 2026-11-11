@@ -9,7 +9,6 @@ import { detectSkillRead } from "./stream-block-format";
 export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;
   budget: ReplyBudget;
-  getThinkingRelay: () => boolean;
   getReplyType: () => ReplyType;
   onWarn: (msg: string) => void;
   onFallbackReply?: (text: string) => void;
@@ -272,7 +271,7 @@ export class RunFeedback {
     if (snapshotThinking.length > run.thinkingSentLen) {
       const thinkingDelta = snapshotThinking.slice(run.thinkingSentLen);
       run.thinkingSentLen = snapshotThinking.length;
-      if (policy.relayThinking && this.deps.getThinkingRelay()) {
+      if (policy.relayThinking) {
         if (this.hasPendingTools(run)) {
           run.deferredThinking += thinkingDelta;
         } else {
