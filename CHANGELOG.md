@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `replyType: "last"`; the only modes are now `full` and `simple`. Existing `"last"` values fall back to `full` with a validation warning.
 
+### Fixed
+
+- Stream rate-limit retries now advance `index` and recognize QQ `ApiError` HTTP/business codes.
+- A `40054005` duplicate-`msgseq` error now opens a new stream with a fresh sequence and replays the buffered content instead of repeatedly resuming the failed stream.
+- Empty attachment responses are rejected consistently.
+
 ## [1.6.1] - 2026-11-11
 
 ### Changed

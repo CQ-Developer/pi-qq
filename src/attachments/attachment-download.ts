@@ -8,7 +8,7 @@ export interface InboundAttachmentLike {
   size?: number;
 }
 
-export interface DownloadOptions {
+interface DownloadOptions {
   url: string;
   maxSize: number;
   timeoutMs: number;
@@ -19,6 +19,7 @@ export interface DownloadOptions {
 async function readBodyLimited(response: Response, limit: number, kind: string): Promise<Buffer> {
   if (!response.body) {
     const body = Buffer.from(await response.arrayBuffer());
+    if (body.byteLength === 0) throw new Error(t("attachments.empty", { kind }));
     if (body.byteLength > limit) {
       throw new Error(
         t("attachments.tooLarge", { kind, size: formatBytes(body.byteLength), limit: formatBytes(limit) }),

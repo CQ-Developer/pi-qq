@@ -41,13 +41,7 @@ export function parseWindowsBattery(output: string): PowerStatus | undefined {
   const percent = clampPercent(Number(battery.EstimatedChargeRemaining));
   const status = Number(battery.BatteryStatus);
   const state =
-    status === 1 || status === 4 || status === 5
-      ? "discharging"
-      : status >= 6 && status <= 9
-        ? "charging"
-        : status === 2 || status === 3
-          ? "ac"
-          : "ac";
+    status === 1 || status === 4 || status === 5 ? "discharging" : status >= 6 && status <= 9 ? "charging" : "ac";
   return { percent, state };
 }
 
@@ -107,8 +101,4 @@ export function getPowerStatus(now = Date.now()): PowerStatus | undefined {
   const value = readPowerStatus();
   cache = { at: now, value };
   return value;
-}
-
-export function resetPowerStatusCache(): void {
-  cache = undefined;
 }

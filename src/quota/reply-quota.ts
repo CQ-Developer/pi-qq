@@ -1,8 +1,8 @@
 import { ReplyLimiter } from "@tencent-connect/qqbot-nodejs/protocol";
 
-export type ReplyMode = "passive" | "proactive";
+type ReplyMode = "passive" | "proactive";
 
-export interface AcquireResult {
+interface AcquireResult {
   mode: ReplyMode;
   openid?: string;
   msgId?: string;

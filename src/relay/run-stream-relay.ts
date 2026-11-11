@@ -1,7 +1,7 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { BubbleWriter, type RepushBlock, type RepushTool } from "./bubble-writer";
 import { RunTimeline, type TimelineTool } from "./run-timeline";
-import { policyFor } from "./reply-policy";
+import { policyFor, type ReplyPolicy } from "./reply-policy";
 import type { ReplyBudget } from "../quota/reply-quota";
 import type { ReplyType } from "../infra/reply-type";
 import { isLogEnabled, log } from "../infra/file-logger";
@@ -275,12 +275,7 @@ export class RunFeedback {
     const delta = full.slice(run.resultSentLen);
     if (!delta) return;
     run.resultSentLen = full.length;
-    if (run.writer.dead) return;
-    if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
-      run.deferredText += delta;
-      return;
-    }
-    run.writer.pushText(delta);
+    this.emitTextDelta(run, delta, policy);
   }
 
   async onAssistantFinal(text: string, isError: boolean): Promise<boolean> {
@@ -299,13 +294,7 @@ export class RunFeedback {
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
-    if (!isError && text && delta && !run.writer.dead) {
-      if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
-        run.deferredText += delta;
-      } else {
-        run.writer.pushText(delta);
-      }
-    }
+    if (!isError && text) this.emitTextDelta(run, delta, policy);
     if (!isError && text) run.writer.closeBlock();
 
     run.thinkingSentLen = 0;
@@ -390,12 +379,21 @@ export class RunFeedback {
     this.endResolve = undefined;
   }
 
-  private policy() {
+  private policy(): ReplyPolicy {
     return policyFor(this.deps.getReplyType());
   }
 
   private hasPendingTools(run: RunState): boolean {
     return run.timeline.hasPendingTools();
+  }
+
+  private emitTextDelta(run: RunState, delta: string, policy: ReplyPolicy): void {
+    if (!delta || run.writer.dead) return;
+    if (policy.deferTextWhileToolsPending && this.hasPendingTools(run)) {
+      run.deferredText += delta;
+      return;
+    }
+    run.writer.pushText(delta);
   }
 
   private flushDeferred(run: RunState): void {

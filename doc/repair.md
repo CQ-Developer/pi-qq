@@ -43,7 +43,7 @@ if (!run || !text?.trim()) return false;
 
 1. 重推条件错误地绑定到 assistant 文本。
 2. 运行内容状态和流式发送耦合在 `RunFeedback` 里：writer 死亡后，工具事件直接提前返回，当前工具状态丢失。
-3. `BubbleWriter` 只有 `restartText()`，没有重推思考/工具的结构化接口。
+3. `BubbleWriter` 只有文本重推接口，没有重推思考/工具的结构化接口。
 4. `restartPush()` 的返回值没有被命令层处理，失败时静默。
 
 ## 2. 目标与非目标
@@ -62,7 +62,6 @@ if (!run || !text?.trim()) return false;
 
 ### 2.2 非目标
 
-- 不修复 `msgseq` 随机碰撞导致的 `40054005`；这是独立缺陷。
 - 不重放整个 run 的全部历史，只推送有界的“当前快照”。
 - 不把 `/last` 改成持续进度流；它仍是一次手动重推。
 - 不增加工具的部分输出（`tool_execution_update`）转发。
@@ -83,7 +82,7 @@ if (!run || !text?.trim()) return false;
    `sessionManager.getBranch()` 中的 assistant 消息在 `message_end` 后才持久化；工具执行中的当前消息不在 session 历史里。`/last` 不能依赖 session 查询。
 
 3. **新的流式气泡会生成新的 `msg_seq`。**
-   新的 `AppendStream` 会重新生成 `msg_seq`，足以从当前的 `writer.dead` 状态恢复；但不修复随机 `msg_seq` 碰撞本身。`qqbot-nodejs` 的 `getNextMsgSeq()` 只产生 `0..65535` 的随机值。
+   新的 `AppendStream` 会重新生成 `msg_seq`；本次修复在 `40054005` 去重错误时主动新开流并重放缓冲，不再续用旧 checkpoint 的 `msgSeq`。`qqbot-nodejs` 的 `getNextMsgSeq()` 只产生 `0..65535` 的随机值。
 
 4. **`/last` 的目标消息足够新。**
    QQ `stream_messages` 要求基于 5 分钟内的入站消息；`repushCurrent(openid, msgId)` 使用 `/last` 这条入站命令的 `msgId`，满足时效要求。
@@ -169,7 +168,7 @@ private advanceTools(run: RunState): void {
 
 `RunTimeline.snapshot()` 的选择规则：
 
-1. `run.timeline.currentThinking`（非空时）；
+1. `snapshot.thinking`（非空时）；
 2. 工具块：
    - 当前 active 工具；
    - 最近 3 个已完成工具；
@@ -211,8 +210,6 @@ restartSnapshot(blocks: RepushBlock[], target?: { openid: string; msgId: string 
 5. 重置 `streamDead`、`pendingResume`、`resumeAttempts`、`lastKind`、`toolOpen`、`fenceOpen` 等状态；
 6. 按顺序调用 `pushThinking()`、`pushTool()` / `pushToolResult()` / `pushSkill()`、`pushText()`。
 
-`restartText()` 保留为只含文本块的薄封装，供 `simple` 模式和现有测试使用。
-
 ### 4.5 `repushCurrent()` 返回值
 
 ```ts
@@ -238,7 +235,7 @@ run.deferredThinking = "";
 run.deferredText = "";
 ```
 
-清空 deferred 是因为 `currentThinking` / `currentText` 已包含这些内容，避免后续 `flushDeferred()` 重复发送。
+清空 deferred 是因为 `snapshot.thinking` / `snapshot.text` 已包含这些内容，避免后续 `flushDeferred()` 重复发送。
 
 不要修改 `thinkingSentLen` / `resultSentLen`：它们记录原始流的处理进度。writer 死亡期间也要继续推进这些基准，这样重推后只发送新增内容。
 
@@ -271,6 +268,20 @@ commands.last.empty
 
 成功时不再额外回复，快照本身就是响应。
 
+### 4.8 流式重试与 msgseq 恢复
+
+- `AppendStream.sendWithRetry()` 在 rate-limit 重试前推进 `index`，与 `qqbot-nodejs` 的 `StreamSession` 行为一致；
+- `isRateLimitError()` 同时识别 `status`、`httpStatus`、`code`、`err_code`、`bizCode` 和 message；
+- `BubbleWriter.handleStreamError()` 检测 `40054005` / “消息被去重”；
+- 去重错误不续用旧 `msgSeq`，而是用 `index: 0`、原 buffer、新 `msgSeq` 新开流；
+- 其他错误仍沿用原 checkpoint 的 resume 语义。
+
+对应测试：
+
+- `test/relay/stream-session.test.ts`：rate-limit 重试的 index 与 `httpStatus`/`bizCode` 识别；
+- `test/relay/run-stream-relay.test.ts`：`40054005` 后新流使用新 `msg_seq` 并重放思考缓冲；
+- `test/relay/bubble-writer.test.ts`：`restartSnapshot()` 的块顺序与 dead writer 复位。
+
 ## 5. `replyType` 精简
 
 `replyType` 只保留：
@@ -295,7 +306,8 @@ commands.last.empty
 | --------------------------------- | ----------------------------------------------------------------------------------- |
 | `src/relay/run-timeline.ts` (new) | `RunTimeline`、`TimelineTool`、快照选择和工具状态                                   |
 | `src/relay/run-stream-relay.ts`   | 使用 `RunTimeline`；`advanceTools()`；`RepushResult`；移除 last 模式与 fallback     |
-| `src/relay/bubble-writer.ts`      | `RepushBlock`、`restartSnapshot()`、状态复位                                        |
+| `src/relay/bubble-writer.ts`      | `RepushBlock`、`restartSnapshot()`、状态复位；40054005 新流                         |
+| `src/relay/stream-session.ts`     | rate-limit index 推进、`httpStatus`/`bizCode` 识别、可选新 `msgSeq` resume          |
 | `src/relay/reply-policy.ts`       | 移除 `relayTextLive`、`deliverLastAtEnd` 和 last 策略                               |
 | `src/infra/reply-type.ts`         | 仅保留 `full` / `simple`                                                            |
 | `src/qq/inbound-command.ts`       | `/last` 处理 `RepushResult`；移除 last 模式提示                                     |
@@ -314,6 +326,9 @@ commands.last.empty
 - writer 死亡期间仍记录工具，并可重推；
 - 快照只包含最近的工具；
 - simple 模式无文本时返回 `empty`；
+- `40054005` 后新开流并使用新 `msg_seq`；
+- `restartSnapshot()` 直接测试块顺序和 dead writer 复位；
+- rate-limit 重试推进 index；
 - 原有思考/工具/文本顺序、12k 切泡、并行工具、skill、错误恢复测试保持通过。
 
 命令测试覆盖：
@@ -328,14 +343,14 @@ commands.last.empty
 
 ## 9. 风险与边界
 
-| 风险                            | 影响                   | 处理                                              |
-| ------------------------------- | ---------------------- | ------------------------------------------------- |
-| 快照顺序与原始交错不同          | 重推内容不是完整时间线 | 明确为“当前状态快照”                              |
-| 工具窗口有限                    | 更早的工具不会重推     | 当前工具 + 最近 3 个已完成工具                    |
-| 思考/文本过长                   | 新气泡可能被拆分       | 复用现有 12k 拆分逻辑                             |
-| `/last` 重复执行                | 每次都会新建气泡       | 手动操作，允许重复                                |
-| `msgseq` 碰撞仍可能再次熔断     | 恢复后仍可能中断       | 单独修复 `40054005`；不在本方案范围               |
-| writer 死亡期间工具状态继续增长 | 内存增加               | 快照有界；`run.tools` 仅在单个 run 生命周期内增长 |
+| 风险                            | 影响                             | 处理                                              |
+| ------------------------------- | -------------------------------- | ------------------------------------------------- |
+| 快照顺序与原始交错不同          | 重推内容不是完整时间线           | 明确为“当前状态快照”                              |
+| 工具窗口有限                    | 更早的工具不会重推               | 当前工具 + 最近 3 个已完成工具                    |
+| 思考/文本过长                   | 新气泡可能被拆分                 | 复用现有 12k 拆分逻辑                             |
+| `/last` 重复执行                | 每次都会新建气泡                 | 手动操作，允许重复                                |
+| 新流重放可能产生新气泡          | 旧气泡保留，用户看到一次快照重复 | 仅在去重错误时触发；保留原 buffer，不重放历史     |
+| writer 死亡期间工具状态继续增长 | 内存增加                         | 快照有界；`run.tools` 仅在单个 run 生命周期内增长 |
 
 ## 10. 验收标准
 

@@ -83,7 +83,7 @@ function primaryArg(args: unknown): string {
   return normalized.length > ARG_MAX_CHARS ? `${normalized.slice(0, ARG_MAX_CHARS)}…` : normalized;
 }
 
-export interface SkillRead {
+interface SkillRead {
   name: string;
 }
 

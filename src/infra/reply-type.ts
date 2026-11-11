@@ -1,4 +1,4 @@
-export const REPLY_TYPES = ["full", "simple"] as const;
+const REPLY_TYPES = ["full", "simple"] as const;
 
 export type ReplyType = (typeof REPLY_TYPES)[number];
 

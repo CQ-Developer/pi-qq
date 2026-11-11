@@ -14,16 +14,15 @@ export interface SavedFile {
   path: string;
 }
 
-export type UploadIndex = Record<string, string>;
+type UploadIndex = Record<string, string>;
 
-export interface SaveFilesOptions {
+interface SaveFilesOptions {
   maxSize: number;
   uploadDir: string;
-  index?: UploadIndex;
   fetchImpl?: typeof fetch;
 }
 
-export interface SaveFilesResult {
+interface SaveFilesResult {
   files: SavedFile[];
   failures: AttachmentFailure[];
 }
@@ -189,7 +188,7 @@ export async function saveInboundFiles(
   const uploadDir = options.uploadDir;
   const limit = Math.max(1, options.maxSize);
   const fetchImpl = options.fetchImpl ?? fetch;
-  const index = options.index ?? (await loadUploadIndex(uploadDir));
+  const index = await loadUploadIndex(uploadDir);
   const files: SavedFile[] = [];
   const failures: AttachmentFailure[] = [];
   const seenPaths = new Set<string>();

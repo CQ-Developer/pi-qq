@@ -5,14 +5,14 @@ import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 import { isVoiceAttachment, resolveVoiceTranscript } from "../attachments/voice-transcript";
 
-export interface ResolveInboundOptions {
+interface ResolveInboundOptions {
   contentText: string;
   maxSize: number;
   uploadDir: string;
   saveFiles: typeof saveInboundFiles;
 }
 
-export type ResolvedInbound =
+type ResolvedInbound =
   | { status: "rejected"; reply: string }
   | {
       status: "resolved";

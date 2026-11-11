@@ -12,7 +12,7 @@ export interface TimelineTool {
   finished: boolean;
 }
 
-export interface RunSnapshot {
+interface RunSnapshot {
   thinking: string;
   text: string;
   tools: TimelineTool[];
@@ -90,10 +90,6 @@ export class RunTimeline {
 
   get currentText(): string {
     return this.text;
-  }
-
-  get currentThinking(): string {
-    return this.thinking;
   }
 
   get error(): boolean {

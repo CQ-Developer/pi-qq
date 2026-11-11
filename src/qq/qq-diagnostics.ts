@@ -6,7 +6,7 @@ import type { RunningBot } from "./qq-bot";
 import { t } from "../infra/i18n";
 import { thinkingHeader } from "../relay/stream-block-format";
 
-export interface QQDiagnosticsDeps {
+interface QQDiagnosticsDeps {
   getRunning: () => RunningBot | undefined;
   budget: ReplyBudget;
   getBoundOpenid: () => string | undefined;

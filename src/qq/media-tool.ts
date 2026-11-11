@@ -48,7 +48,7 @@ export interface MediaToolDetails {
   total?: number;
 }
 
-export interface PreparedMedia {
+interface PreparedMedia {
   path: string;
   fileType: MediaFileType;
   size: number;
@@ -56,7 +56,7 @@ export interface PreparedMedia {
   details: MediaToolDetails;
 }
 
-export interface MediaToolLogin {
+interface MediaToolLogin {
   allowedOpenid: string;
 }
 
@@ -70,7 +70,6 @@ export interface MediaToolDeps {
 export interface MediaToolController {
   activate(): void;
   deactivate(): void;
-  isActive(): boolean;
 }
 
 function mediaErrorMessage(err: unknown): Error {
@@ -298,14 +297,41 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
         captionLength: caption?.length ?? 0,
       });
 
-      try {
-        const message = await bot.mediaApi.sendMediaMessage("c2c", targetId, upload.file_info, bot.getCredentials(), {
-          msgId,
+      const sendMedia = (target: string, passiveMsgId?: string) =>
+        bot.mediaApi.sendMediaMessage("c2c", target, upload.file_info, bot.getCredentials(), {
+          ...(passiveMsgId ? { msgId: passiveMsgId } : {}),
           content: caption,
         });
+      const buildResult = (
+        messageId: string,
+        mode: "passive" | "proactive",
+        elapsedMs: number,
+      ): { content: Array<{ type: "text"; text: string }>; details: MediaToolDetails } => ({
+        content: [
+          {
+            type: "text",
+            text: t("mediaTool.sent", {
+              kind: mediaKindLabel(prepared.fileType),
+              name: prepared.displayName,
+              mode: t(mode === "passive" ? "mediaTool.modePassive" : "mediaTool.modeProactive"),
+            }),
+          },
+        ],
+        details: {
+          ...prepared.details,
+          phase: "sent",
+          mode,
+          messageId,
+          fileUuid: upload.file_uuid,
+          ttlSec: upload.ttl,
+          elapsedMs,
+        },
+      });
+
+      try {
+        const message = await sendMedia(targetId, msgId);
         if (msgId) deps.budget.commitPassive(msgId);
         const elapsedMs = Date.now() - sendStartedAt;
-        const mode = reply.mode === "passive" ? t("mediaTool.modePassive") : t("mediaTool.modeProactive");
         log.debug("media", "media tool", {
           phase: "send.done",
           toolCallId,
@@ -320,27 +346,7 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
           mode: reply.mode,
           messageId: message.id,
         });
-        return {
-          content: [
-            {
-              type: "text",
-              text: t("mediaTool.sent", {
-                kind: mediaKindLabel(prepared.fileType),
-                name: prepared.displayName,
-                mode,
-              }),
-            },
-          ],
-          details: {
-            ...prepared.details,
-            phase: "sent",
-            mode: reply.mode,
-            messageId: message.id,
-            fileUuid: upload.file_uuid,
-            ttlSec: upload.ttl,
-            elapsedMs: Date.now() - startedAt,
-          },
-        };
+        return buildResult(message.id, reply.mode, Date.now() - startedAt);
       } catch (err) {
         if (!msgId) {
           log.warn("media", "media tool", { phase: "call.error", toolCallId, stage: "send", err });
@@ -360,16 +366,9 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
         });
 
         try {
-          const message = await bot.mediaApi.sendMediaMessage(
-            "c2c",
-            login.allowedOpenid,
-            upload.file_info,
-            bot.getCredentials(),
-            { content: caption },
-          );
+          const message = await sendMedia(login.allowedOpenid);
           deps.onWarn(t("outbound.passiveFailed"));
           const elapsedMs = Date.now() - sendStartedAt;
-          const mode = t("mediaTool.modeProactive");
           log.debug("media", "media tool", {
             phase: "send.done",
             toolCallId,
@@ -384,27 +383,7 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
             mode: "proactive",
             messageId: message.id,
           });
-          return {
-            content: [
-              {
-                type: "text",
-                text: t("mediaTool.sent", {
-                  kind: mediaKindLabel(prepared.fileType),
-                  name: prepared.displayName,
-                  mode,
-                }),
-              },
-            ],
-            details: {
-              ...prepared.details,
-              phase: "sent",
-              mode: "proactive",
-              messageId: message.id,
-              fileUuid: upload.file_uuid,
-              ttlSec: upload.ttl,
-              elapsedMs: Date.now() - startedAt,
-            },
-          };
+          return buildResult(message.id, "proactive", Date.now() - startedAt);
         } catch (retryErr) {
           log.warn("media", "media tool", {
             phase: "call.error",
@@ -450,9 +429,6 @@ export function registerMediaTool(pi: ExtensionAPI, deps: MediaToolDeps): MediaT
         removed,
         activeCount: pi.getActiveTools().length,
       });
-    },
-    isActive() {
-      return pi.getActiveTools().includes(MEDIA_TOOL_NAME);
     },
   };
 }

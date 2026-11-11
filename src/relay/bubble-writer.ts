@@ -16,6 +16,16 @@ type BlockKind = "none" | "thinking" | "tool" | "text";
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
 
+function isDuplicateMsgSeqError(err: unknown): boolean {
+  const e = err as { code?: number; err_code?: number; bizCode?: number; message?: string };
+  return (
+    e?.code === 40054005 ||
+    e?.err_code === 40054005 ||
+    e?.bizCode === 40054005 ||
+    /40054005|消息被去重|msgseq/i.test(String(e?.message ?? ""))
+  );
+}
+
 export interface RepushTool {
   name: string;
   args?: unknown;
@@ -99,14 +109,14 @@ export class BubbleWriter {
     const newBubble = this.startsNewBlock("thinking");
     const prefix = this.beginBlock("thinking", newBubble);
     this.thinkingAtLineStart = delta.endsWith("\n");
-    this.push(`${prefix}${delta}`, prefix.length > 0 || newBubble, false, newBubble, true);
+    this.push(`${prefix}${delta}`, { blockBoundary: prefix.length > 0 || newBubble, newBubble, thinking: true });
   }
 
   pushText(text: string): void {
     if (this.streamDead || this.disposed) return;
     const newBubble = this.startsNewBlock("text");
     const prefix = this.beginBlock("text", newBubble);
-    this.push(`${prefix}${text}`, prefix.length > 0 || newBubble, false, newBubble);
+    this.push(`${prefix}${text}`, { blockBoundary: prefix.length > 0 || newBubble, newBubble });
   }
 
   pushTool(name: string, args: unknown): void {
@@ -124,14 +134,11 @@ export class BubbleWriter {
         budget: this.deps.budget.snapshot(),
       });
     }
-    this.push(
-      `${prefix}${formatToolLine(name, args)}\n\n`,
-      prefix.length > 0 || newBubble,
-      false,
+    this.push(`${prefix}${formatToolLine(name, args)}\n\n`, {
+      blockBoundary: prefix.length > 0 || newBubble,
       newBubble,
-      false,
-      "tool",
-    );
+      trace: "tool",
+    });
   }
 
   pushSkill(name: string): void {
@@ -139,26 +146,21 @@ export class BubbleWriter {
     this.toolOpen = false;
     const newBubble = true;
     const prefix = this.beginBlock("tool", newBubble);
-    this.push(`${prefix}${formatSkillBlock(name)}`, prefix.length > 0 || newBubble, false, newBubble, false, "skill");
+    this.push(`${prefix}${formatSkillBlock(name)}`, {
+      blockBoundary: prefix.length > 0 || newBubble,
+      newBubble,
+      trace: "skill",
+    });
   }
 
   pushToolResult(result: unknown, isError: boolean, toolName?: string, args?: unknown): void {
     if (this.streamDead || this.disposed) return;
     const prefix = this.beginBlock("tool");
     const language = toolName ? resultLanguage(toolName, args, isError) : "text";
-    this.push(`${prefix}${formatToolResult(result, isError, language)}`, prefix.length > 0, true);
-  }
-
-  schedule(op: () => void): void {
-    void this.enqueue(async () => {
-      if (this.streamDead || this.disposed) return;
-      op();
+    this.push(`${prefix}${formatToolResult(result, isError, language)}`, {
+      blockBoundary: prefix.length > 0,
+      endTool: true,
     });
-  }
-
-  restartText(text: string, target?: { openid: string; msgId: string }): void {
-    if (!text) return;
-    this.restartSnapshot([{ kind: "text", text }], target);
   }
 
   restartSnapshot(blocks: RepushBlock[], target?: { openid: string; msgId: string }): void {
@@ -297,12 +299,15 @@ export class BubbleWriter {
 
   private push(
     text: string,
-    blockBoundary = false,
-    endTool = false,
-    newBubble = false,
-    thinking = false,
-    trace?: string,
+    options: {
+      blockBoundary?: boolean;
+      endTool?: boolean;
+      newBubble?: boolean;
+      thinking?: boolean;
+      trace?: string;
+    } = {},
   ): void {
+    const { blockBoundary = false, endTool = false, newBubble = false, thinking = false, trace } = options;
     if (!text || this.streamDead || this.disposed) return;
     const queuedAt = trace ? Date.now() : 0;
     void this.enqueue(async () => {
@@ -505,9 +510,11 @@ export class BubbleWriter {
     const checkpoint = stream?.checkpoint() ?? null;
     stream?.dispose();
     this.cur = null;
+    const resetSeq = isDuplicateMsgSeqError(err);
     log.warn("stream", "stream error", {
       msgId: this.logMsgId(),
       elapsedMs: Date.now() - this.deps.startedAt,
+      resetSeq,
       checkpoint: checkpoint
         ? {
             index: checkpoint.index,
@@ -521,7 +528,12 @@ export class BubbleWriter {
     });
     if (checkpoint && this.resumeAttempts < MAX_RESUME_ATTEMPTS) {
       this.resumeAttempts += 1;
-      this.pendingResume = checkpoint;
+      this.pendingResume = resetSeq
+        ? {
+            index: 0,
+            ...(checkpoint.buffer ? { buffer: checkpoint.buffer } : {}),
+          }
+        : checkpoint;
       return;
     }
     this.killStream(err.message);

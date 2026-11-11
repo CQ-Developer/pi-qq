@@ -61,6 +61,30 @@ describe("AppendStream", () => {
     expect(debug.join("\n")).toContain("rate limited");
   });
 
+  it("识别 httpStatus/bizCode 限流并在重试时推进 index", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    let attempts = 0;
+    const api = {
+      async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+        attempts += 1;
+        if (attempts === 1) {
+          const err = Object.assign(new Error("rate limited"), { httpStatus: 429, bizCode: 50002 });
+          throw err;
+        }
+        calls.push(req);
+        return { id: "sm-retry" };
+      },
+    };
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", {
+      throttleMs: 20,
+      retryBaseMs: 1,
+    });
+
+    await stream.append("retry");
+    expect(calls[0]?.index).toBe(1);
+    expect(calls[0]?.msg_seq).toEqual(expect.any(Number));
+  });
+
   it("flush 发送缓冲但不结束流", async () => {
     const { api, calls } = makeFakeApi();
     const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 300 });

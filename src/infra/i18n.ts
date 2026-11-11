@@ -131,7 +131,6 @@ const enUS = {
   "diagnostics.budget.passiveRemainingNone": "Passive remaining: —",
   "diagnostics.budget.estimatedNone": "Estimated remaining: — (diagnostic only)",
   "diagnostics.budget.windowNone": "msgId window: —",
-  "diagnostics.budget.none": "none",
   "diagnostics.budget.passiveRemaining": "Passive remaining: {remaining}",
   "diagnostics.budget.streamBubbles": "Stream bubbles: {count} (current msgId)",
   "diagnostics.budget.estimated": "Estimated remaining: {remaining} (diagnostic only)",
@@ -231,7 +230,6 @@ const enUS = {
   "log.botBlocked": "blocked",
   "log.messageReceived": "message received",
   "log.ended": "ended",
-  "log.starting": "starting",
   "log.streamTiming": "stream timing",
   "log.eventLoopDelay": "event loop delay",
 } as const;
@@ -363,7 +361,6 @@ const zhCN: Record<TranslationKey, string> = {
   "diagnostics.budget.passiveRemainingNone": "被动剩余：—",
   "diagnostics.budget.estimatedNone": "预计剩余：—（仅诊断）",
   "diagnostics.budget.windowNone": "msgId 窗口：—",
-  "diagnostics.budget.none": "无",
   "diagnostics.budget.passiveRemaining": "被动剩余：{remaining}",
   "diagnostics.budget.streamBubbles": "流式气泡：{count}（当前 msgId）",
   "diagnostics.budget.estimated": "预计剩余：{remaining}（仅诊断）",
@@ -463,7 +460,6 @@ const zhCN: Record<TranslationKey, string> = {
   "log.botBlocked": "连接被阻止",
   "log.messageReceived": "收到消息",
   "log.ended": "已结束",
-  "log.starting": "启动中",
   "log.streamTiming": "流式时序",
   "log.eventLoopDelay": "事件循环延迟",
 };

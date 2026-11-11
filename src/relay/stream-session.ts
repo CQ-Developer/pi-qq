@@ -12,7 +12,7 @@ const RATE_LIMIT_BASE_MS = 1000;
 const MAX_RETRIES = 3;
 
 export interface AppendStreamCheckpoint {
-  msgSeq: number;
+  msgSeq?: number;
   index: number;
   streamMsgId?: string;
   buffer?: string;
@@ -26,7 +26,7 @@ export interface AppendStreamFrameInfo {
   bufferLength: number;
 }
 
-export interface AppendStreamOptions {
+interface AppendStreamOptions {
   throttleMs?: number;
   retryBaseMs?: number;
   resume?: AppendStreamCheckpoint;
@@ -54,7 +54,7 @@ export class AppendStream {
   ) {
     const resume = this.opts.resume;
     if (resume) {
-      this.msgSeq = resume.msgSeq;
+      if (resume.msgSeq !== undefined) this.msgSeq = resume.msgSeq;
       this.index = resume.index;
       this.streamMsgId = resume.streamMsgId;
       this.buffer = resume.buffer ?? "";
@@ -204,12 +204,28 @@ export class AppendStream {
         const delay = base * 2 ** attempt;
         this.opts.onDebug?.(t("log.streamFrameRateLimited", { index: req.index, attempt: attempt + 1, delay, reason }));
         await new Promise((r) => setTimeout(r, delay));
+        req.index = this.index++;
       }
     }
   }
 
   private isRateLimitError(err: unknown): boolean {
-    const e = err as { status?: number; message?: string };
-    return e?.status === 429 || /429|50002/.test(String(e?.message ?? ""));
+    const e = err as {
+      status?: number;
+      httpStatus?: number;
+      code?: number;
+      err_code?: number;
+      bizCode?: number;
+      message?: string;
+    };
+    return (
+      e?.status === 429 ||
+      e?.httpStatus === 429 ||
+      e?.code === 429 ||
+      e?.code === 50002 ||
+      e?.err_code === 50002 ||
+      e?.bizCode === 50002 ||
+      /429|50002/.test(String(e?.message ?? ""))
+    );
   }
 }

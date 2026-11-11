@@ -13,7 +13,7 @@ import { t } from "../infra/i18n";
 
 export type BotState = "stopped" | "starting" | "connected" | "reconnecting" | "blocked";
 
-export interface StartBotOptions {
+interface StartBotOptions {
   credentials: Credentials;
   allowedOpenid: string;
   onMessage?: (bot: QQBot, msg: QQBotInboundMessage) => void | Promise<void>;

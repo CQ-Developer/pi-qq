@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { RepushResult } from "../relay/run-stream-relay";
 import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 
@@ -22,9 +21,13 @@ export interface InboundCommandDeps {
   waitForEnd?: () => Promise<void>;
 }
 
+export interface InboundPushResult {
+  ok: boolean;
+}
+
 export interface InboundCommandExtras {
   streamReply?: (text: string) => Promise<void>;
-  restartPush?: () => RepushResult;
+  restartPush?: () => InboundPushResult;
 }
 
 export async function handleInboundCommand(

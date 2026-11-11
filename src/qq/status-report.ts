@@ -38,19 +38,7 @@ function maskOpenid(openid: string): string {
   return `${openid.slice(0, 8)}…`;
 }
 
-function label(
-  key:
-    | "status.agent"
-    | "status.context"
-    | "status.model"
-    | "status.login"
-    | "status.connection"
-    | "status.qqUser"
-    | "status.battery"
-    | "status.replyType"
-    | "status.settings",
-  value: string,
-): string {
+function label(key: TranslationKey, value: string): string {
   return `${t(key)}${t("status.separator")}${value}`;
 }
 

@@ -14,7 +14,7 @@ import { t } from "../infra/i18n";
 import { handleInboundCommand, type InboundCommandDeps } from "./inbound-command";
 import { PendingAttachments, resolveInboundContent } from "./inbound-attachments";
 
-export interface InboundDeps extends InboundCommandDeps {
+interface InboundDeps extends InboundCommandDeps {
   budget: ReplyBudget;
   getAllowedOpenid: () => string | undefined;
   reloadSettings: () => void;
@@ -71,7 +71,7 @@ export function createInboundHandler(deps: InboundDeps) {
 
     const channel: ReplyChannel = {
       budget: deps.budget,
-      boundOpenid: deps.getAllowedOpenid() ?? msg.senderId,
+      boundOpenid: allowed,
       onWarn: deps.onWarn,
     };
     const reply = (text: string) => sendReply(bot, text, channel);

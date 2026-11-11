@@ -17,6 +17,7 @@ function makeRunHarness(
   options: {
     replyType?: ReplyType;
     failNext?: number;
+    duplicateNext?: number;
     alwaysFail?: boolean;
   } = {},
 ) {
@@ -24,9 +25,14 @@ function makeRunHarness(
   const attempts: Array<Record<string, unknown>> = [];
   const warns: string[] = [];
   let failuresLeft = options.failNext ?? 0;
+  let duplicatesLeft = options.duplicateNext ?? 0;
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
       attempts.push({ ...req });
+      if (duplicatesLeft > 0) {
+        duplicatesLeft -= 1;
+        throw Object.assign(new Error("消息被去重，请检查请求msgseq"), { bizCode: 40054005 });
+      }
       if (options.alwaysFail || failuresLeft > 0) {
         if (failuresLeft > 0) failuresLeft -= 1;
         throw new Error("stream broke");
@@ -383,6 +389,22 @@ describe("RunFeedback 直推", () => {
     expect(rf.getLastMessage()).toBe("partial answer");
     await rf.onAgentEnd();
     expect(rf.getLastMessage()).toBe("partial answer");
+  });
+
+  it("msgseq 去重后新开流并重放缓冲", async () => {
+    const { rf, calls, attempts } = makeRunHarness({ duplicateNext: 1 });
+    startRun(rf);
+    rf.onAssistantDelta("", "dedupe thinking");
+    expect(await rf.onAssistantFinal("", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    expect(attempts).toHaveLength(3);
+    expect(attempts[0]?.index).toBe(0);
+    expect(attempts[1]?.index).toBe(0);
+    expect(attempts[2]?.index).toBe(1);
+    expect(attempts[0]?.msg_seq).not.toBe(attempts[1]?.msg_seq);
+    expect(attempts[1]?.msg_seq).toBe(attempts[2]?.msg_seq);
+    expect(streamContent(calls)).toBe(`${THINKING_HEADER}dedupe thinking`);
   });
 
   it("流式熔断后仍保留 /last 可读取的文本", async () => {

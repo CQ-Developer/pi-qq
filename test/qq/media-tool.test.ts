@@ -211,7 +211,6 @@ describe("media tool registration", () => {
 
     controller.deactivate();
     expect(state.activeTools).toEqual(["read", "bash"]);
-    expect(controller.isActive()).toBe(false);
   });
 });
 
