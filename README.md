@@ -35,7 +35,7 @@ Credentials are not written to `pi-qq.json`. Restarting pi requires scanning aga
 Send a private message to the bot to start a task.
 
 - **Text**: normal chat message.
-- **Voice**: QQ's built-in ASR text is sent to pi. The audio is not downloaded or saved. If ASR returns no text, the bot asks you to resend or type it.
+- **Voice**: QQ's built-in ASR transcript (`asr_refer_text`) is sent to pi as normal user text. The audio is not downloaded or saved, and no external speech-to-text service is used. If ASR returns no text, the bot asks you to resend or type it. Voice and text are normally separate QQ messages; send them in sequence when needed.
 - **Images and files**: saved under `.pi/pi-qq/<sessionId>/uploads/`. If the message has no instruction, pi waits for your next text or voice message.
 
 QQ clients differ in mixed-message support. Mobile QQ usually sends one message type at a time; desktop QQ can send text with an image. When a client includes text or voice together with attachments, pi-qq processes them in the same prompt.
@@ -50,6 +50,7 @@ An attachment-only message does **not** start pi. Files and images are saved, an
 - Images are read through pi's `read` tool, so the current model must support image input to see them.
 - `/new` clears attachments waiting for an instruction.
 - Uploads are scoped to the current pi session. Same filename and identical content reuse the existing file; same filename with different content becomes `name-1.ext`; different filenames with identical content are kept separately.
+- Add `.pi/` to your project `.gitignore` if needed.
 
 Example prompt seen by pi:
 
@@ -74,25 +75,16 @@ Ask pi explicitly, for example `send me the screenshot` or `把截图发给我`.
 - Each media message consumes one passive reply; after the limit, pi-qq falls back to a proactive message.
 - The tool bubble is the same as any other tool: `## 📤 qq_send_media`.
 
-### Voice messages
-
-Voice messages use QQ's built-in ASR (`asr_refer_text`). The transcript is sent to pi as normal user text; pi never receives the audio file.
-
-- The voice attachment is not downloaded or saved as `.amr` / `.silk`.
-- No local or external speech-to-text service is used.
-- If QQ ASR returns no text, the bot replies `Could not transcribe this voice message; please resend or type it.` and does not start a pi run.
-- Voice and text are separate QQ messages; send them one after another when needed.
-- If a client sends files or images together with a voice message, they are processed with the transcript.
-
-Debug logs include the raw `asr_refer_text` and attachment metadata when `logLevel` is set to `debug`.
-
 ### Reply format
 
-- **Thinking**: its own bubble, plain text, starting with `## 💭 思考`. Long thinking may continue in a new bubble with the header repeated.
+In `replyType: "full"` mode, QQ receives these block types:
+
+- **Thinking**: its own bubble, plain text, starting with a localized `## 💭 <label>` heading (`Thinking` or `思考`). Long thinking may continue in a new bubble with the header repeated.
 - **Tools**: one bubble per call: `## <icon> <name>`; `bash` commands use a `bash` code block, other arguments use inline code, and results use `text`, `markdown`, `python`, `json`, etc. depending on the tool and file type.
 - **Regular messages**: raw text with no header.
 - **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
-- **Error recovery**: after a model error, automatic retry runs within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.
+
+After a model error, automatic retries within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.
 
 ## Commands
 
@@ -125,8 +117,6 @@ These terminal commands are intended for troubleshooting:
 | `/qq-test-budget`    | Show passive-reply budget and stream-bubble diagnostics |
 | `/qq-test-md [text]` | Send a Markdown test message                            |
 | `/qq-test-stream`    | Run a streamed timeline diagnostic (`resume` for probe) |
-
-With `logLevel: "debug"`, logs are written only while a QQ-triggered run is active after login; local runs, login, and idle periods are not logged. `scope: "media"` covers media-tool steps during those runs, and QQ relay logs only appear for QQ-triggered runs.
 
 ## Settings
 
@@ -188,7 +178,7 @@ Language of the UI notifications and the log messages.
 
 ### `logLevel`
 
-Log threshold. Records are written only while a QQ-triggered run is active, to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory.
+Log threshold. Records are written only while a QQ-triggered run is active after login, to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory. `scope: "media"` covers media-tool steps during those runs.
 
 - `silent` (default): no log file at all.
 - `error`: failures only.
@@ -220,8 +210,6 @@ The extension entrypoint is `index.ts`. Source modules are grouped by responsibi
 
 - Only C2C (QQ private chat) is supported.
 - Runs triggered by inbound QQ messages are relayed to QQ. Unrelated tasks started directly in pi stay local.
-- Images are saved as files and read through pi's `read` tool; the current model must support image input to see them.
-- Saved attachments are workspace-local under `.pi/`; add `.pi/` to your own project `.gitignore` if needed.
 - QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
 - Reading a `SKILL.md` is shown as a `## 🧩 Skill` block with the skill name; the file content is not forwarded to QQ.
 
