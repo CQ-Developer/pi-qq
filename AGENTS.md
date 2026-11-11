@@ -1,11 +1,19 @@
-# AGENTS.md
+# Project Guidelines
 
-pi-qq is a pi extension that plugs a QQ private chat into pi on your own machine over Tencent's QQ Bot C2C API, so you can text, talk, or send pictures and files from your phone and get the results sent right back.
+pi-qq is a pi extension that connects a QQ private chat to pi on your own machine through Tencent's QQ Bot C2C API. You can send text, voice, images, or files from QQ, and pi sends the results back.
 
 ## Releasing
 
-Releases are handled entirely by GitHub CI. Push a `v*` tag and `.github/workflows/release.yml` takes it from there: it checks that the tag, `package.json`, and `package-lock.json` all agree on the version, runs lint, tests, typecheck, `format:check`, and `npm pack --dry-run`, then publishes to npm and cuts a GitHub Release with the `.tgz` and `SHA256SUMS` attached. The release notes come straight out of the matching `CHANGELOG.md` section.
+Releases run entirely in GitHub Actions. Push a `v*` tag and `.github/workflows/release.yml`:
 
-Regular pushes and PRs go through `.github/workflows/ci.yml`, which runs lint, typecheck, tests, and `format:check`.
+1. checks that the tag, `package.json`, and `package-lock.json` versions match;
+2. runs lint, tests, typecheck, `format:check`, and `npm pack --dry-run`;
+3. publishes to npm and creates a GitHub Release with the `.tgz` and `SHA256SUMS` attached.
 
-So the drill is: bump the version, update `CHANGELOG.md`, tag it, push. Don't run `npm publish` by hand, and don't create Releases manually either — the workflow's got it.
+Release notes come from the matching `CHANGELOG.md` section.
+
+To release, bump the version, update `CHANGELOG.md`, tag the commit, and push. Do not run `npm publish` by hand or create GitHub Releases manually.
+
+## CI
+
+Regular pushes and pull requests run through `.github/workflows/ci.yml`, which runs lint, typecheck, tests, and `format:check`.
