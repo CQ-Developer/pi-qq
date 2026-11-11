@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { logMessageKey } from "./i18n";
+import { logMessageKey } from "./log-message-keys";
 
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
 type LogFields = Record<string, unknown>;

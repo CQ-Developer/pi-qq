@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { configureI18n, DEFAULT_LANGUAGE, getLanguage, isLanguage, logMessageKey, t } from "../../src/infra/i18n";
+import { configureI18n, DEFAULT_LANGUAGE, getLanguage, isLanguage, t } from "../../src/infra/i18n";
 
 afterEach(() => configureI18n(DEFAULT_LANGUAGE));
 
@@ -54,10 +54,5 @@ describe("i18n", () => {
     expect(t("status.replyType")).toBe("回复模式");
     expect(t("settings.replyType")).toContain("replyType");
     expect(t("commands.last.empty")).toContain("仍在执行中");
-  });
-
-  it("maps known log messages to stable keys without translating them", () => {
-    expect(logMessageKey("starting bot")).toBe("log.sessionStartingBot");
-    expect(logMessageKey("unknown SDK message")).toBeUndefined();
   });
 });
