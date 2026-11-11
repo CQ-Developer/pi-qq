@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { configureI18n, DEFAULT_LANGUAGE, getLanguage, isLanguage, localizeLogMessage, t } from "../../src/infra/i18n";
+import { configureI18n, DEFAULT_LANGUAGE, getLanguage, isLanguage, logMessageKey, t } from "../../src/infra/i18n";
 
 afterEach(() => configureI18n(DEFAULT_LANGUAGE));
 
@@ -56,18 +56,8 @@ describe("i18n", () => {
     expect(t("commands.last.empty")).toContain("仍在执行中");
   });
 
-  it("keeps known log messages English regardless of UI language", () => {
-    configureI18n("zh-cn");
-    expect(localizeLogMessage("starting bot")).toEqual({
-      msg: "starting bot",
-      msgKey: "log.sessionStartingBot",
-    });
-    expect(localizeLogMessage("unknown SDK message")).toEqual({ msg: "unknown SDK message" });
-
-    configureI18n("en-us");
-    expect(localizeLogMessage("starting bot")).toEqual({
-      msg: "starting bot",
-      msgKey: "log.sessionStartingBot",
-    });
+  it("maps known log messages to stable keys without translating them", () => {
+    expect(logMessageKey("starting bot")).toBe("log.sessionStartingBot");
+    expect(logMessageKey("unknown SDK message")).toBeUndefined();
   });
 });

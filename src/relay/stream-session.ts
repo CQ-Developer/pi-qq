@@ -1,5 +1,4 @@
 import { getNextMsgSeq, StreamContentType, StreamInputState } from "@tencent-connect/qqbot-nodejs/protocol";
-import { translate } from "../infra/i18n";
 import type {
   Credentials,
   MessageApi,
@@ -198,14 +197,12 @@ export class AppendStream {
             ...(this.streamMsgId ? { streamMsgId: this.streamMsgId } : {}),
             bufferLength: this.buffer.length,
           });
-          this.opts.onDebug?.(
-            translate("en-us", "log.streamFrameFailed", { index: req.index, attempts: attempt + 1, reason }),
-          );
+          this.opts.onDebug?.(`frame index=${req.index} failed after ${attempt + 1} attempt(s): ${reason}`);
           throw err;
         }
         const delay = base * 2 ** attempt;
         this.opts.onDebug?.(
-          translate("en-us", "log.streamFrameRateLimited", { index: req.index, attempt: attempt + 1, delay, reason }),
+          `frame index=${req.index} rate limited (attempt ${attempt + 1}), retry in ${delay}ms: ${reason}`,
         );
         await new Promise((r) => setTimeout(r, delay));
         req.index = this.index++;

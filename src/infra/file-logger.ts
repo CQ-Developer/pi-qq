@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { localizeLogMessage } from "./i18n";
+import { logMessageKey } from "./i18n";
 
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
 type LogFields = Record<string, unknown>;
@@ -93,13 +93,13 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
   if (!isLevelEnabled(activeLevel, level)) return;
   if (!isLogAllowed()) return;
 
-  const localized = localizeLogMessage(message);
+  const msgKey = logMessageKey(message);
   const record: LogFields = {
     time: new Date().toISOString(),
     level,
     scope,
-    ...(localized.msgKey ? { msgKey: localized.msgKey } : {}),
-    msg: localized.msg,
+    ...(msgKey ? { msgKey } : {}),
+    msg: message,
   };
   const fields = normalizeData(data);
   if (fields) {
@@ -122,8 +122,8 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
       time: record.time,
       level,
       scope,
-      ...(localized.msgKey ? { msgKey: localized.msgKey } : {}),
-      msg: localized.msg,
+      ...(msgKey ? { msgKey } : {}),
+      msg: message,
       serializationError: stringifyError(err),
     });
   }
