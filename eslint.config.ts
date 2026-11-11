@@ -14,8 +14,6 @@ export default tseslint.config(
       "no-console": "off",
       "no-constant-condition": ["error", { checkLoops: false }],
       "no-empty": ["error", { allowEmptyCatch: true }],
-      "no-unused-expressions": "off",
-      "@typescript-eslint/no-unused-expressions": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
