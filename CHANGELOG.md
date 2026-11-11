@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-11-11
+
 ### Changed
 
 - While a task is running in `replyType: "full"`, `/last` now pushes the current thinking, tools, and text snapshot to the new message immediately instead of waiting for assistant text. If the stream was dead, the repush opens a new stream and resumes later output. An empty snapshot now replies with a notice instead of staying silent.
 - Log files are now always written in English; the `language` setting only affects UI notifications and replies.
+- Consolidated the 1.6.2 code review and repair notes into `doc/archive/delivery.1.6.2.md`; removed the temporary `doc/repair.md`.
 
 ### Removed
 
@@ -176,7 +179,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.5.0...v1.5.1
