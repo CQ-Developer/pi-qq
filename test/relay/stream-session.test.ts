@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { AppendStream, type AppendStreamFrameInfo } from "../../src/relay/stream-session";
+import { AppendStream, MAX_FRAME_BYTES, type AppendStreamFrameInfo } from "../../src/relay/stream-session";
 import { resetMsgSeqAllocator } from "../../src/relay/msg-seq";
 
 beforeEach(() => resetMsgSeqAllocator());
@@ -152,5 +152,45 @@ describe("AppendStream", () => {
     expect(calls[1]?.index).toBe(1);
     expect(calls[1]?.stream_msg_id).toBe("sm-1");
     expect(calls.at(-1)?.input_state).toBe(10);
+  });
+
+  it("超大帧按 UTF-8 字节切分，并在换行处结束", async () => {
+    const { api, calls } = makeFakeApi();
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 1 });
+    const lines = Array.from({ length: 200 }, (_, i) => `line-${i}-${`x`.repeat(20)}`).join("\n") + "\n";
+    await stream.append(lines);
+    await stream.done();
+
+    const frames = calls.filter((call) => call.input_state !== 10);
+    expect(frames.length).toBeGreaterThan(1);
+    for (const call of frames) {
+      const frame = call.content_raw as string;
+      expect(Buffer.byteLength(frame, "utf8")).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+      expect(frame.endsWith("\n")).toBe(true);
+    }
+    expect(frames.map((call) => call.content_raw as string).join("")).toBe(lines);
+  });
+
+  it("无换行的超长单行硬切并补换行，不丢原字符", async () => {
+    const { api, calls } = makeFakeApi();
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", { throttleMs: 1 });
+    const line = "x".repeat(MAX_FRAME_BYTES + 300);
+    await stream.append(line);
+    await stream.done();
+
+    const frames = calls.filter((call) => call.input_state !== 10);
+    for (let i = 0; i < frames.length; i += 1) {
+      const frame = frames[i]?.content_raw as string;
+      expect(Buffer.byteLength(frame, "utf8")).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+      // The last, short remainder is sent as-is; only oversized shards need a
+      // terminating newline.
+      if (i < frames.length - 1) expect(frame.endsWith("\n")).toBe(true);
+    }
+    expect(
+      frames
+        .map((call) => call.content_raw as string)
+        .join("")
+        .replace(/\n/g, ""),
+    ).toBe(line);
   });
 });

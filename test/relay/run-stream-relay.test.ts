@@ -18,6 +18,7 @@ function makeRunHarness(
     replyType?: ReplyType;
     failNext?: number;
     duplicateNext?: number;
+    expiredNext?: number;
     alwaysFail?: boolean;
   } = {},
 ) {
@@ -26,12 +27,17 @@ function makeRunHarness(
   const warns: string[] = [];
   let failuresLeft = options.failNext ?? 0;
   let duplicatesLeft = options.duplicateNext ?? 0;
+  let expiredLeft = options.expiredNext ?? 0;
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
       attempts.push({ ...req });
       if (duplicatesLeft > 0) {
         duplicatesLeft -= 1;
         throw Object.assign(new Error("消息被去重，请检查请求msgseq"), { bizCode: 40054005 });
+      }
+      if (expiredLeft > 0) {
+        expiredLeft -= 1;
+        throw Object.assign(new Error("同一流式消息发送超过时间限制"), { bizCode: 40034020 });
       }
       if (options.alwaysFail || failuresLeft > 0) {
         if (failuresLeft > 0) failuresLeft -= 1;
@@ -405,6 +411,36 @@ describe("RunFeedback 直推", () => {
     expect(attempts[0]?.msg_seq).not.toBe(attempts[1]?.msg_seq);
     expect(attempts[1]?.msg_seq).toBe(attempts[2]?.msg_seq);
     expect(streamContent(calls)).toBe(`${THINKING_HEADER}dedupe thinking`);
+  });
+
+  it("40034020 过期流使用新 msg_seq 重开并重放缓冲", async () => {
+    const { rf, calls, attempts } = makeRunHarness({ expiredNext: 1 });
+    startRun(rf);
+    rf.onAssistantDelta("", "expired thinking");
+    expect(await rf.onAssistantFinal("", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    const frames = attempts.filter((attempt) => attempt.input_state !== DONE_STATE);
+    expect(frames).toHaveLength(2);
+    expect(frames[0]?.index).toBe(0);
+    expect(frames[1]?.index).toBe(0);
+    expect(frames[0]?.msg_seq).not.toBe(frames[1]?.msg_seq);
+    expect(frames[1]?.stream_msg_id).toBeUndefined();
+    expect(streamContent(calls)).toBe(`${THINKING_HEADER}expired thinking`);
+  });
+
+  it("40034020 熔断后自动重绑到新鲜入站目标并重放快照", async () => {
+    const { rf, calls, budget } = makeRunHarness({ expiredNext: 3 });
+    startRun(rf);
+    rf.onAssistantDelta("", "rebind thinking");
+    budget.observeInbound("openid-u", "msg-2");
+
+    expect(await rf.onAssistantFinal("", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    const rebound = calls.filter((call) => call.msg_id === "msg-2");
+    expect(rebound.length).toBeGreaterThan(0);
+    expect(streamContent(rebound)).toBe(`${THINKING_HEADER}rebind thinking`);
   });
 
   it("流式熔断后仍保留 /last 可读取的文本", async () => {

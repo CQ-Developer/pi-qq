@@ -10,6 +10,10 @@ import type {
 const MIN_INTERVAL_MS = 300;
 const RATE_LIMIT_BASE_MS = 1000;
 const MAX_RETRIES = 3;
+// QQ rejects oversized markdown shards with 40034017. The platform appears to
+// split frames larger than roughly 4k and then requires every shard to end at
+// a newline; 3500 bytes leaves room for that limit and for multi-byte text.
+export const MAX_FRAME_BYTES = 3500;
 
 export interface AppendStreamCheckpoint {
   msgSeq?: number;
@@ -73,15 +77,16 @@ export class AppendStream {
 
   async flush(): Promise<void> {
     if (this.doneSent) return;
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
+    this.clearFlushTimer();
     while (this.flushing) {
       await new Promise((r) => setTimeout(r, 20));
     }
     if (this.doneSent) return;
-    if (this.buffer) await this.doFlush("generating");
+    while (this.buffer) {
+      await this.doFlush("generating");
+      this.clearFlushTimer();
+      if (this.buffer) await this.waitForThrottle();
+    }
   }
 
   private throttleMs(): number {
@@ -115,30 +120,77 @@ export class AppendStream {
 
   async done(): Promise<void> {
     if (this.doneSent) return;
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
+    this.clearFlushTimer();
     while (this.flushing) {
       await new Promise((r) => setTimeout(r, 20));
     }
     if (this.doneSent) return;
-    if (this.buffer) await this.doFlush("generating");
+    while (this.buffer) {
+      await this.doFlush("generating");
+      this.clearFlushTimer();
+      if (this.buffer) await this.waitForThrottle();
+    }
     await this.doFlush("done");
     this.doneSent = true;
   }
 
   dispose(): void {
+    this.clearFlushTimer();
+    this.doneSent = true;
+  }
+
+  private clearFlushTimer(): void {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
-    this.doneSent = true;
+  }
+
+  private async waitForThrottle(): Promise<void> {
+    const waitMs = this.throttleMs() - (Date.now() - this.lastFlushAt);
+    if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+  }
+
+  private takeFrame(): { text: string; consumed: number } {
+    const buffer = this.buffer;
+    if (!buffer) return { text: "", consumed: 0 };
+    if (Buffer.byteLength(buffer, "utf8") <= MAX_FRAME_BYTES) {
+      return { text: buffer, consumed: buffer.length };
+    }
+
+    let bytes = 0;
+    let consumed = 0;
+    let lastNewline = -1;
+    // Reserve one byte for the newline added when no line break is in range.
+    const scanLimit = MAX_FRAME_BYTES - 1;
+    for (const char of buffer) {
+      const size = Buffer.byteLength(char, "utf8");
+      if (bytes + size > scanLimit) break;
+      bytes += size;
+      consumed += char.length;
+      if (char === "\n") lastNewline = consumed;
+    }
+
+    if (lastNewline > 0) {
+      return { text: buffer.slice(0, lastNewline), consumed: lastNewline };
+    }
+
+    // A single line longer than the platform shard limit: hard-cut on a code
+    // point boundary and terminate the shard with a newline. This is the only
+    // way to satisfy the API without dropping content.
+    if (consumed === 0) {
+      const first = buffer.codePointAt(0) ?? 0;
+      const char = String.fromCodePoint(first);
+      return { text: `${char}\n`, consumed: char.length };
+    }
+    return { text: `${buffer.slice(0, consumed)}\n`, consumed };
   }
 
   private async doFlush(state: "generating" | "done"): Promise<void> {
     if (this.flushing) return;
-    const content = state === "done" ? "" : this.buffer;
+    this.clearFlushTimer();
+    const frame = state === "done" ? { text: "", consumed: 0 } : this.takeFrame();
+    const content = frame.text;
     if (!content && state === "generating") return;
     this.opts.onDebug?.(
       `flush: start state=${state}, content=${content.length}, index=${this.index}, msgSeq=${this.msgSeq ?? "none"}, streamMsgId=${this.streamMsgId ?? "none"}`,
@@ -161,7 +213,7 @@ export class AppendStream {
       } as unknown as StreamMessageRequest;
       const resp = await this.sendWithRetry(req, state);
       if (resp?.id && !this.streamMsgId) this.streamMsgId = resp.id;
-      if (state === "generating") this.buffer = this.buffer.slice(content.length);
+      if (state === "generating") this.buffer = this.buffer.slice(frame.consumed);
       this.lastFlushAt = Date.now();
       this.opts.onDebug?.(
         `flush: done state=${state}, remaining=${this.buffer.length}, streamMsgId=${this.streamMsgId ?? "none"}`,

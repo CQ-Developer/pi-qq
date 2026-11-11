@@ -76,3 +76,49 @@ describe("BubbleWriter restartSnapshot", () => {
     expect(calls.every((call) => call.msg_id === "msg-2")).toBe(true);
   });
 });
+
+describe("BubbleWriter expired stream", () => {
+  it("40034020 在已有 stream_msg_id 时新开流并重放未确认缓冲", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    let attempts = 0;
+    const api = {
+      async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+        attempts += 1;
+        if (attempts === 2) {
+          throw Object.assign(new Error("同一流式消息发送超过时间限制"), { bizCode: 40034020 });
+        }
+        calls.push({ ...req });
+        return { id: `sm-${attempts}` };
+      },
+    };
+    const bot = {
+      messageApi: api,
+      getCredentials: () => ({}),
+      sendTyping: async () => {},
+    };
+    const budget = new ReplyBudget();
+    budget.observeInbound("openid-u", "msg-1");
+    const writer = new BubbleWriter({
+      bot: () => bot as never,
+      budget,
+      openid: "openid-u",
+      msgId: "msg-1",
+      startedAt: Date.now(),
+      onWarn: () => {},
+    });
+
+    writer.pushText("hello");
+    await writer.whenIdle();
+    writer.pushText("world");
+    await expect(writer.flush()).resolves.toBe(true);
+
+    expect(attempts).toBe(3);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.content_raw).toBe("hello");
+    expect(calls[1]?.content_raw).toBe("world");
+    expect(calls[1]?.msg_seq).not.toBe(calls[0]?.msg_seq);
+    expect(calls[1]?.index).toBe(0);
+    expect(calls[1]?.stream_msg_id).toBeUndefined();
+    expect(writer.dead).toBe(false);
+  });
+});

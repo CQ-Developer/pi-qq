@@ -26,6 +26,15 @@ function isDuplicateMsgSeqError(err: unknown): boolean {
   );
 }
 
+function errorCode(err: unknown): number | undefined {
+  const e = err as { code?: number; err_code?: number; bizCode?: number };
+  return e?.code ?? e?.err_code ?? e?.bizCode;
+}
+
+function isExpiredStreamError(err: unknown): boolean {
+  return errorCode(err) === 40034020 || /40034020|超过时间限制|time limit/i.test(String((err as Error)?.message ?? ""));
+}
+
 export interface RepushTool {
   name: string;
   args?: unknown;
@@ -63,6 +72,8 @@ export class BubbleWriter {
   private toolOpen = false;
   private queue: Promise<void> = Promise.resolve();
   private disposed = false;
+  private terminalCode?: number;
+  private lastErrorCode?: number;
 
   constructor(private readonly deps: BubbleWriterDeps) {}
 
@@ -72,6 +83,10 @@ export class BubbleWriter {
 
   get dead(): boolean {
     return this.streamDead;
+  }
+
+  get deadCode(): number | undefined {
+    return this.terminalCode;
   }
 
   stats(now = Date.now()): {
@@ -202,6 +217,8 @@ export class BubbleWriter {
     this.streamDead = false;
     this.pendingResume = undefined;
     this.resumeAttempts = 0;
+    this.terminalCode = undefined;
+    this.lastErrorCode = undefined;
     this.lastKind = "none";
     this.blockClosed = false;
     this.toolOpen = false;
@@ -225,13 +242,14 @@ export class BubbleWriter {
         await this.queue;
         if (this.streamDead) return false;
         if (this.cur !== stream) continue;
+        this.lastErrorCode = undefined;
         return true;
       } catch (err) {
         this.handleStreamError(err as Error);
         if (this.streamDead) return false;
       }
     }
-    this.killStream("resume attempts exhausted");
+    this.killStream("resume attempts exhausted", this.lastErrorCode);
     return false;
   }
 
@@ -361,6 +379,7 @@ export class BubbleWriter {
     const outgoing = opts.thinking && (!this.cur || this.bubbleChars === 0) ? `${thinkingHeader()}${text}` : text;
     try {
       await stream.append(outgoing);
+      this.lastErrorCode = undefined;
       this.bubbleChars += outgoing.length;
       this.lastFrameAt = Date.now();
       this.trackFences(outgoing);
@@ -457,6 +476,7 @@ export class BubbleWriter {
     if (!bot || !this.deps.msgId) return null;
     const resume = this.pendingResume;
     this.pendingResume = undefined;
+    const fresh = !resume || (resume.msgSeq === undefined && !resume.streamMsgId);
     const stream = new AppendStream(bot.messageApi, bot.getCredentials(), this.deps.openid, this.deps.msgId, {
       resume,
       onError: (err) => {
@@ -484,7 +504,7 @@ export class BubbleWriter {
       onDebug: (message) => log.debug("stream", message, { msgId: this.logMsgId() }),
     });
     this.cur = stream;
-    if (!resume) this.deps.budget.noteStreamBubble(this.deps.msgId);
+    if (fresh) this.deps.budget.noteStreamBubble(this.deps.msgId);
     if (isLogEnabled("debug")) {
       log.debug("stream", "stream timing", {
         phase: "stream open",
@@ -510,11 +530,15 @@ export class BubbleWriter {
     const checkpoint = stream?.checkpoint() ?? null;
     stream?.dispose();
     this.cur = null;
+    const code = errorCode(err);
     const resetSeq = isDuplicateMsgSeqError(err);
+    const expired = isExpiredStreamError(err);
+    this.lastErrorCode = code;
     log.warn("stream", "stream error", {
       msgId: this.logMsgId(),
       elapsedMs: Date.now() - this.deps.startedAt,
       resetSeq,
+      expired,
       checkpoint: checkpoint
         ? {
             index: checkpoint.index,
@@ -528,26 +552,29 @@ export class BubbleWriter {
     });
     if (checkpoint && this.resumeAttempts < MAX_RESUME_ATTEMPTS) {
       this.resumeAttempts += 1;
-      this.pendingResume = resetSeq
-        ? {
-            index: 0,
-            ...(checkpoint.buffer ? { buffer: checkpoint.buffer } : {}),
-          }
-        : checkpoint;
+      this.pendingResume =
+        resetSeq || expired
+          ? {
+              index: 0,
+              ...(checkpoint.buffer ? { buffer: checkpoint.buffer } : {}),
+            }
+          : checkpoint;
       return;
     }
-    this.killStream(err.message);
+    this.killStream(err.message, code);
   }
 
-  private killStream(reason: string): void {
+  private killStream(reason: string, code = this.lastErrorCode): void {
     if (this.streamDead) return;
     this.streamDead = true;
+    this.terminalCode = code;
     this.pendingResume = undefined;
     this.cur?.dispose();
     this.cur = null;
     log.warn("stream", "stream unavailable", {
       msgId: this.logMsgId(),
       reason,
+      code: code ?? null,
       stats: this.stats(),
       budget: this.deps.budget.snapshot(),
     });

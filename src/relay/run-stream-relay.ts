@@ -39,6 +39,7 @@ export type RepushResult =
 const TYPING_INTERVAL_MS = 50_000;
 const PENDING_TTL_MS = 15_000;
 const RECOVERY_TTL_MS = 60_000;
+const AUTO_REBIND_TTL_MS = 5 * 60_000;
 
 function toRepushTool(tool: TimelineTool): RepushTool {
   return {
@@ -55,6 +56,7 @@ export class RunFeedback {
   private recovery: { openid: string; msgId: string; at: number } | null = null;
   private run: RunState | null = null;
   private lastCompletedText: string | undefined;
+  private autoRebinds = 0;
   private endPromise: Promise<void> = Promise.resolve();
   private endResolve?: () => void;
 
@@ -144,6 +146,7 @@ export class RunFeedback {
   }
 
   onAgentStart(): void {
+    this.autoRebinds = 0;
     this.endPromise = new Promise((resolve) => {
       this.endResolve = resolve;
     });
@@ -294,6 +297,7 @@ export class RunFeedback {
     run.finalizedText = [run.finalizedText, text].filter((part) => part.trim()).join("\n\n");
     const delta = run.finalizedText.slice(run.resultSentLen);
     run.resultSentLen = run.finalizedText.length;
+    if (!isError) this.tryAutoRebind(run);
     if (!isError && text) this.emitTextDelta(run, delta, policy);
     if (!isError && text) run.writer.closeBlock();
 
@@ -303,7 +307,11 @@ export class RunFeedback {
     }
 
     const hadPendingTools = this.hasPendingTools(run);
-    const ok = await run.writer.flush();
+    let ok = await run.writer.flush();
+    if (!isError && !ok && run.writer.deadCode === 40034020) {
+      this.tryAutoRebind(run);
+      if (this.autoRebinds > 0) ok = await run.writer.flush();
+    }
     const streamTookOver = !isError && ok && run.writer.hasPushed;
     log.debug("run", "stream takeover decision", {
       phase: "assistant final",
@@ -385,6 +393,36 @@ export class RunFeedback {
 
   private hasPendingTools(run: RunState): boolean {
     return run.timeline.hasPendingTools();
+  }
+
+  private tryAutoRebind(run: RunState): void {
+    if (this.autoRebinds > 0 || run.writer.deadCode !== 40034020) return;
+
+    let openid = run.openid;
+    let msgId = run.msgId;
+    let freshTarget = false;
+    let targetAgeMs: number | null = null;
+    const target = this.deps.budget.lastTarget;
+    if (target && Date.now() - target.arrivedAt <= AUTO_REBIND_TTL_MS) {
+      openid = target.openid;
+      msgId = target.msgId;
+      freshTarget = true;
+      targetAgeMs = Date.now() - target.arrivedAt;
+    }
+    if (!msgId) return;
+
+    const result = this.repushCurrent(openid, msgId);
+    if (!result.ok) return;
+    this.autoRebinds += 1;
+    log.debug("run", "stream timing", {
+      phase: "auto rebind",
+      msgId: msgId.slice(0, 8),
+      freshTarget,
+      targetAgeMs,
+      textLength: result.textLength,
+      thinkingLength: result.thinkingLength,
+      toolCount: result.toolCount,
+    });
   }
 
   private emitTextDelta(run: RunState, delta: string, policy: ReplyPolicy): void {
