@@ -4,7 +4,7 @@
 > Status: v4 delivered. Tool block types were verified on real QQ; long-running tool handling and offline delivery remain open items.
 > Version: 1.4.0
 > Date: 2026-11-04
-> Previous: [delivery-v1.md](./delivery-v1.md), [delivery-v2.md](./delivery-v2.md), [delivery-v3.md](./delivery-v3.md).
+> Previous: [delivery.2026.10.29.md](./delivery.2026.10.29.md), [delivery.2026.10.30.md](./delivery.2026.10.30.md), [delivery.2026.11.03.md](./delivery.2026.11.03.md).
 > Open work: [doc/todo.md](../todo.md).
 
 ## 1. Scope

@@ -88,7 +88,7 @@
 > 记录日期：2026-11-04
 > 分析日期：2026-11-06
 > 相关版本：pi-qq 1.4.0
-> 详细调研：`doc/archive/delivery-v4.md`
+> 详细调研：`doc/archive/delivery.2026.11.04.md`
 
 ### 现象
 
@@ -206,7 +206,7 @@ QQ 侧的 `/last` 已可用于手动恢复：
 - 本次日志未复现失败；不要据此实施错误分类、预算或自动重绑修复。
 - 继续等待一次真正的多分钟单命令日志（最好 >5 分钟，并覆盖 >1 小时的 `msg_id` 生命周期）；复现时按上面的“复现时仍需采集/分析”执行。
 - 如果目标只是改善长工具期间的体感：优先实现长工具心跳和 `tool_execution_update` 转发，这不依赖失败复现。
-- 如果后续日志确认 `msg_id` 过期/被动次数超限：再按 `doc/archive/delivery-v4.md` 的“Long-running tools”建议实现错误分类和预算修复。
+- 如果后续日志确认 `msg_id` 过期/被动次数超限：再按 `doc/archive/delivery.2026.11.04.md` 的“Long-running tools”建议实现错误分类和预算修复。
 - 如果 `/stop` 的 `wait done` 缺失或 `waitedMs` 很大：实现非阻塞 `/stop`。
 - `/last` 目前作为手动兜底可用，保持现状，不急于自动重绑。
 - 修复后补测试，更新 `doc/todo.md` / `CHANGELOG.md`，再发布版本。

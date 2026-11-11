@@ -2,7 +2,7 @@
 
 > **Archived record.** Content reflects the delivery at that time and may reference removed modules or settings. See [README](../../README.md) for current behavior.
 > Status: v2 delivered; this is a historical record.
-> Previous: [delivery-v1.md](./delivery-v1.md); next: [delivery-v3.md](./delivery-v3.md).
+> Previous: [delivery.2026.10.29.md](./delivery.2026.10.29.md); next: [delivery.2026.11.03.md](./delivery.2026.11.03.md).
 
 ## 1. Scope
 

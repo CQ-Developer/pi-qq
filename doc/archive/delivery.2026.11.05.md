@@ -3,7 +3,7 @@
 > **Delivery record.** v5 adds outbound media delivery and fixes debug log coverage for non-QQ runs. See [README](../../README.md) for current user-facing behavior.
 > Version: 1.5.0
 > Date: 2026-11-05
-> Previous: [delivery-v1.md](./delivery-v1.md), [delivery-v2.md](./delivery-v2.md), [delivery-v3.md](./delivery-v3.md), [delivery-v4.md](./delivery-v4.md).
+> Previous: [delivery.2026.10.29.md](./delivery.2026.10.29.md), [delivery.2026.10.30.md](./delivery.2026.10.30.md), [delivery.2026.11.03.md](./delivery.2026.11.03.md), [delivery.2026.11.04.md](./delivery.2026.11.04.md).
 > Supersedes: `doc/research.md`, `doc/feature.md`, and `doc/plan.md`; those working documents were consolidated into this record and removed.
 > Open work: [doc/todo.md](../todo.md).
 
@@ -211,7 +211,7 @@ The v5 acceptance log does not cover the two long-running bash scenarios; they r
 
 ## 12. References
 
-- Design history: [delivery-v4.md](./delivery-v4.md).
+- Design history: [delivery.2026.11.04.md](./delivery.2026.11.04.md).
 - User-facing behavior: [README.md](../../README.md), [README-zh.md](../../README-zh.md).
 - QQ SDK: `@tencent-connect/qqbot-nodejs` 1.0.5, `src/QQBot.ts`, `src/protocol/api/media.ts`.
 - pi extension API: `pi/packages/coding-agent/docs/extensions.md`.

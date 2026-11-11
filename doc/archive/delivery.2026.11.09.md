@@ -3,7 +3,7 @@
 > **Delivery record.** v6 adds the `replyType` setting to control how much of an agent run is pushed to QQ, and fixes the 12k bubble split that almost never fired. See [README](../../README.md) for current user-facing behavior.
 > Version: 1.6.0
 > Date: 2026-11-09
-> Previous: [delivery-v1.md](./delivery-v1.md), [delivery-v2.md](./delivery-v2.md), [delivery-v3.md](./delivery-v3.md), [delivery-v4.md](./delivery-v4.md), [delivery-v5.md](./delivery-v5.md).
+> Previous: [delivery.2026.10.29.md](./delivery.2026.10.29.md), [delivery.2026.10.30.md](./delivery.2026.10.30.md), [delivery.2026.11.03.md](./delivery.2026.11.03.md), [delivery.2026.11.04.md](./delivery.2026.11.04.md), [delivery.2026.11.05.md](./delivery.2026.11.05.md).
 > Open work: [doc/todo.md](../todo.md).
 
 ## 1. Scope
@@ -256,8 +256,8 @@ Not covered by the acceptance run:
 
 ## 10. References
 
-- Design history: [delivery-v5.md](./delivery-v5.md).
+- Design history: [delivery.2026.11.05.md](./delivery.2026.11.05.md).
 - User-facing behavior: [README.md](../../README.md), [README-zh.md](../../README-zh.md).
-- Earlier split design: [delivery-v3.md](./delivery-v3.md) §3 (12k split, repeated header).
+- Earlier split design: [delivery.2026.11.03.md](./delivery.2026.11.03.md) §3 (12k split, repeated header).
 - pi extension API: `pi/packages/coding-agent/docs/extensions.md` (`message_update`, `message_end`, `agent_end`).
 - QQ SDK: `@tencent-connect/qqbot-nodejs` 1.0.5, `src/protocol/api/messages.ts` (`sendC2CStreamMessage`).
