@@ -18,6 +18,7 @@ import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 import type { ReplyBudget } from "../quota/reply-quota";
 import { TEXT_CHUNK_LIMIT } from "./reply-sender";
+import { sendWithMsgSeq } from "./msg-seq-send";
 
 export const MEDIA_TOOL_NAME = "qq_send_media";
 
@@ -298,9 +299,14 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
       });
 
       const sendMedia = (target: string, passiveMsgId?: string) =>
-        bot.mediaApi.sendMediaMessage("c2c", target, upload.file_info, bot.getCredentials(), {
-          ...(passiveMsgId ? { msgId: passiveMsgId } : {}),
-          content: caption,
+        sendWithMsgSeq(bot, {
+          target: {
+            scope: "c2c",
+            targetId: target,
+            ...(passiveMsgId ? { msgId: passiveMsgId } : {}),
+          },
+          media: { file_info: upload.file_info },
+          ...(caption ? { content: caption } : {}),
         });
       const buildResult = (
         messageId: string,

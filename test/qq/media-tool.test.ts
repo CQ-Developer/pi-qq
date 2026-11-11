@@ -6,6 +6,7 @@ import { ApiError, MediaFileType, UploadDailyLimitExceededError, type QQBot } fr
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { configureI18n } from "../../src/infra/i18n";
 import { log } from "../../src/infra/file-logger";
+import { resetMsgSeqAllocator } from "../../src/relay/msg-seq";
 import { ReplyBudget } from "../../src/quota/reply-quota";
 import {
   MEDIA_TOOL_NAME,
@@ -25,9 +26,11 @@ interface UploadArgs {
   onProgress?: (uploaded: number, total: number) => void;
 }
 
-interface SendOpts {
-  msgId?: string;
+interface SendOptions {
+  target: { scope: string; targetId: string; msgId?: string };
   content?: string;
+  media?: { file_info: string };
+  extra?: { msg_seq?: number };
 }
 
 interface ToolResult {
@@ -49,6 +52,7 @@ let tempDir: string;
 
 beforeEach(async () => {
   configureI18n("zh-cn");
+  resetMsgSeqAllocator();
   tempDir = await mkdtemp(join(tmpdir(), "pi-qq-media-"));
 });
 
@@ -77,23 +81,21 @@ function makePi() {
 
 function makeBot() {
   const uploads: UploadArgs[] = [];
-  const sends: Array<{ targetId: string; fileInfo: string; opts: SendOpts }> = [];
+  const sends: SendOptions[] = [];
   const uploadMedia = vi.fn(async (opts: UploadArgs) => {
     uploads.push(opts);
     return { file_uuid: "file-uuid", file_info: "file-info", ttl: 3600 };
   });
-  const sendMediaMessage = vi.fn(
-    async (_scope: string, targetId: string, fileInfo: string, _creds: unknown, opts: SendOpts) => {
-      sends.push({ targetId, fileInfo, opts });
-      return { id: `message-${sends.length}`, timestamp: 1 };
-    },
-  );
+  const send = vi.fn(async (options: SendOptions) => {
+    sends.push(options);
+    return { id: `message-${sends.length}`, timestamp: 1 };
+  });
   const bot = {
     uploadMedia,
-    mediaApi: { sendMediaMessage },
+    send,
     getCredentials: () => ({ appId: "app", clientSecret: "secret" }),
   } as unknown as QQBot;
-  return { bot, uploadMedia, sendMediaMessage, uploads, sends };
+  return { bot, uploadMedia, send, uploads, sends };
 }
 
 function makeHarness(options: { target?: boolean } = {}) {
@@ -235,12 +237,13 @@ describe("media tool execute", () => {
         srvSendMsg: false,
       }),
     );
-    expect(h.sendMediaMessage).toHaveBeenCalledWith(
-      "c2c",
-      "openid-u",
-      "file-info",
-      { appId: "app", clientSecret: "secret" },
-      { msgId: "msg-in", content: "x".repeat(4500) },
+    expect(h.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { scope: "c2c", targetId: "openid-u", msgId: "msg-in" },
+        media: { file_info: "file-info" },
+        content: "x".repeat(4500),
+        extra: expect.objectContaining({ msg_seq: expect.any(Number) }),
+      }),
     );
     expect(h.budget.snapshot().remaining).toBe(3);
     expect(result.content[0].text).toContain("shot.png");
@@ -277,13 +280,10 @@ describe("media tool execute", () => {
 
     const result = await h.tool.execute("call-2", { path: "clip.mp4" }, undefined, undefined, { cwd: tempDir });
 
-    expect(h.sendMediaMessage).toHaveBeenCalledWith(
-      "c2c",
-      "openid-u",
-      "file-info",
-      { appId: "app", clientSecret: "secret" },
-      { msgId: undefined, content: undefined },
-    );
+    expect(h.send).toHaveBeenCalledWith({
+      target: { scope: "c2c", targetId: "openid-u" },
+      media: { file_info: "file-info" },
+    });
     expect(result.details.mode).toBe("proactive");
     expect(h.budget.snapshot().remaining).toBe(0);
   });
@@ -291,14 +291,20 @@ describe("media tool execute", () => {
   it("reuses file_info for a proactive retry when passive send fails", async () => {
     const h = makeHarness();
     await writeMedia("shot.png", "image-data");
-    h.sendMediaMessage.mockRejectedValueOnce(new Error("passive failed"));
+    h.send.mockRejectedValueOnce(new Error("passive failed"));
 
     const result = await h.tool.execute("call-3", { path: "shot.png" }, undefined, undefined, { cwd: tempDir });
 
     expect(h.uploadMedia).toHaveBeenCalledTimes(1);
-    expect(h.sendMediaMessage).toHaveBeenCalledTimes(2);
-    expect(h.sendMediaMessage.mock.calls[0][4]).toMatchObject({ msgId: "msg-in" });
-    expect(h.sendMediaMessage.mock.calls[1][4]).toEqual({ content: undefined });
+    expect(h.send).toHaveBeenCalledTimes(2);
+    expect(h.send.mock.calls[0][0]).toMatchObject({
+      target: { scope: "c2c", targetId: "openid-u", msgId: "msg-in" },
+      extra: expect.objectContaining({ msg_seq: expect.any(Number) }),
+    });
+    expect(h.send.mock.calls[1][0]).toEqual({
+      target: { scope: "c2c", targetId: "openid-u" },
+      media: { file_info: "file-info" },
+    });
     expect(h.onWarn).toHaveBeenCalled();
     expect(h.budget.snapshot().remaining).toBe(4);
     expect(result.details.mode).toBe("proactive");
@@ -316,7 +322,7 @@ describe("media tool execute", () => {
     await expect(
       h.tool.execute("call-abort", { path: "shot.png" }, abort.signal, undefined, { cwd: tempDir }),
     ).rejects.toThrow(/取消/);
-    expect(h.sendMediaMessage).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
   });
 
   it("maps upload daily-limit errors and skips sending", async () => {
@@ -327,13 +333,13 @@ describe("media tool execute", () => {
     await expect(h.tool.execute("call-4", { path: "big.mp4" }, undefined, undefined, { cwd: tempDir })).rejects.toThrow(
       /额度/,
     );
-    expect(h.sendMediaMessage).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
   });
 
   it("maps api errors with biz code and message", async () => {
     const h = makeHarness({ target: false });
     await writeMedia("shot.png", "image-data");
-    h.sendMediaMessage.mockRejectedValueOnce(new ApiError("boom", 500, "/v2/users/x/messages", 12345, "bad request"));
+    h.send.mockRejectedValueOnce(new ApiError("boom", 500, "/v2/users/x/messages", 12345, "bad request"));
 
     await expect(
       h.tool.execute("call-api", { path: "shot.png" }, undefined, undefined, { cwd: tempDir }),

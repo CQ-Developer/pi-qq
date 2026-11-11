@@ -30,8 +30,8 @@ function makeInboundHarness(
   let stops = 0;
   let reloads = 0;
   const bot = {
-    async sendText(_target: unknown, text: string) {
-      sent.push(text);
+    async send(options: { content?: string }) {
+      sent.push(options.content ?? "");
       return {};
     },
   };

@@ -5,6 +5,7 @@ import { AppendStream } from "../relay/stream-session";
 import type { RunningBot } from "./qq-bot";
 import { t } from "../infra/i18n";
 import { thinkingHeader } from "../relay/stream-block-format";
+import { sendWithMsgSeq } from "./msg-seq-send";
 
 interface QQDiagnosticsDeps {
   getRunning: () => RunningBot | undefined;
@@ -42,7 +43,7 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
       }
       const content = args?.trim() || "**Markdown test**\n# Heading\n- Item one\n- Item two\n[Link](https://qq.com)";
       try {
-        await running.bot.sendMarkdown(target, content);
+        await sendWithMsgSeq(running.bot, { target, markdown: { content } });
         ctx.ui.notify(t("diagnostics.mdSent"), "info");
       } catch (err) {
         ctx.ui.notify(t("diagnostics.mdFailed", { message: (err as Error).message }), "error");

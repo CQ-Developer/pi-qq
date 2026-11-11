@@ -1,6 +1,7 @@
 import type { QQBot } from "@tencent-connect/qqbot-nodejs";
 import { ReplyBudget } from "../quota/reply-quota";
 import { AppendStream } from "../relay/stream-session";
+import { sendWithMsgSeq } from "./msg-seq-send";
 import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 
@@ -122,7 +123,7 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
         length: chunk.length,
         text: chunk,
       });
-      await bot.sendText(replyTarget, chunk);
+      await sendWithMsgSeq(bot, { target: replyTarget, content: chunk });
       if (mode === "passive" && msgId) ch.budget.commitPassive(msgId);
       log.info("outbound", "text chunk sent", { mode, targetId, length: chunk.length });
     } catch (err) {
@@ -135,7 +136,10 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
       if (mode === "passive") {
         try {
           log.warn("outbound", "passive send failed; retrying proactively", { targetId: ch.boundOpenid });
-          await bot.sendText({ scope: "c2c", targetId: ch.boundOpenid }, chunk);
+          await sendWithMsgSeq(bot, {
+            target: { scope: "c2c", targetId: ch.boundOpenid },
+            content: chunk,
+          });
           ch.onWarn?.(t("outbound.passiveFailed"));
           continue;
         } catch (retryErr) {
