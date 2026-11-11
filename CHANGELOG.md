@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-11
+
 ### Fixed
 
 - Stream and outbound message sends now allocate `msg_seq` monotonically per inbound `msgId` instead of using the SDK's random helper, avoiding duplicate sequences within a message.
@@ -183,7 +185,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.5.1...v1.6.0
