@@ -82,6 +82,7 @@
 | `EXP: relay 10.5`              | 02:32:54 | 10.5m                 | 旧流 40034020 后同 `msg_id` 新流成功，DONE 成功                         | 通过                                 |
 | `LONG_TOOL_TEST`               | 03:07:54 | 5m                    | `/stop` 等待约 2m57s；`中途请求` 进入 steer 队列后被 abort 还原到编辑器 | `/stop` 阻塞已确认；steer 待单独测试 |
 | `LONG_TOOL_TEST`（只测 steer） | 03:26:19 | 5m                    | 工具结束后 `中途请求` 交付，agent 正常回复                              | 通过                                 |
+| `LONG_TOOL_ABORT_TEST`         | 03:52:06 | 61s 后 abort          | 工具返回 `aborted`，run 在约 61s 结束，未等满 300s                      | 通过                                 |
 
 ### 5.2 空闲实验
 
@@ -237,6 +238,19 @@
 
 这证明 steer 正常工作：消息在工具运行期间排队，工具批次结束后交付；它不会在工具执行中途打断。第一次测试看到的输入框文本，是 `/stop` abort 后 TUI 把 queued steer 还原到编辑器的行为。
 
+`LONG_TOOL_ABORT_TEST`（可 abort 工具）：
+
+- `03:52:06` 收到命令，`03:52:09` 开始 300s 工具
+- `03:53:10` 收到 `/stop`，工具在同一秒返回 `{"content":[{"type":"text","text":"aborted"}]}`
+- 工具实际持续时间约 **61.1s**，没有等满 300s
+- run 在 `03:53:11` 结束
+- `/stop` 的 `wait done` 和回复日志仍受 log gate 影响没有落盘；QQ 侧回复时间需要确认，但工具 abort 快速路径已确认
+
+对比：
+
+- 不响应 abort 的 `LONG_TOOL_TEST`：`/stop` 等到约 2m57s 工具结束；
+- 响应 abort 的 `LONG_TOOL_ABORT_TEST`：约 1s 内工具结束。
+
 ## 6. 分析
 
 ### 6.1 生命周期
@@ -278,7 +292,7 @@
 4. 流过期后同 `msg_id` 新流可立即恢复；`is_wakeup=true` 和新入站目标也可恢复。P1 的 `40034020` 新开流逻辑足够覆盖原 23 分钟场景。
 5. `40034017` 的帧切分已通过真实 5.5KB 大帧回归；无换行超大单行硬切仍只有单测。
 6. 不建议默认开启 watchdog；若需要消除首次失败帧，可提供默认关闭的 8 分钟轮换配置。
-7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟；steer 在工具结束后正常交付。第一次测试输入框里的文本是 abort 后 TUI 还原的 queued steer。
+7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟；可 abort 工具则约 1 秒结束。steer 在工具结束后正常交付；第一次测试输入框里的文本是 abort 后 TUI 还原的 queued steer。
 
 ## 8. 建议
 
@@ -293,7 +307,7 @@
 ## 9. 未覆盖与风险
 
 - 范围仅个人 C2C；群聊不适用。单 bot、单用户、单网络环境，未测试并发、多用户。
-- `/stop` 阻塞已确认；可 abort 工具的快速 `/stop` 路径还未执行（`LONG_TOOL_ABORT_TEST`）。
+- `/stop` 阻塞和可 abort 快速路径均已确认；`/stop wait done` 与回复日志受 log gate 影响未落盘，QQ 侧回复时间待确认。
 - steer 交付已验证：工具结束后 queued steer 正常进入模型并得到回复。pi 的 abort 会把 queued steer 还原到编辑器，这是 TUI 行为，不是实验代码丢消息。
 - `is_wakeup=true` 和新入站目标已由 `expire-full 10` 验证。
 - 真实 QQ 已复测 5.5KB 带换行大帧；未复测无换行超大单行的硬切路径。
