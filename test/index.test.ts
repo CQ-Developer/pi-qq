@@ -309,6 +309,28 @@ describe("extension lifecycle", () => {
     await expect(readFile(getLogFilePath(), "utf8")).rejects.toThrow();
   });
 
+  it("logs inbound trigger messages before a run starts", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-inbound-"));
+    configureLogger("debug", dir);
+
+    const { pi } = makePi();
+    extension(pi);
+    log.info("inbound", "message received", { messageId: "msg-1", contentLength: 5 });
+    await flushLogs();
+
+    const records = (await readFile(getLogFilePath(), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records).toEqual(
+      expect.arrayContaining([expect.objectContaining({ scope: "inbound", messageId: "msg-1", contentLength: 5 })]),
+    );
+  });
+
   it("logs qq-triggered runs", async () => {
     (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
       credentials: { appId: "app", appSecret: "secret" },

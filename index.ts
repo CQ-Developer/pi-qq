@@ -123,6 +123,8 @@ export default function (pi: ExtensionAPI) {
   setLogGate((scope) => {
     if (scope === "login") return true;
     if (!getLoginState()) return false;
+    // The message that starts a run arrives before the run becomes active.
+    if (scope === "inbound") return true;
     if (scope === "session" || scope === "bot") return true;
     return runFeedback.isQQRunActive();
   });

@@ -46,6 +46,31 @@ describe("AppendStream", () => {
     expect(new Set(calls.map((call) => call.index as number)).size).toBe(calls.length);
   });
 
+  it("限制 while flushing 日志数量", async () => {
+    let resolveSend: ((value: { id: string }) => void) | undefined;
+    const api = {
+      sendC2CStreamMessage: () =>
+        new Promise<{ id: string }>((resolve) => {
+          resolveSend = resolve;
+        }),
+    };
+    const debug: string[] = [];
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", {
+      throttleMs: 1,
+      onDebug: (message) => debug.push(message),
+    });
+
+    const first = stream.append("start");
+    for (let i = 0; i < 120; i += 1) void stream.append("x");
+    resolveSend?.({ id: "sm-1" });
+    await first;
+    stream.dispose();
+
+    const whileFlushing = debug.filter((message) => message.startsWith("append: while flushing"));
+    expect(whileFlushing.length).toBeLessThanOrEqual(3);
+    expect(whileFlushing[0]).toContain("count=1");
+  });
+
   it("限流退避后重试成功且不丢内容", async () => {
     const { api, calls } = makeFakeApi();
     api.failNext = 2;

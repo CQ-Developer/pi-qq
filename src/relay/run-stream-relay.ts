@@ -212,6 +212,9 @@ export class RunFeedback {
     }
 
     const keepTyping = () => {
+      // A live stream already shows activity; do not compete with it for the
+      // serialized API client, especially when the network is slow.
+      if (run.writer.hasActiveStream) return;
       void bot.sendTyping({ scope: "c2c", targetId: run.openid }, 60).catch(() => {});
     };
     keepTyping();

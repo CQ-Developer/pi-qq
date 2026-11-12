@@ -89,6 +89,10 @@ export class BubbleWriter {
     return this.terminalCode;
   }
 
+  get hasActiveStream(): boolean {
+    return Boolean(this.cur) && !this.streamDead && !this.disposed;
+  }
+
   stats(now = Date.now()): {
     dead: boolean;
     disposed: boolean;

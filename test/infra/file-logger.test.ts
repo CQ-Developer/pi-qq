@@ -13,6 +13,7 @@ import {
   logFileName,
   normalizeLogLevel,
   previewForLog,
+  redactLogText,
   setLogGate,
 } from "../../src/infra/file-logger";
 
@@ -71,6 +72,31 @@ describe("previewForLog", () => {
   it("truncates long values", () => {
     const value = "x".repeat(100);
     expect(previewForLog(value, 10)).toBe("xxxxxxxxxx…(100 chars)");
+  });
+});
+
+describe("redaction", () => {
+  it("redacts common credential shapes", () => {
+    const text = [
+      "mysql -uroot -ppcagent-local pc_agent",
+      "Authorization: Bearer abc.def",
+      "Cookie: session=secret",
+      '{"password":"hunter2","token":"tok","session":"sess","sessionBubbles":4}',
+      "pcagent:next:web:session:0123456789abcdef",
+    ].join("\n");
+    const redacted = redactLogText(text);
+
+    expect(redacted).not.toContain("ppcagent-local");
+    expect(redacted).not.toContain("abc.def");
+    expect(redacted).not.toContain("hunter2");
+    expect(redacted).not.toContain("0123456789abcdef");
+    expect(redacted).toContain("sessionBubbles");
+  });
+
+  it("redacts previewForLog values", () => {
+    const preview = previewForLog({ password: "hunter2", command: "mysql -uroot -psecret" });
+    expect(preview).not.toContain("hunter2");
+    expect(preview).not.toContain("-psecret");
   });
 });
 
@@ -183,6 +209,30 @@ describe("file output", () => {
       expect((JSON.parse(lines[0]!) as Record<string, unknown>).msg).toBe("visible login");
     } finally {
       setLogGate(undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("redacts secret fields before writing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-redact-"));
+    try {
+      configureLogger("debug", dir);
+      log.info("test", "payload", {
+        password: "hunter2",
+        token: "tok-123",
+        session: "sess-456",
+        sessionBubbles: 4,
+        command: "mysql -uroot -psecret",
+      });
+      await flushLogs();
+      const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
+      expect(record.password).toBe("<redacted>");
+      expect(record.token).toBe("<redacted>");
+      expect(record.session).toBe("<redacted>");
+      expect(record.sessionBubbles).toBe(4);
+      expect(String(record.command)).not.toContain("-psecret");
+    } finally {
+      configureLogger("silent");
       await rm(dir, { recursive: true, force: true });
     }
   });

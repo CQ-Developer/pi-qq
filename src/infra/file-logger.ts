@@ -58,6 +58,48 @@ function isLogAllowed(scope: string): boolean {
   }
 }
 
+const REDACTED = "<redacted>";
+const SECRET_KEY_RE =
+  /^(?:password|passwd|pwd|secret|token|session|sessionId|cookie|authorization|api[_-]?key|client[_-]?secret|app[_-]?secret|access[_-]?token|refresh[_-]?token|private[_-]?key)$/i;
+
+/** Redact common credential shapes while keeping the surrounding log text. */
+export function redactLogText(text: string): string {
+  return text
+    .replace(/(\bAuthorization\s*:\s*(?:Bearer\s+)?)([^\s,;]+)/gi, `$1${REDACTED}`)
+    .replace(/(\bCookie\s*:\s*)([^\r\n]+)/gi, `$1${REDACTED}`)
+    .replace(
+      /(\b["']?(?:password|passwd|pwd|secret|token|session|sessionId|api[_-]?key|client[_-]?secret|app[_-]?secret|access[_-]?token|refresh[_-]?token|private[_-]?key)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+      `$1${REDACTED}`,
+    )
+    .replace(/(\bBearer\s+)([A-Za-z0-9._~+/=-]+)/gi, `$1${REDACTED}`)
+    .replace(/(\bmysql\b[^\r\n]*?\s-p)([^\s]+)/gi, `$1${REDACTED}`)
+    .replace(/((?:[A-Za-z0-9_-]+:)+session:)([A-Za-z0-9._:-]{8,})/gi, `$1${REDACTED}`);
+}
+
+function redactValue(value: unknown, key?: string): unknown {
+  if (key && SECRET_KEY_RE.test(key)) return REDACTED;
+  if (typeof value === "string") return redactLogText(value);
+  if (Array.isArray(value)) return value.map((item) => redactValue(item));
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: redactLogText(value.message),
+      stack: value.stack ? redactLogText(value.stack) : undefined,
+    };
+  }
+  if (value instanceof Date) return value;
+  if (value !== null && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value;
+    const redacted: LogFields = {};
+    for (const [childKey, childValue] of Object.entries(value)) {
+      redacted[childKey] = redactValue(childValue, childKey);
+    }
+    return redacted;
+  }
+  return value;
+}
+
 function resolveLogDir(): string {
   return process.env.PI_QQ_LOG_DIR ?? activeDir ?? join(process.cwd(), ".pi", "pi-qq", "logs");
 }
@@ -99,12 +141,12 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
     level,
     scope,
     ...(msgKey ? { msgKey } : {}),
-    msg: message,
+    msg: redactLogText(message),
   };
   const fields = normalizeData(data);
   if (fields) {
     for (const [key, value] of Object.entries(fields)) {
-      if (!(key in record)) record[key] = value;
+      if (!(key in record)) record[key] = redactValue(value, key);
     }
   }
 
@@ -123,7 +165,7 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
       level,
       scope,
       ...(msgKey ? { msgKey } : {}),
-      msg: message,
+      msg: redactLogText(message),
       serializationError: stringifyError(err),
     });
   }
@@ -184,5 +226,6 @@ export function previewForLog(value: unknown, maxChars = 2000): string {
       text = String(value);
     }
   }
+  text = redactLogText(text);
   return text.length <= maxChars ? text : `${text.slice(0, maxChars)}…(${text.length} chars)`;
 }

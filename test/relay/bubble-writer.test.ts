@@ -77,6 +77,20 @@ describe("BubbleWriter restartSnapshot", () => {
   });
 });
 
+describe("BubbleWriter active stream", () => {
+  it("reports an active stream until dispose", async () => {
+    const { writer } = makeWriter();
+    expect(writer.hasActiveStream).toBe(false);
+
+    writer.pushText("hello");
+    await writer.whenIdle();
+    expect(writer.hasActiveStream).toBe(true);
+
+    writer.dispose();
+    expect(writer.hasActiveStream).toBe(false);
+  });
+});
+
 describe("BubbleWriter expired stream", () => {
   it("40034020 在已有 stream_msg_id 时新开流并重放未确认缓冲", async () => {
     const calls: Array<Record<string, unknown>> = [];

@@ -47,6 +47,7 @@ export class AppendStream {
   private buffer = "";
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushing = false;
+  private flushingAppends = 0;
   private lastFlushAt = 0;
 
   constructor(
@@ -99,7 +100,10 @@ export class AppendStream {
     const elapsed = Date.now() - this.lastFlushAt;
     const throttle = this.throttleMs();
     if (this.flushing) {
-      this.opts.onDebug?.(`append: while flushing, buffer=${this.buffer.length}`);
+      this.flushingAppends += 1;
+      if (this.flushingAppends === 1 || this.flushingAppends % 50 === 0) {
+        this.opts.onDebug?.(`append: while flushing, count=${this.flushingAppends}, buffer=${this.buffer.length}`);
+      }
       return;
     }
     if (elapsed >= throttle) {
@@ -196,6 +200,7 @@ export class AppendStream {
       `flush: start state=${state}, content=${content.length}, index=${this.index}, msgSeq=${this.msgSeq ?? "none"}, streamMsgId=${this.streamMsgId ?? "none"}`,
     );
     this.flushing = true;
+    this.flushingAppends = 0;
     let failed = false;
     try {
       if (this.msgSeq === null) this.msgSeq = allocateMsgSeq(this.msgId);
