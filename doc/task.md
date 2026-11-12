@@ -45,7 +45,7 @@
 
 ## 6. 日志脱敏
 
-**状态：已完成（代码与单测）。**
+**状态：已完成（代码与单测；过渡方案）。** 后续由任务 9 收敛为数据最小化。
 
 **背景：** 日志中的工具命令和结果包含本地 DB 凭据、临时账号密码、Redis 会话键等敏感信息。
 
@@ -68,3 +68,31 @@
 **状态：已完成。**
 
 **结果：** 已更新 `CHANGELOG.md`、`doc/test-report.md`、`doc/investigate.md` 和本文件状态；验证见测试报告。
+
+## 9. 日志数据最小化：只记录扩展运行元数据
+
+**状态：待执行。**
+
+**背景：** 当前日志虽然做了脱敏，但仍然记录 inbound `content` / `raw`、tool `args` / `result`、assistant `textPreview`、SDK 请求/响应 body。脱敏只是补丁，仍可能漏掉敏感内容；本项目应主要记录 pi-qq 扩展自身的运行状态，而不是完整记录用户行为。
+
+**原则：**
+
+- 记录事件、时间、掩码后的 ID、长度、数量、耗时、状态、错误码和流索引；
+- 不记录消息正文、工具参数、完整工具结果、模型文本、SDK 请求/响应 body；
+- 错误只记录错误类型/错误码和截断后的安全错误消息；
+- 日志用途是排查扩展运行，不做用户行为审计或回放。
+
+**改动范围：**
+
+- inbound：只保留 event、time、掩码 ID、`contentLength`、`attachmentCount`、`msgType`；移除 `content` 和 `raw`；
+- tool：只保留 tool name/ID、start/end、`durationMs`、`isError`、`resultLength`；移除 `args` 和 `result` preview；
+- assistant：只保留 `textLength`、`stopReason`、`contentTypes`；移除 `textPreview`；
+- SDK logger：请求/响应 body 只记录长度、状态和错误码，不记录完整 body；
+- 保留流式诊断所需的 `index`、`msg_seq`、`stream_msg_id`、`contentLength`、`elapsedMs` 和错误码；
+- 简化 `redactLogText`，只作为错误消息和极少数安全字段的兜底，不再依赖它清洗业务内容。
+
+**验证：**
+
+- 单测：日志中不出现消息文本、工具参数/结果、SDK body；仍包含时间、长度、工具名、状态和错误码；
+- 真实 QQ：发送一条消息并执行一次工具，确认日志只包含元数据；
+- 更新 `CHANGELOG.md`、`doc/test-report.md` 和本文件状态。
