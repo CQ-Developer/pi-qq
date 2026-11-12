@@ -199,7 +199,7 @@
 
 ### 5.9 自动化验证
 
-- `npm test`：24 files / 245 tests passed
+- `npm test`：24 files / 246 tests passed
 - `npm run typecheck`：通过
 - `npm run lint`：通过
 - `npm run format:check`：通过
@@ -246,6 +246,7 @@
 - 工具实际持续时间约 **61.1s**，没有等满 300s
 - run 在 `03:53:11` 结束
 - `/stop` 的 `wait done` 和回复日志仍受 log gate 影响没有落盘；QQ 侧回复时间需要确认，但工具 abort 快速路径已确认
+- 2026-11-12 修复：`/stop` 改为 abort 后立即回复，`waitForEnd()` 只做后台日志；单测覆盖等待永不 resolve 的情况。真实 agent 的修复后回归仍待执行
 
 对比：
 
@@ -304,7 +305,7 @@
 4. 流过期后同 `msg_id` 新流可立即恢复；`is_wakeup=true` 和新入站目标也可恢复。P1 的 `40034020` 新开流逻辑足够覆盖原 23 分钟场景。
 5. `40034017` 的帧切分已通过真实 5.5KB 大帧回归；无换行超大单行硬切仍只有单测。
 6. 不建议默认开启 watchdog；若需要消除首次失败帧，可提供默认关闭的 8 分钟轮换配置。
-7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟；可 abort 工具则约 1 秒结束。steer 在工具结束后正常交付；第一次测试输入框里的文本是 abort 后 TUI 还原的 queued steer。
+7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟；可 abort 工具则约 1 秒结束。steer 在工具结束后正常交付；第一次测试输入框里的文本是 abort 后 TUI 还原的 queued steer。2026-11-12 已改为 `/stop` 立即回复，真实 agent 回归待做。
 8. `EXP: budget 6` 的 6 条普通文本全部成功，没有触发 `40034128`；平台侧在当前个人 C2C 场景下未表现出 4 条硬限制，但本地 `ReplyBudget` 仍保守限制为 4。
 
 ## 8. 建议
@@ -321,7 +322,8 @@
 
 - 范围仅个人 C2C；单 bot、单用户、单网络环境。
 - 被动预算只验证了 6 条直发；未验证长时间、大量普通回复下的平台限流，也未验证本地 `ReplyBudget` 与平台限制的边界。
-- `/stop` 阻塞和可 abort 快速路径均已确认；`/stop wait done` 与回复日志受 log gate 影响未落盘，QQ 侧回复时间待确认。
+- `/stop` 阻塞和可 abort 快速路径均已确认；修复后 `/stop` 立即回复，单测已覆盖，真实 agent 回归待做。
+- `/stop wait done` 与回复日志仍受 log gate 影响，尚未落盘。
 - steer 交付已验证：工具结束后 queued steer 正常进入模型并得到回复。pi 的 abort 会把 queued steer 还原到编辑器，这是 TUI 行为，不是实验代码丢消息。
 - `is_wakeup=true` 和新入站目标已由 `expire-full 10` 验证。
 - 真实 QQ 已复测 5.5KB 带换行大帧；未复测无换行超大单行的硬切路径。

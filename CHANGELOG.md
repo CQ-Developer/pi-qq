@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Stream frames are now split at line boundaries below the QQ markdown shard limit, preventing `40034017` on large tool commands or text.
 - An expired stream (`40034020`) now opens a fresh stream instead of resuming a dead `stream_msg_id`; if it still cannot continue, the run automatically rebinds to a recent inbound message when available.
+- `/stop` now replies immediately after aborting the run instead of waiting for the tool/run to finish; `waitForEnd()` is only a background diagnostic.
 
 ## [1.7.0] - 2026-11-11
 
