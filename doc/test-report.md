@@ -222,7 +222,7 @@
 
 ### 5.9 自动化验证
 
-- `npm test`：24 files / 252 tests passed
+- `npm test`：24 files / 251 tests passed
 - `npm run typecheck`：通过
 - `npm run lint`：通过
 - `npm run format:check`：通过

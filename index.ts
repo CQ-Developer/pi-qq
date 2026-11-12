@@ -9,7 +9,7 @@ import { registerQQDiagnostics } from "./src/qq/qq-diagnostics";
 import { markdownToPlain, sendReply } from "./src/qq/reply-sender";
 import { ReplyBudget } from "./src/quota/reply-quota";
 import { RunFeedback } from "./src/relay/run-stream-relay";
-import { configureLogger, flushLogs, isLogEnabled, log, previewForLog, setLogGate } from "./src/infra/file-logger";
+import { configureLogger, flushLogs, isLogEnabled, log, logValueLength, setLogGate } from "./src/infra/file-logger";
 import { configureI18n, t } from "./src/infra/i18n";
 import { getPowerStatus } from "./src/infra/power-status";
 import { formatStatusReport } from "./src/qq/status-report";
@@ -78,7 +78,6 @@ interface ToolUpdateStats {
   count: number;
   firstAt: number;
   lastAt: number;
-  firstPartial: string;
 }
 
 const toolUpdateStats = new Map<string, ToolUpdateStats>();
@@ -311,7 +310,7 @@ export default function (pi: ExtensionAPI) {
         toolCallId: event.toolCallId,
         parentToolCallId: event.parentToolCallId ?? null,
         at: Date.now(),
-        args: previewForLog(event.args),
+        argsLength: logValueLength(event.args),
       });
     }
     void runFeedback.onToolStart(event.toolName, event.args, event.toolCallId);
@@ -326,7 +325,6 @@ export default function (pi: ExtensionAPI) {
         count: 1,
         firstAt: now,
         lastAt: now,
-        firstPartial: previewForLog(event.partialResult, 300),
       };
       toolUpdateStats.set(event.toolCallId, first);
       log.debug("tool", "update", {
@@ -334,7 +332,7 @@ export default function (pi: ExtensionAPI) {
         toolName: event.toolName,
         toolCallId: event.toolCallId,
         count: 1,
-        partial: first.firstPartial,
+        partialLength: logValueLength(event.partialResult),
       });
       return;
     }
@@ -363,8 +361,7 @@ export default function (pi: ExtensionAPI) {
         durationMs: event.durationMs ?? null,
         updateCount: updates?.count ?? 0,
         updateSpanMs: updates ? updates.lastAt - updates.firstAt : null,
-        firstPartial: updates?.firstPartial ?? null,
-        result: previewForLog(event.result),
+        resultLength: logValueLength(event.result),
       });
     }
     runFeedback.onToolEnd(event.toolName, event.isError, event.result, event.toolCallId);
@@ -396,12 +393,10 @@ export default function (pi: ExtensionAPI) {
         hasLogin: Boolean(getLoginState()),
         stopReason: msg.stopReason,
         contentTypes: msg.content.map((block) => block.type),
-        textPreview: previewForLog(
-          msg.content
-            .filter((block) => block.type === "text")
-            .map((block) => block.text)
-            .join("\n"),
-        ),
+        textLength: msg.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n").length,
       });
     }
     if (!running || !fromQQ) return;
@@ -426,7 +421,7 @@ export default function (pi: ExtensionAPI) {
 
     const streamTookOver = await runFeedback.onAssistantFinal(text, isError);
     if (isLogEnabled("debug")) {
-      log.debug("pi", "stream takeover decision", { streamTookOver, isError, textPreview: previewForLog(text) });
+      log.debug("pi", "stream takeover decision", { streamTookOver, isError, textLength: text.length });
     }
     if (streamTookOver) return;
 

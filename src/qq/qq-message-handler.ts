@@ -36,17 +36,12 @@ export function createInboundHandler(deps: InboundDeps) {
       rawEventType: msg.rawEventType,
       messageId: msg.messageId,
       senderId: msg.senderId,
-      senderName: msg.senderName,
       senderIsBot: msg.senderIsBot,
-      content: msg.content,
       msgType: msg.msgType,
       timestamp: msg.timestamp,
-      msgIdx: msg.msgIdx,
-      refMsgIdx: msg.refMsgIdx,
-      messageScene: msg.messageScene,
-      attachments: msg.attachments,
-      msgElements: msg.msgElements,
-      raw: msg.raw,
+      contentLength: (msg.content ?? "").length,
+      attachmentCount: (msg.attachments ?? []).length,
+      elementCount: (msg.msgElements ?? []).length,
     });
 
     if (msg.kind !== "c2c") {

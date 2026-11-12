@@ -363,7 +363,7 @@ describe("extension lifecycle", () => {
     expect(debugSpy).toHaveBeenCalledWith(
       "pi",
       "assistant message ended",
-      expect.objectContaining({ fromQQ: true, hasLogin: true, textPreview: "remote" }),
+      expect.objectContaining({ fromQQ: true, hasLogin: true, textLength: 6 }),
     );
 
     await flushLogs();
@@ -376,7 +376,7 @@ describe("extension lifecycle", () => {
         expect.objectContaining({
           scope: "pi",
           msgKey: "log.assistantMessageEnded",
-          textPreview: "remote",
+          textLength: 6,
         }),
       ]),
     );

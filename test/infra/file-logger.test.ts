@@ -11,9 +11,10 @@ import {
   isLogEnabled,
   log,
   logFileName,
+  logValueLength,
   normalizeLogLevel,
-  previewForLog,
   redactLogText,
+  sdkLogger,
   setLogGate,
 } from "../../src/infra/file-logger";
 
@@ -61,17 +62,11 @@ describe("log file name", () => {
   });
 });
 
-describe("previewForLog", () => {
-  it("handles strings, undefined, and errors", () => {
-    expect(previewForLog("hello")).toBe("hello");
-    expect(previewForLog(undefined)).toBe("undefined");
-    expect(previewForLog({ a: 1 })).toBe('{"a":1}');
-    expect(previewForLog(new Error("boom"))).toContain("boom");
-  });
-
-  it("truncates long values", () => {
-    const value = "x".repeat(100);
-    expect(previewForLog(value, 10)).toBe("xxxxxxxxxx…(100 chars)");
+describe("logValueLength", () => {
+  it("returns content length without returning content", () => {
+    expect(logValueLength("hello")).toBe(5);
+    expect(logValueLength(undefined)).toBe(0);
+    expect(logValueLength({ a: 1 })).toBe(7);
   });
 });
 
@@ -91,12 +86,6 @@ describe("redaction", () => {
     expect(redacted).not.toContain("hunter2");
     expect(redacted).not.toContain("0123456789abcdef");
     expect(redacted).toContain("sessionBubbles");
-  });
-
-  it("redacts previewForLog values", () => {
-    const preview = previewForLog({ password: "hunter2", command: "mysql -uroot -psecret" });
-    expect(preview).not.toContain("hunter2");
-    expect(preview).not.toContain("-psecret");
   });
 });
 
@@ -209,6 +198,21 @@ describe("file output", () => {
       expect((JSON.parse(lines[0]!) as Record<string, unknown>).msg).toBe("visible login");
     } finally {
       setLogGate(undefined);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("summarizes SDK bodies instead of logging their content", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-sdk-body-"));
+    try {
+      configureLogger("debug", dir);
+      sdkLogger.debug('[qqbot:api] >>> Body: {"content":"secret"}');
+      await flushLogs();
+      const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
+      expect(String(record.msg)).toContain("Body: <");
+      expect(String(record.msg)).not.toContain("secret");
+    } finally {
+      configureLogger("silent");
       await rm(dir, { recursive: true, force: true });
     }
   });

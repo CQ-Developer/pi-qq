@@ -182,6 +182,25 @@ function writeRecord(level: Exclude<LogLevel, "silent">, scope: string, message:
     .catch(() => {});
 }
 
+export function logValueLength(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === "string") return value.length;
+  try {
+    const text = JSON.stringify(value);
+    return typeof text === "string" ? text.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function summarizeSdkMessage(message: string): string {
+  const marker = "Body: ";
+  const index = message.indexOf(marker);
+  if (index < 0) return message;
+  const bodyLength = message.length - index - marker.length;
+  return `${message.slice(0, index + marker.length)}<${bodyLength} chars>`;
+}
+
 export const log = {
   debug(scope: string, message: string, data?: unknown): void {
     writeRecord("debug", scope, message, data);
@@ -199,33 +218,15 @@ export const log = {
 
 export const sdkLogger = {
   debug(message: string, meta?: Record<string, unknown>): void {
-    log.debug("qqbot", message, meta);
+    log.debug("qqbot", summarizeSdkMessage(message), meta);
   },
   info(message: string, meta?: Record<string, unknown>): void {
-    log.info("qqbot", message, meta);
+    log.info("qqbot", summarizeSdkMessage(message), meta);
   },
   warn(message: string, meta?: Record<string, unknown>): void {
-    log.warn("qqbot", message, meta);
+    log.warn("qqbot", summarizeSdkMessage(message), meta);
   },
   error(message: string, meta?: Record<string, unknown>): void {
-    log.error("qqbot", message, meta);
+    log.error("qqbot", summarizeSdkMessage(message), meta);
   },
 };
-
-export function previewForLog(value: unknown, maxChars = 2000): string {
-  let text: string;
-  if (typeof value === "string") {
-    text = value;
-  } else if (value instanceof Error) {
-    text = `${value.name}: ${value.message}`;
-  } else {
-    try {
-      const stringified = JSON.stringify(value);
-      text = typeof stringified === "string" ? stringified : String(value);
-    } catch {
-      text = String(value);
-    }
-  }
-  text = redactLogText(text);
-  return text.length <= maxChars ? text : `${text.slice(0, maxChars)}…(${text.length} chars)`;
-}

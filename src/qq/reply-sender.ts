@@ -121,7 +121,6 @@ export async function sendReply(bot: QQBot, text: string, ch: ReplyChannel): Pro
         targetId,
         msgId: msgId ?? null,
         length: chunk.length,
-        text: chunk,
       });
       await sendWithMsgSeq(bot, { target: replyTarget, content: chunk });
       if (mode === "passive" && msgId) ch.budget.commitPassive(msgId);
