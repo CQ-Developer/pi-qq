@@ -4,6 +4,7 @@
 > 日期：2026-11-11
 > 范围：pi-qq 1.7.0，QQ C2C `stream_messages`
 > 相关：`doc/todo.md` §2
+> 完整测试报告：`doc/stream-test-report.md`
 
 ## 1. 现象与日志证据
 
