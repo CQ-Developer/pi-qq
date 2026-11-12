@@ -85,6 +85,7 @@
 | `LONG_TOOL_TEST`（只测 steer） | 03:26:19 | 5m                    | 工具结束后 `中途请求` 交付，agent 正常回复                              | 通过                                 |
 | `LONG_TOOL_ABORT_TEST`         | 03:52:06 | 61s 后 abort          | 工具返回 `aborted`，run 在约 61s 结束，未等满 300s                      | 通过                                 |
 | `EXP: budget 6`                | 03:55:10 | 6.7s                  | 6 条普通文本全部成功；未出现 `40034128`                                 | 通过                                 |
+| `LONG_TOOL_LONG_TEST`          | 06:47:06 | 12m                   | 720s 工具结束触发 40034020，新流送达结果和最终回答                      | 通过                                 |
 
 ### 5.2 空闲实验
 
@@ -276,6 +277,22 @@
 
 注意：本实验直接调用 `sendWithMsgSeq`，没有经过 pi-qq 的本地 `ReplyBudget` 4 次限制，因此它验证的是平台侧行为；平台在这个个人 C2C 场景下接受了 6 条探针（外加实验启动通知），并不代表本地 4 次限制可以安全移除。
 
+### 5.12 真实 agent 12 分钟工具
+
+`LONG_TOOL_LONG_TEST`：
+
+- `06:47:06` 从 QQ 收到命令
+- `06:47:08` agent 调用 `stream_test_sleep(720, ignoreAbort=true)`
+- 工具持续 **720003ms**，`06:59:08` 结束
+- `06:59:09` 旧流结果帧返回 `40034020`，旧 `stream_msg_id=1413ff10…`
+- P1 自动新开流：`index=0`、不带旧 `stream_msg_id`、`msg_seq=2`，新 `stream_msg_id=1c330d4e…`
+- `06:59:11` assistant 文本：
+  “12-minute long tool test completed (`stream_test_sleep`, 720s, ignoreAbort=true).”
+- 工具结果和最终文本都进入 session；`streamTookOver=true`
+- run 总耗时约 725.5s
+
+这是真实 agent + 12 分钟工具 + 真实 QQ 的端到端验证；不只是 relay 模拟。
+
 ## 6. 分析
 
 ### 6.1 生命周期
@@ -314,7 +331,7 @@
 1. `40034020` 是流的总生命周期限制，实测约 **600 秒**。
 2. 心跳不能续命；5 分钟心跳方案无效。
 3. 5 分钟 / 8 分钟主动轮换都可行，8 分钟距上限约 2 分钟。
-4. 流过期后同 `msg_id` 新流可立即恢复；`is_wakeup=true` 和新入站目标也可恢复。P1 的 `40034020` 新开流逻辑足够覆盖原 23 分钟场景。
+4. 流过期后同 `msg_id` 新流可立即恢复；`is_wakeup=true` 和新入站目标也可恢复。P1 的 `40034020` 新开流逻辑已通过真实 agent 12 分钟工具端到端验证。
 5. `40034017` 的帧切分已通过真实 5.5KB 带换行大帧和无换行单行回归。
 6. 不建议默认开启 watchdog；若需要消除首次失败帧，可提供默认关闭的 8 分钟轮换配置。
 7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟；可 abort 工具则约 1 秒结束。steer 在工具结束后正常交付；第一次测试输入框里的文本是 abort 后 TUI 还原的 queued steer。2026-11-12 修复后，真实 agent 的 `/stop` 已在约 1ms 内回复“已请求中止”。
@@ -327,7 +344,7 @@
 - 保留 `/last` 作为手动兜底。
 - 同 `msg_id`、`is_wakeup=true`、新入站目标三条恢复路径均已验证；日常优先同 `msg_id` 新流，auto-rebind 作为兜底。
 - 真实大帧回归已完成（`EXP: large 5` 和 `EXP: large-line 5`）。
-- 真实 `RunFeedback` / `BubbleWriter` 长工具回归已完成（`relay 10.5`）；如需覆盖真实 agent 的 prompt/工具链，再做一次 12 分钟 agent 工具测试。
+- 真实 `RunFeedback` / `BubbleWriter` 长工具回归已完成（`relay 10.5`）；真实 agent 12 分钟工具也已完成（`LONG_TOOL_LONG_TEST`）。
 - 后续如要覆盖 20 分钟以上，再测试 `expire 20`；当前原日志 22 分钟创建成功已提供强证据，但不是本次实验的直接用例。
 
 ## 9. 未覆盖与风险
@@ -339,7 +356,7 @@
 - steer 交付已验证：工具结束后 queued steer 正常进入模型并得到回复。pi 的 abort 会把 queued steer 还原到编辑器，这是 TUI 行为，不是实验代码丢消息。
 - `is_wakeup=true` 和新入站目标已由 `expire-full 10` 验证。
 - 真实 QQ 已复测 5.5KB 带换行大帧和无换行单行硬切。
-- 完整 `BubbleWriter` 已通过 `relay 10.5` 验证；真实 agent 的 5 分钟非 abortable 工具已用于确认 `/stop` 阻塞，但尚未做 12 分钟 agent 长工具。
+- 真实 agent 的 12 分钟工具已验证：`LONG_TOOL_LONG_TEST` 在工具结束后自动新开流，结果和最终回答都送达。
 - 平台行为可能随账号、地区、版本变化；600 秒边界有约 1s 抖动，`msg_id` 有效期需要持续观察。
 - 测试环境使用了 `PI_QQ_EXPERIMENTS=1` 调试钩子和本地扩展，不属于发布产物。
 
