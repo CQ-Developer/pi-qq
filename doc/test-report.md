@@ -32,17 +32,14 @@
 - 操作系统：Linux
 - pi：1.5.2
 - Node.js：24.22.0
-- 测试目录：`~/project/mine/pi-qq-test`
+- 测试目录：`~/project/mine/pi-qq-test`（测试完成后已清理）
 - pi-qq：本地 `../pi-qq`，版本 1.7.0 + P1 修复
 - QQ：C2C 私聊，测试机器人 AppID `1906****`，测试用户 openid `E64787A2…`
-- 实验入口：`.pi/extensions/stream-exp.ts`，拦截 QQ 的 `EXP:` 消息，直接调用 `AppendStream`，不经过模型
-- 启动脚本：`run-experiment.sh`
-- 独立日志目录：`PI_QQ_LOG_DIR=.pi/pi-qq/experiment-logs`
+- 实验入口：`.pi/extensions/stream-exp.ts`，当时拦截 QQ 的 `EXP:` 消息并直接调用 `AppendStream`，不经过模型；该扩展已清理
+- 启动脚本：`run-experiment.sh`（已清理）
+- 独立日志目录：`PI_QQ_LOG_DIR=.pi/pi-qq/experiment-logs`（已清理）
 
-实验日志：
-
-- `.pi/pi-qq/experiments/exp-2026-11-12.jsonl`（193 行）
-- `.pi/pi-qq/experiment-logs/pi-qq-2026-11-12.log`
+测试完成后，实验目录、脚本和日志已清理；关键结果与分析保留在本报告中。
 
 ## 4. 测试方法
 
@@ -222,7 +219,7 @@
 
 ### 5.9 自动化验证
 
-- `npm test`：24 files / 251 tests passed
+- `npm test`：24 files / 250 tests passed
 - `npm run typecheck`：通过
 - `npm run lint`：通过
 - `npm run format:check`：通过
@@ -373,7 +370,7 @@
 - 真实 QQ 已复测 5.5KB 带换行大帧和无换行单行硬切。
 - 真实 agent 的 12 分钟工具已验证：`LONG_TOOL_LONG_TEST` 在工具结束后自动新开流，结果和最终回答都送达。
 - 平台行为可能随账号、地区、版本变化；600 秒边界有约 1s 抖动，`msg_id` 有效期需要持续观察。
-- 测试环境使用了 `PI_QQ_EXPERIMENTS=1` 调试钩子和本地扩展，不属于发布产物。
+- 测试环境（本地扩展、脚本、日志和 `PI_QQ_EXPERIMENTS` 调试钩子）已清理，不属于发布产物。
 
 ## 10. 附录
 
@@ -396,9 +393,7 @@ EXP: ping
 
 ### 10.2 日志
 
-- 实验帧日志：`~/project/mine/pi-qq-test/.pi/pi-qq/experiments/exp-2026-11-12.jsonl`
-- pi-qq 运行日志：`~/project/mine/pi-qq-test/.pi/pi-qq/experiment-logs/pi-qq-2026-11-12.log`
-- 原始回归日志：`~/project/mine/pi-qq-test/.pi/pi-qq/logs/pi-qq-2026-11-11.log`
+测试完成后，实验目录、脚本和日志已清理；关键结果与分析保留在本报告中。
 
 ### 10.3 相关提交
 

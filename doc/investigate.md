@@ -9,7 +9,7 @@
 
 ## 1. 现象与日志证据
 
-日志：`~/project/mine/pi-qq-test/.pi/pi-qq/logs/pi-qq-2026-11-11.log`（18 MB / 18,406 行，时间戳为 UTC）。
+原始回归日志（18 MB / 18,406 行，时间戳为 UTC）已随实验环境清理；关键片段和结论保留在 `doc/test-report.md`。
 
 ### 1.1 `40034020`：长工具期间无帧
 
@@ -168,7 +168,7 @@ watchdog 的目标：在平台返回 `40034020` 之前，主动处理长时间�
 
 ## 7. 参考
 
-- 日志：`~/project/mine/pi-qq-test/.pi/pi-qq/logs/pi-qq-2026-11-11.log`
+- 原始回归日志：测试完成后已清理，关键片段见 `doc/test-report.md`
 - 官方流式接口：`https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_stream_messages.post.html`
 - 官方错误码：`https://bot.q.qq.com/wiki/develop/api-v2/openapi/error/error.html`
 - 代码：`src/relay/stream-session.ts`、`src/relay/bubble-writer.ts`、`src/relay/run-stream-relay.ts`

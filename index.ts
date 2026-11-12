@@ -49,28 +49,6 @@ const runFeedback = new RunFeedback({
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
 });
 
-const EXPERIMENT_DEBUG_KEY = "__piQQExperimentDebug";
-interface ExperimentDebugApi {
-  getLogin: () => LoginState | undefined;
-  getRunning: () => RunningBot | undefined;
-  getBudget: () => ReplyBudget;
-  getLastTarget: () => { openid: string; msgId: string; arrivedAt: number } | undefined;
-  cancelPending: () => void;
-}
-type GlobalWithExperimentDebug = typeof globalThis & {
-  [EXPERIMENT_DEBUG_KEY]?: ExperimentDebugApi;
-};
-
-if (process.env.PI_QQ_EXPERIMENTS === "1") {
-  (globalThis as GlobalWithExperimentDebug)[EXPERIMENT_DEBUG_KEY] = {
-    getLogin: () => getLoginState(),
-    getRunning: () => running,
-    getBudget: () => budget,
-    getLastTarget: () => budget.lastTarget,
-    cancelPending: () => runFeedback.cancelPending(),
-  };
-}
-
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 100 });
 let eventLoopTimer: ReturnType<typeof setInterval> | undefined;
 
