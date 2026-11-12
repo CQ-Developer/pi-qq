@@ -39,12 +39,13 @@
 | `EXP: rotate 5`       | 5 分钟后主动关闭旧流，同 `msg_id` 新流成功；新 `msg_seq=2`、新 `stream_msg_id`                         |
 | `EXP: rotate 8`       | 8 分钟后主动关闭旧流，同 `msg_id` 新流成功；距 600s 上限约 2 分钟                                      |
 | `EXP: expire 10`      | 旧流在 600s 返回 `40034020`；同 `msg_id` 新流立即成功；新 `msg_seq=2`、新 `stream_msg_id`              |
+| `EXP: expire-full 10` | 旧流 600.0s 探针成功、约 601s 下一帧 40034020；同 `msg_id`、`is_wakeup=true`、新入站目标均成功         |
 | `EXP: relay 10.5`     | 真实 `RunFeedback`/`BubbleWriter` 跑 10.5m；旧流 40034020 后新流成功、DONE 成功、`streamTookOver=true` |
 
 结论：
 
-- 强证据指向**流的总生命周期约 600 秒**，而不是单纯空闲超时；每分钟心跳不能续命。
-- 过期后立刻用同一个 `msg_id` 开新流可以成功；`expire 10` 已验证，原日志也在入站 22 分钟后成功创建过流，说明 stream API 的 `msg_id` 有效期明显长于普通被动回复的 5 分钟。
+- 强证据指向**流的总生命周期约 600 秒**，而不是单纯空闲超时；每分钟心跳不能续命；600s 边界有约 1s 抖动。
+- 过期后立刻用同一个 `msg_id` 开新流可以成功；`expire 10` 和 `expire-full 10` 已验证，`is_wakeup=true` 和新入站目标也成功。原日志也在入站 22 分钟后成功创建过流，说明 stream API 的 `msg_id` 有效期明显长于普通被动回复的 5 分钟。
 - `relay 10.5` 已在真实 `RunFeedback`/`BubbleWriter` 路径验证：旧流 40034020 后新流成功、DONE 成功、最终文本接管；因此 P1 足以恢复原日志的 23 分钟场景；watchdog 不是必需，只是可选的体验优化。
 
 ### 1.4 结果完整性
