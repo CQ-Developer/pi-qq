@@ -215,13 +215,14 @@
 - `03:07:54` 从 QQ 收到 `LONG_TOOL_TEST`
 - `03:07:57` agent 调用 `stream_test_sleep(300, ignoreAbort=true)`
 - 工具持续 **300003ms**，`03:12:57` 结束
-- `03:08:57` 收到普通消息 `中途请求`，pi-qq 记录 `sent to pi`；在 `/stop` 前没有看到 assistant 响应，符合 steer 要等当前工具批次结束的行为
+- `03:08:57` 收到普通消息 `中途请求`，pi-qq 记录 `sent to pi`；TUI 显示的是 pending steering（类似 `Steering: 中途请求`），不是编辑器里未发送的文本
 - `03:10:00` 收到 `/stop`，记录 `/stop wait start`
 - 工具结束后 `03:12:57`，run 在 `03:12:58` 结束；因此 `/stop` 至少等待了 **约 2m57s**
+- session JSONL 中没有 `中途请求`，因为它在 steering 队列中尚未交付；`/stop` abort 后队列被清空
 - 日志在 run 结束后关闭，没有记录 `/stop wait done` 和后续回复；`/stop` 的实际回复时间需要 QQ 侧确认
 - 工具结果帧 `slept 300s (ignoreAbort=true)` 在 `03:12:57` 成功发出，最终 stream DONE 成功
 
-这个用例确认：当工具不响应 abort 时，`/stop` 的 `waitForEnd()` 会一直等到工具结束，阻塞回复。`steer` 消息也没有在工具运行期间被处理。
+这个用例确认了 `/stop` 的阻塞路径。它**不能**用来判断正常 steer 的延迟，因为 `/stop` 在工具结束前 abort，steering 消息没有机会交付。需要单独跑一次“只发中途消息、不发 `/stop`”的测试。
 
 ## 6. 分析
 
@@ -264,7 +265,7 @@
 4. 流过期后同 `msg_id` 新流可立即恢复；`is_wakeup=true` 和新入站目标也可恢复。P1 的 `40034020` 新开流逻辑足够覆盖原 23 分钟场景。
 5. `40034017` 的帧切分已通过真实 5.5KB 大帧回归；无换行超大单行硬切仍只有单测。
 6. 不建议默认开启 watchdog；若需要消除首次失败帧，可提供默认关闭的 8 分钟轮换配置。
-7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟，steer 消息在工具期间也不会被及时处理。
+7. `LONG_TOOL_TEST` 确认：不响应 abort 的长工具会让 `/stop` 等待约 3 分钟；steer 消息进入队列后被 abort 清空，正常 steer 延迟仍未验证。
 
 ## 8. 建议
 
@@ -280,6 +281,7 @@
 
 - 范围仅个人 C2C；群聊不适用。单 bot、单用户、单网络环境，未测试并发、多用户。
 - `/stop` 阻塞已确认；可 abort 工具的快速 `/stop` 路径还未执行（`LONG_TOOL_ABORT_TEST`）。
+- 正常 steer 交付未验证；需要单独测试“中途消息后不发 `/stop`，等工具自然结束”。
 - `is_wakeup=true` 和新入站目标已由 `expire-full 10` 验证。
 - 真实 QQ 已复测 5.5KB 带换行大帧；未复测无换行超大单行的硬切路径。
 - 完整 `BubbleWriter` 已通过 `relay 10.5` 验证；真实 agent 的 5 分钟非 abortable 工具已用于确认 `/stop` 阻塞，但尚未做 12 分钟 agent 长工具。
