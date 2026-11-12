@@ -60,12 +60,22 @@ export async function handleInboundCommand(
         deps.ctx.abort();
         const waitStartedAt = Date.now();
         log.debug("inbound", "stream timing", { phase: "/stop wait start" });
-        await deps.waitForEnd?.();
-        log.debug("inbound", "stream timing", {
-          phase: "/stop wait done",
-          waitedMs: Date.now() - waitStartedAt,
-        });
+        const waiting = Promise.resolve()
+          .then(() => deps.waitForEnd?.())
+          .then(() => {
+            log.debug("inbound", "stream timing", {
+              phase: "/stop wait done",
+              waitedMs: Date.now() - waitStartedAt,
+            });
+          })
+          .catch((err) => {
+            log.warn("inbound", "/stop wait failed", {
+              waitedMs: Date.now() - waitStartedAt,
+              err,
+            });
+          });
         await reply(t("commands.stop.abort"));
+        void waiting;
       }
       break;
     case "/compact":

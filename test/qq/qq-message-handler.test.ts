@@ -20,6 +20,7 @@ function makeInboundHarness(
     repushCurrent?: (openid: string, msgId: string) => import("../../src/relay/run-stream-relay").RepushResult;
     getDeliverAs?: () => "steer" | "followUp";
     reloadSettings?: () => void;
+    waitForEnd?: () => Promise<void>;
   } = {},
 ) {
   const sent: string[] = [];
@@ -28,6 +29,7 @@ function makeInboundHarness(
   const userMessages: Array<{ content: unknown; options: unknown }> = [];
   let triggers = 0;
   let stops = 0;
+  let aborts = 0;
   let reloads = 0;
   const bot = {
     async send(options: { content?: string }) {
@@ -37,6 +39,9 @@ function makeInboundHarness(
   };
   const ctx = {
     isIdle: () => isIdle,
+    abort: () => {
+      aborts += 1;
+    },
     ui: { notify: () => {} },
     cwd: "/workspace/pi-qq-test",
     sessionManager: { getSessionId: () => "session-test" },
@@ -74,6 +79,7 @@ function makeInboundHarness(
     onStop: () => {
       stops += 1;
     },
+    waitForEnd: opts.waitForEnd,
   };
   const handler = createInboundHandler(deps as never);
   const run = (override: { content?: string; attachments?: unknown[] } = {}) =>
@@ -95,6 +101,7 @@ function makeInboundHarness(
     userMessages,
     triggers: () => triggers,
     stops: () => stops,
+    aborts: () => aborts,
     reloads: () => reloads,
   };
 }
@@ -446,6 +453,30 @@ describe("inbound /stop", () => {
     await harness.run({ content: "/stop" });
     expect(harness.stops()).toBe(1);
     expect(harness.sent).toEqual(["No task is running."]);
+  });
+
+  it("busy 时立即回复，不等待 waitForEnd", async () => {
+    let releaseWait: () => void = () => {};
+    const wait = new Promise<void>((resolve) => {
+      releaseWait = resolve;
+    });
+    const harness = makeInboundHarness(false, { waitForEnd: () => wait });
+
+    const stop = harness.run({ content: "/stop" });
+    const outcome = await Promise.race([
+      stop.then(() => "done"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("timeout"), 100)),
+    ]);
+
+    try {
+      expect(outcome).toBe("done");
+      expect(harness.stops()).toBe(1);
+      expect(harness.aborts()).toBe(1);
+      expect(harness.sent).toEqual(["Abort requested."]);
+    } finally {
+      releaseWait();
+      await stop;
+    }
   });
 });
 
