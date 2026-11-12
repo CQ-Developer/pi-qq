@@ -42,6 +42,7 @@
 | `EXP: rotate 8`       | 8 分钟后主动关闭旧流，同 `msg_id` 新流成功；距 600s 上限约 2 分钟                                      |
 | `EXP: expire 10`      | 旧流在 600s 返回 `40034020`；同 `msg_id` 新流立即成功；新 `msg_seq=2`、新 `stream_msg_id`              |
 | `EXP: expire-full 10` | 旧流 600.0s 探针成功、约 601s 下一帧 40034020；同 `msg_id`、`is_wakeup=true`、新入站目标均成功         |
+| `EXP: expire 20`      | 旧流 1200s 后 40034020，同 `msg_id` 新流成功；未触发新入站分支                                         |
 | `EXP: relay 10.5`     | 真实 `RunFeedback`/`BubbleWriter` 跑 10.5m；旧流 40034020 后新流成功、DONE 成功、`streamTookOver=true` |
 
 结论：
