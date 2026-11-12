@@ -92,12 +92,12 @@
 
 测试已确认：不响应 abort 的长工具会让 `/stop` 等到工具结束（约 2m57s）；可 abort 工具约 1s 结束。
 
-2026-11-12 已修改：`ctx.abort()` 后立即回复，`waitForEnd()` 只做后台日志；单测覆盖“waitForEnd 永不 resolve 仍立即回复”。
+2026-11-12 已修改：`ctx.abort()` 后立即回复，`waitForEnd()` 只做后台日志；单测覆盖“waitForEnd 永不 resolve 仍立即回复”。真实 agent 验证：`06:29:25.910` 收到 `/stop`，`06:29:25.913` 已发出“已请求中止。”，工具仍在运行。
 
 - [x] 修改 `handleInboundCommand` 的 `/stop`：`ctx.abort()` 后立即回复，不等待 `waitForEnd()`。
 - [x] `waitForEnd()` 只做后台日志或后续通知，不能阻塞 `/stop` 回复。
 - [x] 补测试：`waitForEnd` 永不 resolve 时，`/stop` 仍立即回复。
-- [ ] 用真实 agent 重跑 `LONG_TOOL_TEST` + `/stop`，确认回复不再等 3 分钟。
+- [x] 用真实 agent 重跑 `LONG_TOOL_TEST` + `/stop`，确认回复不再等 3 分钟。
 
 ### P2：真实 agent 长工具端到端
 
