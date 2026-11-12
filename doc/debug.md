@@ -1,9 +1,8 @@
 # 流式消息超时与 watchdog 调研
 
-> 状态：调研完成；P1 已实现；watchdog 方案待真实实验确认
-> 日期：2026-11-11
+> 状态：调研与实验完成；P1 已实现；watchdog 非必需，默认不实现
+> 日期：2026-11-12
 > 范围：pi-qq 1.7.0，QQ C2C `stream_messages`
-> 相关：`doc/todo.md` §2
 > 完整测试报告：`doc/stream-test-report.md`
 
 ## 1. 现象与日志证据
@@ -142,7 +141,7 @@
 | P3     | run 触发消息未入日志                   | 在 log gate 打开前记录，或缓冲到 run 开始               | 未做                                      | `index.ts:101`、`src/infra/file-logger.ts`             |
 | P3     | 日志含敏感信息                         | 对命令/结果中的密码、token、session 做脱敏              | 未做                                      | 日志含本地 DB 凭据、临时账号密码、Redis 会话键         |
 | P3     | `append: while flushing` 噪声          | 降频/聚合日志                                           | 未做                                      | 4,945 行，约占 18 MB 日志的 27%                        |
-| P3     | 文档与发布记录                         | 更新 `CHANGELOG.md` / `doc/todo.md`                     | 部分完成（P1 已写；P2/P3 未写）           | `CHANGELOG.md`、`doc/todo.md` §2                       |
+| P3     | 文档与发布记录                         | 更新 `CHANGELOG.md` / `doc/todo.md`                     | 部分完成（P1 已写；P2/P3 未写）           | `CHANGELOG.md`、`doc/todo.md`                          |
 
 ## 6. watchdog 方案
 

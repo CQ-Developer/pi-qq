@@ -4,7 +4,7 @@
 > 状态：完成
 > 测试对象：pi-qq 1.7.0 + P1 修复（帧切分、`40034020` 新开流、auto-rebind）
 > 代码基线：`7e3eb54`
-> 相关文档：`doc/debug.md`、`doc/todo.md` §2
+> 相关文档：`doc/debug.md`
 
 ## 1. 摘要
 
