@@ -3,7 +3,9 @@
 > 状态：调研与实验完成；P1 已实现；watchdog 非必需，默认不实现
 > 日期：2026-11-12
 > 范围：pi-qq 1.7.0，QQ C2C `stream_messages`
-> 完整测试报告：`doc/stream-test-report.md`
+> 完整测试报告：`doc/test-report.md`
+> 具体任务：`doc/task.md`
+> 未完成项目：`doc/todo.md`
 
 ## 1. 现象与日志证据
 
@@ -123,28 +125,6 @@
 
 解决问题：有新鲜入站消息时，不需要用户手动 `/last`。
 
-### 5.4 仍未解决
-
-- 首个失败帧仍可能发生；auto-rebind 要到下一次 assistant final 才执行。
-- 没有新鲜入站消息时，旧 `msg_id` 可能已过期；新流仍可能失败。
-- 没有 watchdog，长工具期间仍然没有进度帧。
-- `autoRebinds` 每次 run 只有 1 次；如果第一次目标无效，不会自动再试。
-
-### 5.5 优先级清单（P1–P3）
-
-| 优先级 | 问题                                   | 改动                                                    | 状态                                      | 位置/证据                                              |
-| ------ | -------------------------------------- | ------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------ |
-| P1     | `40034017` 超大帧                      | 单帧 ≤3500 B，优先换行切分，硬切补 `\n`                 | 已完成                                    | `src/relay/stream-session.ts`；新增分片测试            |
-| P1     | `40034020` 用旧 `stream_msg_id` resume | 新 `msg_seq`、`index=0`、不带旧 `stream_msg_id`         | 已完成                                    | `src/relay/bubble-writer.ts`                           |
-| P1     | 死流后无自动恢复                       | auto-rebind 最近 5 分钟入站，重放快照，每 run 最多 1 次 | 已完成；`relay 10.5` 已验证新流恢复       | `src/relay/run-stream-relay.ts`                        |
-| P1     | 长工具期间无帧                         | 空闲心跳/轮换 watchdog                                  | 待实验                                    | 本文 §6、§7                                            |
-| P2     | 死流时 QQ 侧静默                       | 死流提示，或自动 repush 当前快照                        | 部分完成（auto-rebind 已有；QQ 提示未做） | `onWarn` 目前只走 TUI；`src/relay/run-stream-relay.ts` |
-| P2     | typing 超时可能阻塞流帧                | 隔离 typing，避免串行发送被拖住                         | 未做                                      | 日志 13:17:24–13:17:55；两次 10s 连接超时              |
-| P3     | run 触发消息未入日志                   | 在 log gate 打开前记录，或缓冲到 run 开始               | 未做                                      | `index.ts:101`、`src/infra/file-logger.ts`             |
-| P3     | 日志含敏感信息                         | 对命令/结果中的密码、token、session 做脱敏              | 未做                                      | 日志含本地 DB 凭据、临时账号密码、Redis 会话键         |
-| P3     | `append: while flushing` 噪声          | 降频/聚合日志                                           | 未做                                      | 4,945 行，约占 18 MB 日志的 27%                        |
-| P3     | 文档与发布记录                         | 更新 `CHANGELOG.md` / `doc/todo.md`                     | 部分完成（P1 已写；P2/P3 未写）           | `CHANGELOG.md`、`doc/todo.md`                          |
-
 ## 6. watchdog 方案
 
 watchdog 的目标：在平台返回 `40034020` 之前，主动处理长时间无帧或超长生命周期的流。
@@ -185,108 +165,7 @@ watchdog 的目标：在平台返回 `40034020` 之前，主动处理长时间�
 - 心跳帧内容需要实测：`content_raw=""` 是否允许未知；`"\n"` 至少满足分片换行要求，但会留下空行。
 - 如果采用轮换，工具结果会进入新气泡；建议在结果前补一行 `## 💻 <tool>（继续）`，或接受无头结果气泡。
 
-## 7. 实验计划
-
-目标：区分“空闲超时”和“总生命周期”，并确认过期后的新流策略。使用测试账号和测试用户，避免影响真实会话。
-
-### 7.1 实验 A：心跳是否有效
-
-- 用一条新鲜入站消息开流；
-- 首帧成功后，每 1 分钟发一个极小心跳帧（`content_raw="\n"`，`input_state=1`，`index` 递增，`msg_seq` 与 `stream_msg_id` 不变）；
-- 持续 30 分钟，然后发正常内容帧和 `input_state=10`；
-- 记录首个非 200 的时间、错误码、是否还能结束。
-
-### 7.2 实验 B：无心跳对照
-
-- 同样的新鲜入站消息开流；
-- 首帧后完全不发帧；
-- 在 2 / 5 / 10 / 15 / 20 分钟分别用**独立的新流**探测（避免探测帧重置同一个流的空闲计时）；
-- 记录每个时间点首次发帧是否成功。
-
-### 7.3 实验 C：过期后新流
-
-- 触发 `40034020` 后，用同一个入站 `msg_id`、新 `msg_seq`、`index=0`、不带旧 `stream_msg_id` 开新流；
-- 若失败，再试 `is_wakeup=true`；
-- 若仍失败，用一条全新的入站消息；
-- 记录三种情况的首帧结果和错误码。
-
-### 7.4 实验 D：主动轮换
-
-- 开流后 5 分钟主动 `done` 关闭；
-- 用同一条入站消息开新流，发送一条普通文本；
-- 观察新流是否被接受；
-- 再模拟 23 分钟长工具：关闭后等待，结果到达时开新流并发送结果。
-
-### 7.5 记录字段
-
-每次实验记录：
-
-- 开流时间、`msg_id` 年龄、`event_id`、`msg_seq`、`stream_msg_id`；
-- 每次帧的时间、`index`、`content_raw` 长度、HTTP 状态、错误码；
-- 首次 `40034020` 时间；
-- 新流是否成功、是否用了 `is_wakeup`；
-- QQ 侧实际显示（气泡数量、空行、工具头是否缺失）。
-
-## 8. 计划与待决策
-
-### 8.1 建议顺序
-
-1. 保留已实现的 P1，不先写死 watchdog 阈值。
-2. 用第 7 节实验确认 H1/H2/H4。
-3. 根据结果选择：
-   - 空闲超时 → 空闲心跳（方案 A）；
-   - 总生命周期 → 总寿命轮换（方案 C）；
-   - 两者都有 → 混合（方案 D）；
-   - 目标 `msg_id` 过期是主要问题 → 优先 auto-rebind / `is_wakeup` / 主动消息。
-4. 补测试、更新 `CHANGELOG.md` / `doc/todo.md`，再发布。
-
-### 8.2 watchdog 结论
-
-2026-11-12 实验结论：
-
-- 流总生命周期约 **600 秒**，心跳不能续命；
-- 过期后同 `msg_id` 新流可用，当前 P1 的 `40034020` 新开流已经覆盖恢复；
-- **不默认实现 watchdog**；如果后续要优化首次失败帧，可加一个默认关闭的 `streamRotateAfterMs = 8 分钟`，采用轮换而不是心跳；
-- 保留 `40034020` 新开 + auto-rebind 作为兜底；
-- 不建议只做心跳：无法突破约 600s 的总生命周期。
-
-### 8.3 待决策
-
-1. 是否还需要可选的 8 分钟轮换，以消除首次 `40034020` 的失败帧？默认建议关闭。
-2. 如果做轮换，是否重发工具头？重发会增加重复信息，不重发会出现无头结果气泡。
-3. `autoRebinds` 是否从 1 次提高到 2 次？需要防止反复失败刷屏。
-4. 是否测试 `is_wakeup=true` 作为更长时间（>20 分钟）的续流方案？当前 10 分钟同 `msg_id` 新流已成功，暂不需要。
-5. 3500 B 是否需要按真实 API 再校准？当前是日志推断值。
-
-## 9. 实验环境（2026-11-11）
-
-已在 `~/project/mine/pi-qq-test` 准备好真实 QQ 实验环境：
-
-- `run-experiment.sh`：启动本地 pi-qq（`-ne -e ../pi-qq`）和实验扩展，并设置 `PI_QQ_EXPERIMENTS=1`、独立的 `PI_QQ_LOG_DIR`。
-- `.pi/extensions/stream-exp.ts`：拦截 QQ 的 `EXP:` 消息，直接调用 `AppendStream` / `messageApi`，不经过模型。
-- `README-experiment.md`：启动步骤、命令、建议顺序和日志位置。
-
-QQ 命令：
-
-```text
-EXP: help
-EXP: idle <minutes>
-EXP: heartbeat <minutes> [intervalMinutes]
-EXP: expire <minutes>
-EXP: rotate <minutes>
-EXP: status
-EXP: stop
-EXP: ping
-```
-
-日志：
-
-- `.pi/pi-qq/experiments/exp-YYYY-MM-DD.jsonl`：帧级实验日志。
-- `.pi/pi-qq/experiment-logs/pi-qq-YYYY-MM-DD.log`：pi-qq 自身日志，与旧日志隔离。
-
-本地钩子：pi-qq 在 `PI_QQ_EXPERIMENTS=1` 时暴露 `__piQQExperimentDebug`（running bot、last target、cancelPending），仅用于实验；不设置该环境变量时不暴露。
-
-## 10. 参考
+## 7. 参考
 
 - 日志：`~/project/mine/pi-qq-test/.pi/pi-qq/logs/pi-qq-2026-11-11.log`
 - 官方流式接口：`https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_stream_messages.post.html`
