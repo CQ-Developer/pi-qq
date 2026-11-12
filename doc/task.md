@@ -3,15 +3,7 @@
 > 只记录待执行或进行中的具体任务；完成后直接删除。
 > 背景与调研：`doc/investigate.md`；测试结果：`doc/test-report.md`；长期项目：`doc/todo.md`。
 
-## 1. `/stop wait done` 与后台日志
-
-**状态：待定。** `/stop` 已改为立即回复，真实 agent 已在约 1ms 内收到“已请求中止”。
-
-**背景：** `waitForEnd()` 现在只在后台记录；run 结束后 log gate 关闭，`/stop wait done` 和 `waitedMs` 不会落盘。立即回复本身已经由 `outbound` 日志确认。
-
-**待决定：** 是否需要让 `inbound`/`outbound` 在 stop 等待期间继续写入日志；如果只是为了诊断，可接受当前状态并删除本任务。
-
-## 2. typing 超时隔离
+## 1. typing 超时隔离
 
 **状态：未开始。**
 
@@ -19,7 +11,7 @@
 
 **下一步：** 在实验环境构造 typing 超时，观察流帧是否被延迟；确认后再决定是否隔离 typing 请求或降低心跳频率。
 
-## 3. run 触发消息未入日志
+## 2. run 触发消息未入日志
 
 **状态：未开始。**
 
@@ -27,7 +19,7 @@
 
 **下一步：** 在 inbound 到达时先记录元数据，或缓冲最后一条 inbound 并在 run 开始时落盘；补测试。
 
-## 4. 日志脱敏
+## 3. 日志脱敏
 
 **状态：未开始。**
 
@@ -35,7 +27,7 @@
 
 **下一步：** 对 `password`、`token`、`secret`、`session`、`-p...` 等模式做脱敏；保留调试所需的结构化字段；补测试。
 
-## 5. `append: while flushing` 日志降噪
+## 4. `append: while flushing` 日志降噪
 
 **状态：未开始。**
 
