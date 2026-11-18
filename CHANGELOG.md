@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-18
+
 ### Fixed
 
 - Stream frames are now split at line boundaries below the QQ markdown shard limit, preventing `40034017` on large tool commands or text.
@@ -16,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The message that starts a QQ run is now logged before the run becomes active, so trigger metadata is available for debugging.
 - `append: while flushing` diagnostics are aggregated to the first and every 50th append per flush.
 - Typing notifications are skipped while a stream is active to avoid competing with stream requests on slow networks.
+
+### Changed
+
+- Consolidated the 1.7.1 stream investigation, real-QQ test report, and task records into `doc/archive/delivery.1.7.1.md`; removed `doc/investigate.md`, `doc/task.md`, and `doc/test-report.md`.
 
 ## [1.7.0] - 2026-11-11
 
@@ -195,7 +201,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added thinking labels, per-tool icons, model-error recovery, and idle-safe session handling.
 - Reorganized modules by bounded context and updated settings and delivery documentation.
 
-[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/CQ-Developer/pi-qq/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/CQ-Developer/pi-qq/compare/v1.6.0...v1.6.1
