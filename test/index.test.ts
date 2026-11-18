@@ -367,7 +367,10 @@ describe("extension lifecycle", () => {
     );
 
     await flushLogs();
-    const records = (await readFile(getLogFilePath(), "utf8"))
+    const text = await readFile(getLogFilePath(), "utf8");
+    expect(text).not.toContain("remote");
+    expect(text).not.toContain("textPreview");
+    const records = text
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -377,6 +380,56 @@ describe("extension lifecycle", () => {
           scope: "pi",
           msgKey: "log.assistantMessageEnded",
           textLength: 6,
+        }),
+      ]),
+    );
+  });
+
+  it("logs tool metadata without arguments or results", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    feedback.isQQRunActive.mockReturnValue(true);
+
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-tool-log-"));
+    configureLogger("debug", dir);
+    const { pi, handlers } = makePi();
+    extension(pi);
+    const ctx = makeCtx();
+    const args = { command: "echo secret-argument" };
+    const result = { content: [{ type: "text", text: "secret-result" }] };
+
+    await handlers.get("tool_execution_start")!(
+      { toolName: "bash", toolCallId: "call-1", parentToolCallId: null, args },
+      ctx,
+    );
+    await handlers.get("tool_execution_end")!(
+      { toolName: "bash", toolCallId: "call-1", parentToolCallId: null, isError: false, durationMs: 12, result },
+      ctx,
+    );
+    await flushLogs();
+
+    const text = await readFile(getLogFilePath(), "utf8");
+    expect(text).not.toContain("secret-argument");
+    expect(text).not.toContain("secret-result");
+    const records = text
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scope: "tool",
+          msgKey: "log.toolStart",
+          toolName: "bash",
+          argsLength: JSON.stringify(args).length,
+        }),
+        expect.objectContaining({
+          scope: "tool",
+          msgKey: "log.toolEnd",
+          toolName: "bash",
+          resultLength: JSON.stringify(result).length,
         }),
       ]),
     );
