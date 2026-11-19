@@ -43,6 +43,26 @@ describe("RunTimeline", () => {
     expect(snapshot.tools[0]?.result).toEqual({ isError: false, result: "out-2" });
   });
 
+  it("caps diagnostic tools and omits args and results", () => {
+    const timeline = new RunTimeline();
+    addTools(timeline, 8);
+    for (let i = 0; i < 7; i++) {
+      timeline.startNextTool();
+      timeline.completeTool(`call-${i}`, false, `secret-${i}`);
+      timeline.finishActiveTool();
+    }
+    timeline.startNextTool();
+
+    const diagnostics = timeline.diagnostics();
+    const tools = diagnostics.tools as Array<Record<string, unknown>>;
+    expect(diagnostics.toolCount).toBe(8);
+    expect(tools).toHaveLength(4);
+    expect(tools.map((tool) => tool.id)).toEqual(["call-4", "call-5", "call-6", "call-7"]);
+    expect(JSON.stringify(diagnostics)).not.toContain("secret-");
+    expect(tools[0]).not.toHaveProperty("args");
+    expect(tools[0]).not.toHaveProperty("result");
+  });
+
   it("reports pending tools until all are finished", () => {
     const timeline = new RunTimeline();
     addTools(timeline, 2);

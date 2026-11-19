@@ -1,4 +1,5 @@
 import { t } from "../infra/i18n";
+import { shortId } from "../infra/short-id";
 import type { BudgetSnapshot } from "./reply-quota";
 
 interface BudgetTarget {
@@ -22,7 +23,7 @@ export function formatBudgetStatus(
   const lastLine = last
     ? t("diagnostics.budget.lastInbound", {
         openid: mask(last.openid),
-        msgId: mask(last.msgId),
+        msgId: shortId(last.msgId),
         age: ageSec ?? 0,
       })
     : t("diagnostics.budget.lastInboundNone");

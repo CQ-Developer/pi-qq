@@ -241,6 +241,28 @@ describe("file output", () => {
     }
   });
 
+  it("shortens message identifiers before writing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-ids-"));
+    try {
+      configureLogger("debug", dir);
+      log.info("test", "ids", {
+        messageId: "ROBOT1.0_UMkNSaLLKokdOorNg7BODxTq",
+        msgId: "ROBOT1.0_UMkNSaLLKokdOorNg7BODxTq",
+        streamMsgId: "0ea26a0f-8e82-44c6-97f6-7598f44d8190",
+        senderId: "openid-12345678",
+      });
+      await flushLogs();
+      const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
+      expect(record.messageId).toBe("UMkNSaLL");
+      expect(record.msgId).toBe("UMkNSaLL");
+      expect(record.streamMsgId).toBe("0ea2…8190");
+      expect(record.senderId).toBe("openid-12345678");
+    } finally {
+      configureLogger("silent");
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("treats a throwing gate as closed", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-gate-"));
     try {

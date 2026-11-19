@@ -46,7 +46,7 @@ describe("AppendStream", () => {
     expect(new Set(calls.map((call) => call.index as number)).size).toBe(calls.length);
   });
 
-  it("限制 while flushing 日志数量", async () => {
+  it("不记录逐帧 append 日志", async () => {
     let resolveSend: ((value: { id: string }) => void) | undefined;
     const api = {
       sendC2CStreamMessage: () =>
@@ -66,9 +66,23 @@ describe("AppendStream", () => {
     await first;
     stream.dispose();
 
-    const whileFlushing = debug.filter((message) => message.startsWith("append: while flushing"));
-    expect(whileFlushing.length).toBeLessThanOrEqual(3);
-    expect(whileFlushing[0]).toContain("count=1");
+    expect(debug.filter((message) => message.startsWith("append:"))).toHaveLength(0);
+    expect(debug.filter((message) => message.startsWith("timer:"))).toHaveLength(0);
+  });
+
+  it("分片未发完时记录 flush 摘要", async () => {
+    const { api } = makeFakeApi();
+    const debug: string[] = [];
+    const stream = new AppendStream(api as never, {} as never, "openid-x", "msg-t", {
+      throttleMs: 1,
+      onDebug: (message) => debug.push(message),
+    });
+    await stream.append("x".repeat(MAX_FRAME_BYTES + 100));
+    stream.dispose();
+
+    const partial = debug.filter((message) => message.startsWith("flush: partial"));
+    expect(partial).toHaveLength(1);
+    expect(partial[0]).toContain("remaining=");
   });
 
   it("限流退避后重试成功且不丢内容", async () => {

@@ -3,6 +3,7 @@ import { ReplyBudget } from "../quota/reply-quota";
 import { AppendStream } from "../relay/stream-session";
 import { sendWithMsgSeq } from "./msg-seq-send";
 import { log } from "../infra/file-logger";
+import { shortId } from "../infra/short-id";
 import { t } from "../infra/i18n";
 
 export const TEXT_CHUNK_LIMIT = 4500;
@@ -96,7 +97,7 @@ export async function sendStreamReply(
 ): Promise<void> {
   log.debug("stream", "stream timing", {
     phase: "last reply stream",
-    msgId: target.msgId.slice(0, 8),
+    msgId: shortId(target.msgId),
     textLength: text.length,
   });
   const stream = new AppendStream(bot.messageApi, bot.getCredentials(), target.openid, target.msgId);

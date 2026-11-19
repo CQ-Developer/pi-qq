@@ -10,8 +10,10 @@ import {
   thinkingHeader,
 } from "./stream-block-format";
 import { t } from "../infra/i18n";
+import { shortId } from "../infra/short-id";
 
 type BlockKind = "none" | "thinking" | "tool" | "text";
+type RotateReason = "restart" | "thinking" | "text" | "tool" | "skill" | "split";
 
 const MAX_RESUME_ATTEMPTS = 2;
 const MAX_BUBBLE_CHARS = 12_000;
@@ -128,14 +130,19 @@ export class BubbleWriter {
     const newBubble = this.startsNewBlock("thinking");
     const prefix = this.beginBlock("thinking", newBubble);
     this.thinkingAtLineStart = delta.endsWith("\n");
-    this.push(`${prefix}${delta}`, { blockBoundary: prefix.length > 0 || newBubble, newBubble, thinking: true });
+    this.push(`${prefix}${delta}`, {
+      blockBoundary: prefix.length > 0 || newBubble,
+      newBubble,
+      reason: "thinking",
+      thinking: true,
+    });
   }
 
   pushText(text: string): void {
     if (this.streamDead || this.disposed) return;
     const newBubble = this.startsNewBlock("text");
     const prefix = this.beginBlock("text", newBubble);
-    this.push(`${prefix}${text}`, { blockBoundary: prefix.length > 0 || newBubble, newBubble });
+    this.push(`${prefix}${text}`, { blockBoundary: prefix.length > 0 || newBubble, newBubble, reason: "text" });
   }
 
   pushTool(name: string, args: unknown): void {
@@ -156,6 +163,7 @@ export class BubbleWriter {
     this.push(`${prefix}${formatToolLine(name, args)}\n\n`, {
       blockBoundary: prefix.length > 0 || newBubble,
       newBubble,
+      reason: "tool",
       trace: "tool",
     });
   }
@@ -168,6 +176,7 @@ export class BubbleWriter {
     this.push(`${prefix}${formatSkillBlock(name)}`, {
       blockBoundary: prefix.length > 0 || newBubble,
       newBubble,
+      reason: "skill",
       trace: "skill",
     });
   }
@@ -187,7 +196,7 @@ export class BubbleWriter {
     void this.enqueue(async () => {
       if (this.disposed) return;
       if (this.fenceOpen) await this.closeOpenFence();
-      if (this.cur) await this.rotateStream();
+      if (this.cur) await this.rotateStream("restart");
 
       if (target) {
         this.deps.openid = target.openid;
@@ -273,7 +282,7 @@ export class BubbleWriter {
   }
 
   private logMsgId(): string {
-    return this.deps.msgId?.slice(0, 8) ?? "?";
+    return shortId(this.deps.msgId);
   }
 
   private beginBlock(kind: BlockKind, newBubble = false): string {
@@ -325,11 +334,12 @@ export class BubbleWriter {
       blockBoundary?: boolean;
       endTool?: boolean;
       newBubble?: boolean;
+      reason?: RotateReason;
       thinking?: boolean;
       trace?: string;
     } = {},
   ): void {
-    const { blockBoundary = false, endTool = false, newBubble = false, thinking = false, trace } = options;
+    const { blockBoundary = false, endTool = false, newBubble = false, reason, thinking = false, trace } = options;
     if (!text || this.streamDead || this.disposed) return;
     const queuedAt = trace ? Date.now() : 0;
     void this.enqueue(async () => {
@@ -346,14 +356,14 @@ export class BubbleWriter {
       }
       if (blockBoundary && !(await this.closeOpenFence())) return;
       if (newBubble && this.cur && this.bubbleChars > 0 && !this.pendingResume) {
-        await this.rotateStream();
+        await this.rotateStream(reason ?? "text");
         if (this.streamDead || this.disposed) return;
       }
       const cut = this.splitPoint(text, newBubble);
       if (cut >= 0) {
         await this.appendChunk(text.slice(0, cut + 1), { thinking, endTool, trace, queuedAt });
         if (this.streamDead || this.disposed) return;
-        await this.rotateStream();
+        await this.rotateStream("split");
         if (this.streamDead || this.disposed) return;
         await this.appendChunk(text.slice(cut + 1), { thinking, endTool, trace, queuedAt });
         return;
@@ -423,9 +433,12 @@ export class BubbleWriter {
     }
   }
 
-  private async rotateStream(): Promise<void> {
+  private async rotateStream(reason: RotateReason): Promise<void> {
     const stream = this.cur;
     if (!stream) return;
+    const bubbleChars = this.bubbleChars;
+    const lastKind = this.lastKind;
+    const endedWithNewline = this.lastChar === "\n";
     try {
       if (this.lastChar && this.lastChar !== "\n") {
         await stream.append("\n");
@@ -451,8 +464,12 @@ export class BubbleWriter {
     if (isLogEnabled("debug")) {
       log.debug("stream", "bubble split", {
         msgId: this.logMsgId(),
+        reason,
         elapsedMs: Date.now() - this.deps.startedAt,
-        stats: this.stats(),
+        bubbleChars,
+        lastKind,
+        endedWithNewline,
+        hasPushed: this.pushedAny,
       });
     }
   }

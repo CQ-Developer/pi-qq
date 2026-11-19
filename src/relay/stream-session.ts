@@ -1,5 +1,6 @@
 import { StreamContentType, StreamInputState } from "@tencent-connect/qqbot-nodejs/protocol";
 import { allocateMsgSeq } from "./msg-seq";
+import { shortId } from "../infra/short-id";
 import type {
   Credentials,
   MessageApi,
@@ -10,6 +11,7 @@ import type {
 const MIN_INTERVAL_MS = 300;
 const RATE_LIMIT_BASE_MS = 1000;
 const MAX_RETRIES = 3;
+const SLOW_FRAME_MS = 1000;
 // QQ rejects oversized markdown shards with 40034017. The platform appears to
 // split frames larger than roughly 4k and then requires every shard to end at
 // a newline; 3500 bytes leaves room for that limit and for multi-byte text.
@@ -47,7 +49,6 @@ export class AppendStream {
   private buffer = "";
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushing = false;
-  private flushingAppends = 0;
   private lastFlushAt = 0;
 
   constructor(
@@ -97,28 +98,18 @@ export class AppendStream {
   async append(delta: string): Promise<void> {
     if (this.doneSent || !delta) return;
     this.buffer += delta;
+    if (this.flushing) return;
     const elapsed = Date.now() - this.lastFlushAt;
     const throttle = this.throttleMs();
-    if (this.flushing) {
-      this.flushingAppends += 1;
-      if (this.flushingAppends === 1 || this.flushingAppends % 50 === 0) {
-        this.opts.onDebug?.(`append: while flushing, count=${this.flushingAppends}, buffer=${this.buffer.length}`);
-      }
-      return;
-    }
     if (elapsed >= throttle) {
-      this.opts.onDebug?.(`append: immediate, elapsed=${elapsed}, buffer=${this.buffer.length}`);
       await this.doFlush("generating");
       return;
     }
     if (!this.flushTimer) {
-      const waitMs = throttle - elapsed;
-      this.opts.onDebug?.(`append: buffered, elapsed=${elapsed}, wait=${waitMs}, buffer=${this.buffer.length}`);
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
-        this.opts.onDebug?.(`timer: fired after ${waitMs}, buffer=${this.buffer.length}`);
         void this.doFlush("generating").catch((err) => this.opts.onError?.(err as Error));
-      }, waitMs);
+      }, throttle - elapsed);
     }
   }
 
@@ -196,11 +187,8 @@ export class AppendStream {
     const frame = state === "done" ? { text: "", consumed: 0 } : this.takeFrame();
     const content = frame.text;
     if (!content && state === "generating") return;
-    this.opts.onDebug?.(
-      `flush: start state=${state}, content=${content.length}, index=${this.index}, msgSeq=${this.msgSeq ?? "none"}, streamMsgId=${this.streamMsgId ?? "none"}`,
-    );
+    const frameStartedAt = Date.now();
     this.flushing = true;
-    this.flushingAppends = 0;
     let failed = false;
     try {
       if (this.msgSeq === null) this.msgSeq = allocateMsgSeq(this.msgId);
@@ -220,9 +208,17 @@ export class AppendStream {
       if (resp?.id && !this.streamMsgId) this.streamMsgId = resp.id;
       if (state === "generating") this.buffer = this.buffer.slice(frame.consumed);
       this.lastFlushAt = Date.now();
-      this.opts.onDebug?.(
-        `flush: done state=${state}, remaining=${this.buffer.length}, streamMsgId=${this.streamMsgId ?? "none"}`,
-      );
+      const elapsedMs = this.lastFlushAt - frameStartedAt;
+      const remaining = this.buffer.length;
+      if (elapsedMs >= SLOW_FRAME_MS) {
+        this.opts.onDebug?.(
+          `flush: slow state=${state}, elapsed=${elapsedMs}, content=${content.length}, index=${index}, msgSeq=${this.msgSeq ?? "none"}, streamMsgId=${shortId(this.streamMsgId)}, remaining=${remaining}`,
+        );
+      } else if (remaining > 0) {
+        this.opts.onDebug?.(
+          `flush: partial state=${state}, index=${index}, msgSeq=${this.msgSeq ?? "none"}, streamMsgId=${shortId(this.streamMsgId)}, remaining=${remaining}`,
+        );
+      }
     } catch (err) {
       failed = true;
       throw err;

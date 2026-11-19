@@ -31,19 +31,6 @@ export function createInboundHandler(deps: InboundDeps) {
   const pending = new PendingAttachments();
 
   return async (bot: QQBot, msg: QQBotInboundMessage): Promise<void> => {
-    log.debug("inbound", "message received", {
-      kind: msg.kind,
-      rawEventType: msg.rawEventType,
-      messageId: msg.messageId,
-      senderId: msg.senderId,
-      senderIsBot: msg.senderIsBot,
-      msgType: msg.msgType,
-      timestamp: msg.timestamp,
-      contentLength: (msg.content ?? "").length,
-      attachmentCount: (msg.attachments ?? []).length,
-      elementCount: (msg.msgElements ?? []).length,
-    });
-
     if (msg.kind !== "c2c") {
       log.debug("inbound", "skipped non-c2c message", { kind: msg.kind });
       return;
@@ -58,10 +45,16 @@ export function createInboundHandler(deps: InboundDeps) {
     deps.reloadSettings();
     deps.budget.observeInbound(msg.senderId, msg.messageId);
     log.info("inbound", "message received", {
+      kind: msg.kind,
+      rawEventType: msg.rawEventType,
       messageId: msg.messageId,
       senderId: msg.senderId,
+      senderIsBot: msg.senderIsBot,
+      msgType: msg.msgType,
+      timestamp: msg.timestamp,
       contentLength: (msg.content ?? "").length,
       attachmentCount: (msg.attachments ?? []).length,
+      elementCount: (msg.msgElements ?? []).length,
     });
 
     const channel: ReplyChannel = {

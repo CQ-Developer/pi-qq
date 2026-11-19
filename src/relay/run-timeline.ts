@@ -111,7 +111,7 @@ export class RunTimeline {
       activeTool: this.activeToolId ?? null,
       toolCount: this.tools.length,
       pendingToolCount: this.tools.filter((tool) => !tool.finished).length,
-      tools: this.tools.map((tool) => ({
+      tools: this.snapshot().tools.map((tool) => ({
         id: tool.id,
         name: tool.name,
         started: tool.started,

@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { logMessageKey } from "./log-message-keys";
+import { shortId } from "./short-id";
 
 export type LogLevel = "silent" | "error" | "warn" | "info" | "debug";
 type LogFields = Record<string, unknown>;
@@ -61,6 +62,7 @@ function isLogAllowed(scope: string): boolean {
 const REDACTED = "<redacted>";
 const SECRET_KEY_RE =
   /^(?:password|passwd|pwd|secret|token|session|sessionId|cookie|authorization|api[_-]?key|client[_-]?secret|app[_-]?secret|access[_-]?token|refresh[_-]?token|private[_-]?key)$/i;
+const SHORT_ID_KEYS = new Set(["messageId", "msgId", "streamMsgId"]);
 
 /** Redact common credential shapes while keeping the surrounding log text. */
 export function redactLogText(text: string): string {
@@ -78,6 +80,7 @@ export function redactLogText(text: string): string {
 
 function redactValue(value: unknown, key?: string): unknown {
   if (key && SECRET_KEY_RE.test(key)) return REDACTED;
+  if (key && SHORT_ID_KEYS.has(key) && typeof value === "string") return shortId(value);
   if (typeof value === "string") return redactLogText(value);
   if (Array.isArray(value)) return value.map((item) => redactValue(item));
   if (value instanceof Error) {

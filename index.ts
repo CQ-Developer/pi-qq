@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { monitorEventLoopDelay } from "node:perf_hooks";
+import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { getSettings, readConfig, type Credentials, type ResolvedSettings } from "./src/infra/settings";
 import { startBot, type BotState, type RunningBot } from "./src/qq/qq-bot";
 import { runQrLogin, type QrLoginResult } from "./src/qq/qr-login";
@@ -49,7 +49,9 @@ const runFeedback = new RunFeedback({
   onWarn: (msg) => sessionCtx?.ui.notify(`pi-qq ${msg}`, "warning"),
 });
 
-const eventLoopDelay = monitorEventLoopDelay({ resolution: 100 });
+// Node's histogram mean has a floor roughly equal to `resolution` (observed as
+// milliseconds on Node 24), so a large resolution hides real delay. Keep 1 ms.
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 1 });
 let eventLoopTimer: ReturnType<typeof setInterval> | undefined;
 
 interface ToolUpdateStats {
@@ -75,15 +77,19 @@ function startEventLoopMonitor(): void {
   eventLoopDelay.reset();
   eventLoopDelay.enable();
   let lastTickAt = Date.now();
+  let lastElu = performance.eventLoopUtilization();
   eventLoopTimer = setInterval(() => {
     const now = Date.now();
     const driftMs = now - lastTickAt - 5_000;
     lastTickAt = now;
+    const elu = performance.eventLoopUtilization(lastElu);
+    lastElu = performance.eventLoopUtilization();
     log.debug("event-loop", "event loop delay", {
       meanMs: roundMs(eventLoopDelay.mean),
       maxMs: roundMs(eventLoopDelay.max),
       p99Ms: roundMs(eventLoopDelay.percentile(99)),
       driftMs,
+      utilizationPercent: Math.round(elu.utilization * 1000) / 10,
     });
     eventLoopDelay.reset();
   }, 5_000);

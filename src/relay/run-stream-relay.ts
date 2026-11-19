@@ -5,6 +5,7 @@ import { policyFor, type ReplyPolicy } from "./reply-policy";
 import type { ReplyBudget } from "../quota/reply-quota";
 import type { ReplyType } from "../infra/reply-type";
 import { isLogEnabled, log } from "../infra/file-logger";
+import { shortId } from "../infra/short-id";
 
 export interface RunFeedbackDeps {
   bot: () => QQBot | undefined;
@@ -20,6 +21,8 @@ interface RunState {
   thinkingSentLen: number;
   finalizedText: string;
   resultSentLen: number;
+  lastFinalizedTextLen: number;
+  lastResultSentLen: number;
   deferredThinking: string;
   deferredText: string;
   timeline: RunTimeline;
@@ -129,7 +132,7 @@ export class RunFeedback {
 
     log.debug("run", "stream timing", {
       phase: "last repush",
-      msgId: msgId.slice(0, 8),
+      msgId: shortId(msgId),
       replyType,
       textLength,
       thinkingLength,
@@ -171,7 +174,7 @@ export class RunFeedback {
     }
     const bot = this.deps.bot();
     if (!bot) {
-      log.debug("run", "run started", { phase: "no bot", msgId: target.msgId.slice(0, 8) });
+      log.debug("run", "run started", { phase: "no bot", msgId: shortId(target.msgId) });
       return;
     }
 
@@ -191,6 +194,8 @@ export class RunFeedback {
       thinkingSentLen: 0,
       finalizedText: "",
       resultSentLen: 0,
+      lastFinalizedTextLen: 0,
+      lastResultSentLen: 0,
       deferredThinking: "",
       deferredText: "",
       timeline: new RunTimeline(),
@@ -199,7 +204,7 @@ export class RunFeedback {
     this.run = run;
     if (isLogEnabled("debug")) {
       log.debug("run", "run started", {
-        msgId: run.msgId?.slice(0, 8) ?? "?",
+        msgId: shortId(run.msgId),
         source: target === pending ? "pending" : "recovery",
         targetAgeMs: now - target.at,
         replyType: this.deps.getReplyType(),
@@ -226,13 +231,6 @@ export class RunFeedback {
     }
     const tool = run.timeline.addTool(toolName, args, id);
     if (!tool) return;
-    log.debug("run", "tool start", {
-      phase: "queued",
-      toolName,
-      toolCallId: id,
-      skillName: tool.skillName ?? null,
-      ...this.diagnostics(run),
-    });
     this.advanceTools(run);
   }
 
@@ -248,13 +246,6 @@ export class RunFeedback {
       log.debug("run", "tool end", { phase: "ignored: unknown tool", toolName, toolCallId: id });
       return;
     }
-    log.debug("run", "tool end", {
-      phase: "result recorded",
-      toolName,
-      toolCallId: id,
-      isError,
-      ...this.diagnostics(run),
-    });
     this.advanceTools(run);
   }
 
@@ -316,19 +307,23 @@ export class RunFeedback {
       if (this.autoRebinds > 0) ok = await run.writer.flush();
     }
     const streamTookOver = !isError && ok && run.writer.hasPushed;
-    log.debug("run", "stream takeover decision", {
-      phase: "assistant final",
-      textLength: text.length,
-      deltaLength: delta.length,
-      isError,
-      hadPendingTools,
-      flushOk: ok,
-      hasPushed: run.writer.hasPushed,
-      streamTookOver,
-      deferredTextLen: run.deferredText.length,
-      deferredThinkingLen: run.deferredThinking.length,
-      ...this.diagnostics(run),
-    });
+    if (text.length > 0 || !streamTookOver) {
+      log.debug("run", "stream takeover decision", {
+        phase: "assistant final",
+        textLength: text.length,
+        deltaLength: delta.length,
+        isError,
+        hadPendingTools,
+        flushOk: ok,
+        hasPushed: run.writer.hasPushed,
+        streamTookOver,
+        deferredTextLen: run.deferredText.length,
+        deferredThinkingLen: run.deferredThinking.length,
+        ...this.diagnostics(run),
+      });
+    }
+    run.lastFinalizedTextLen = run.finalizedText.length;
+    run.lastResultSentLen = run.resultSentLen;
     run.finalizedText = "";
     run.resultSentLen = 0;
     if (isError) return false;
@@ -348,24 +343,26 @@ export class RunFeedback {
     this.clearTimers();
     if (run.timeline.currentText.trim()) this.lastCompletedText = run.timeline.currentText;
     if (!run.timeline.error && run.writer.hasPushed) this.recovery = null;
+    let delivered = false;
+    if (run.writer.hasPushed) {
+      const ok = await run.writer.flush();
+      if (ok) {
+        await run.writer.done();
+        delivered = true;
+      }
+    }
     log.debug("run", "run ended", {
       phase: "cleanup",
-      msgId: run.msgId?.slice(0, 8) ?? "?",
+      msgId: shortId(run.msgId),
       elapsedMs: Date.now() - run.startedAt,
       hasPendingTools,
       hasPushed: run.writer.hasPushed,
+      delivered,
       lastCompletedTextLength: this.lastCompletedText?.length ?? 0,
+      lastFinalizedTextLen: run.lastFinalizedTextLen,
+      lastResultSentLen: run.lastResultSentLen,
       ...this.diagnostics(run),
     });
-    log.debug("run", "run ended", {
-      phase: "finished",
-      msgId: run.msgId?.slice(0, 8) ?? "?",
-      elapsedMs: Date.now() - run.startedAt,
-    });
-    if (run.writer.hasPushed) {
-      const ok = await run.writer.flush();
-      if (ok) await run.writer.done();
-    }
     run.writer.dispose();
     if (this.run === run) this.run = null;
     this.finishEnd();
@@ -419,7 +416,7 @@ export class RunFeedback {
     this.autoRebinds += 1;
     log.debug("run", "stream timing", {
       phase: "auto rebind",
-      msgId: msgId.slice(0, 8),
+      msgId: shortId(msgId),
       freshTarget,
       targetAgeMs,
       textLength: result.textLength,
@@ -480,6 +477,7 @@ export class RunFeedback {
         toolName: tool.name,
         toolCallId: tool.id,
         skillName: tool.skillName ?? null,
+        queueWaitMs: Date.now() - tool.startedAt,
         ...this.diagnostics(run),
       });
       if (!run.writer.dead && relayTools) {
