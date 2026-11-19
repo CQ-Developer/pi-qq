@@ -108,7 +108,7 @@ export default function (pi: ExtensionAPI) {
     if (!getLoginState()) return false;
     // The message that starts a run arrives before the run becomes active.
     if (scope === "inbound") return true;
-    if (scope === "session" || scope === "bot") return true;
+    if (scope === "session" || scope === "bot" || scope === "power") return true;
     return runFeedback.isQQRunActive();
   });
 
@@ -147,7 +147,7 @@ export default function (pi: ExtensionAPI) {
 
   const onWarn = (ctx: ExtensionContext) => (msg: string) => ctx.ui.notify(`pi-qq ${msg}`, "warning");
 
-  const getStatusLines = (ctx: ExtensionContext | undefined = sessionCtx): string[] => {
+  const getStatusLines = async (ctx: ExtensionContext | undefined = sessionCtx): Promise<string[]> => {
     const login = getLoginState();
     const usage = ctx?.getContextUsage();
     return formatStatusReport({
@@ -165,7 +165,7 @@ export default function (pi: ExtensionAPI) {
             percent: usage.percent,
           }
         : undefined,
-      power: getPowerStatus(),
+      power: await getPowerStatus(),
       replyType: activeSettings.replyType,
     });
   };
@@ -460,7 +460,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("qq-status", {
     description: t("commands.descQqStatus"),
     handler: async (_args, ctx) => {
-      ctx.ui.notify(getStatusLines(ctx).join("\n"), "info");
+      ctx.ui.notify((await getStatusLines(ctx)).join("\n"), "info");
     },
   });
 

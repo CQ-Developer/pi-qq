@@ -1,8 +1,16 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { parsePmsetOutput, parseWindowsBattery, readLinuxBattery } from "../../src/infra/power-status";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  getPowerStatus,
+  parsePmsetOutput,
+  parseWindowsBattery,
+  readLinuxBattery,
+  resetPowerStatusCache,
+} from "../../src/infra/power-status";
+
+beforeEach(() => resetPowerStatusCache());
 
 describe("power status parsers", () => {
   it("parses macOS pmset battery states", () => {
@@ -59,5 +67,30 @@ describe("power status parsers", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("caches the battery status for 30 seconds", async () => {
+    let calls = 0;
+    const read = async () => {
+      calls += 1;
+      return { percent: 80, state: "discharging" as const };
+    };
+
+    await expect(getPowerStatus(1_000, read)).resolves.toEqual({ percent: 80, state: "discharging" });
+    await expect(getPowerStatus(2_000, read)).resolves.toEqual({ percent: 80, state: "discharging" });
+    expect(calls).toBe(1);
+
+    resetPowerStatusCache();
+    await getPowerStatus(3_000, read);
+    expect(calls).toBe(2);
+  });
+
+  it("returns undefined when the battery probe fails", async () => {
+    const error = Object.assign(new Error("spawn killed"), { killed: true, signal: "SIGTERM" });
+    await expect(
+      getPowerStatus(1_000, async () => {
+        throw error;
+      }),
+    ).resolves.toBeUndefined();
   });
 });

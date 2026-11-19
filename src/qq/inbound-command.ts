@@ -15,7 +15,7 @@ export type InboundPi = Pick<ExtensionAPI, "sendUserMessage">;
 export interface InboundCommandDeps {
   pi: InboundPi;
   ctx: InboundContext;
-  getStatusLines: () => string[];
+  getStatusLines: () => string[] | Promise<string[]>;
   getLastMessage?: () => string | undefined;
   onStop?: () => void;
   waitForEnd?: () => Promise<void>;
@@ -87,7 +87,7 @@ export async function handleInboundCommand(
       }
       break;
     case "/status":
-      await reply(deps.getStatusLines().join("\n"));
+      await reply((await deps.getStatusLines()).join("\n"));
       break;
     case "/last": {
       if (!deps.ctx.isIdle()) {

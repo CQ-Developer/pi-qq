@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { log } from "./file-logger";
 
 export interface PowerStatus {
   percent?: number;
@@ -8,6 +9,10 @@ export interface PowerStatus {
 }
 
 const CACHE_MS = 30_000;
+const MACOS_TIMEOUT_MS = 500;
+// PowerShell cold start plus the CIM query takes about 0.7 s on a warm cache
+// and longer on a cold one; 500 ms killed the process before it could answer.
+const WINDOWS_TIMEOUT_MS = 3000;
 let cache: { at: number; value: PowerStatus | undefined } | undefined;
 
 function clampPercent(value: number): number | undefined {
@@ -67,38 +72,56 @@ export function readLinuxBattery(root = "/sys/class/power_supply"): PowerStatus 
   return undefined;
 }
 
-function readPowerStatus(): PowerStatus | undefined {
-  try {
-    if (process.platform === "linux") return readLinuxBattery();
-    if (process.platform === "darwin") {
-      const output = execFileSync("pmset", ["-g", "batt"], {
-        encoding: "utf8",
-        timeout: 500,
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      return parsePmsetOutput(output);
-    }
-    if (process.platform === "win32") {
-      const output = execFileSync(
-        "powershell",
-        [
-          "-NoProfile",
-          "-Command",
-          "Get-CimInstance Win32_Battery | Select-Object -First 1 EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress",
-        ],
-        { encoding: "utf8", timeout: 500, stdio: ["ignore", "pipe", "ignore"] },
-      );
-      return parseWindowsBattery(output);
-    }
-  } catch {
-    return undefined;
+function run(file: string, args: string[], timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { encoding: "utf8", timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
+
+async function readPowerStatus(): Promise<PowerStatus | undefined> {
+  if (process.platform === "linux") return readLinuxBattery();
+  if (process.platform === "darwin") {
+    return parsePmsetOutput(await run("pmset", ["-g", "batt"], MACOS_TIMEOUT_MS));
+  }
+  if (process.platform === "win32") {
+    const output = await run(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        "Get-CimInstance Win32_Battery | Select-Object -First 1 EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress",
+      ],
+      WINDOWS_TIMEOUT_MS,
+    );
+    return parseWindowsBattery(output);
   }
   return undefined;
 }
 
-export function getPowerStatus(now = Date.now()): PowerStatus | undefined {
+export function resetPowerStatusCache(): void {
+  cache = undefined;
+}
+
+export async function getPowerStatus(
+  now = Date.now(),
+  read: () => Promise<PowerStatus | undefined> = readPowerStatus,
+): Promise<PowerStatus | undefined> {
   if (cache && now - cache.at < CACHE_MS) return cache.value;
-  const value = readPowerStatus();
+  let value: PowerStatus | undefined;
+  try {
+    value = await read();
+  } catch (err) {
+    const e = err as { code?: string | number; killed?: boolean; signal?: string };
+    log.debug("power", "power status read failed", {
+      platform: process.platform,
+      code: e?.code ?? null,
+      killed: e?.killed ?? null,
+      signal: e?.signal ?? null,
+    });
+  }
   cache = { at: now, value };
   return value;
 }

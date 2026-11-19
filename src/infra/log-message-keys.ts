@@ -25,6 +25,7 @@ const LOG_MESSAGE_KEYS = {
   "no bound user; reply skipped": "log.noBoundUser",
   "no injectable content after attachment handling": "log.noInjectableContent",
   "passive send failed; retrying proactively": "log.passiveSendFailed",
+  "power status read failed": "log.powerStatusReadFailed",
   "proactive retry failed": "log.proactiveRetryFailed",
   "run ended": "log.runEnded",
   "run started": "log.runStarted",
