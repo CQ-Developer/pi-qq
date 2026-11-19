@@ -84,7 +84,7 @@ Summarize this file.
 - **普通消息**：原文，不加标题。
 - **工具图标**：💻 bash、📖 read、📝 write、✏️ edit、🔎 grep、🔍 search、🗂️ find、📁 ls、📋 list、🌐 web、📡 fetch、🗑️ delete、❌ remove、✅ todo、🧪 test；未配置工具使用 🔧。
 
-每个块都是一条独立的 QQ 消息，长 run 可能推送几十个气泡；需要更少的消息时使用 `replyType: "simple"` 或 `"last"`。
+每个块都是一条独立的 QQ 消息，长 run 可能推送几十个气泡；需要更少的消息时使用 `replyType: "simple"`。
 
 模型错误后 60 秒内自动恢复的 run 会继续推送到原 QQ 会话；`/stop` 会等待当前工具和流收尾后再回复。
 

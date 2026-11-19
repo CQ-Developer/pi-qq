@@ -84,7 +84,7 @@ In `replyType: "full"` mode, QQ receives these block types:
 - **Regular messages**: raw text with no header.
 - **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
 
-Each block is a separate QQ message, so a long run can push dozens of bubbles; use `replyType: "simple"` or `"last"` to reduce the volume.
+Each block is a separate QQ message, so a long run can push dozens of bubbles; use `replyType: "simple"` to reduce the volume.
 
 After a model error, automatic retries within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.
 

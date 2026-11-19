@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-11-19
+
+### Fixed
+
+- `/status` now shows the battery charge on Windows. The probe runs asynchronously with a 3 s timeout and a 30 s cache; the previous 500 ms synchronous call was killed during PowerShell startup.
+- Short IDs in debug logs are now derived from the SHA-256 of the full ID. QQ message IDs share a constant head and tail, so distinct messages previously collapsed to the same `UMkNSaLL` value.
+- `run ended` is logged after the final flush/DONE, reports `delivered`, and includes the last finalized/sent text lengths instead of reset zeros.
+- `bubble split` records the bubble size and rotation reason before resetting writer state.
+- Event-loop diagnostics use a 1 ms histogram and include event-loop utilization; the previous 100 ms resolution produced a constant ~100 ms baseline.
+
+### Changed
+
+- Debug logs are much smaller: run diagnostics keep at most five recent tools without arguments or results, no-text takeover decisions are skipped, per-frame `append` / `flush: start` / `timer` logs are replaced by slow-frame and partial-frame summaries, and duplicate tool and run lines are merged. The 2026-11-19 verification log is 188 lines / 43.6 KiB for an 11-minute run, versus 7.64 MiB for 43 active minutes before.
+- `/status` labels the passive remaining count as text replies only; streamed bubbles are counted separately and the conservative estimate line remains.
+- README documents that `replyType: "full"` emits one message per block and that `simple` reduces volume.
+
 ## [1.7.1] - 2026-11-18
 
 ### Fixed
