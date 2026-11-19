@@ -246,6 +246,10 @@ scope 中得到同一短值，不再泄露原值，也不受平台 ID 布局影�
 
 **建议**：A。现有单测已覆盖逻辑，但真实 QQ 的 600 s 边界仍需至少一次端到端验证。
 
+**验证结果（2026-11-19）**：`sleep 660; echo done` 的 11 分钟静默工具在真实 QQ 上通过。结果帧在
+660,291 ms 后返回 `40034020`，`expired: true`；新流 `resumed: true`、`index=0`、无 `stream_msg_id`，
+重放 17 字符缓冲；工具结果 `done` 和最终 `OK` 均送达（截图确认），`run ended` 为 `delivered: true`。
+
 ### T13 `/status` 未返回电量
 
 **现象**
