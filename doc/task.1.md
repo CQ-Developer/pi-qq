@@ -55,7 +55,16 @@
 
 **建议**：A。A 同时满足隐私与排查；B 会降低多账号排查能力；C 的问题是不可追踪。
 
-**改动范围**：`bubble-writer.ts`、`run-stream-relay.ts`、`index.ts`、`qq-message-handler.ts`；新增单测覆盖有/无 `_` 两种情况。
+**验证发现（2026-11-19 真实日志）**：A 的“取 `_` 后 8 位”仍不可用。QQ 消息 ID 的结构是
+`ROBOT1.0_` + 21 字符固定头 + 中间变化段 + 约 35 字符固定尾；不同消息的 `_` 后前 8 位都是
+`UMkNSaLL`，末 8 位也大多是 `QpRmBmM`。只有中段变化，所以任何贴边切片都会碰撞。
+
+**修订（A′）**：`shortId()` 改为 `sha256(id)` 的前 8 位十六进制（如 `a98bf36d`）。同一 ID 在所有
+scope 中得到同一短值，不再泄露原值，也不受平台 ID 布局影响。日志层只对长度 ≥16 的 ID 字段做哈希，
+避免对已经是短值的字段重复哈希。
+
+**改动范围**：`bubble-writer.ts`、`run-stream-relay.ts`、`index.ts`、`qq-message-handler.ts`、
+`file-logger.ts`、`short-id.ts`；新增单测覆盖固定头/尾但不同消息的情况。
 
 ### T2 诊断行去掉完整 `tools` 数组
 
@@ -293,9 +302,14 @@ node -e "const{execFileSync}=require('child_process');const t=Date.now();try{con
 | ------------------------- | -------------------------------------------------------------------------------------------------- | ----------- |
 | `98df2df` `refactor(log)` | 短 ID、`tools` 摘要、takeover 过滤、逐帧日志精简、split 归因、runEnded 合并、event-loop 指标、去重 | T1–T9       |
 | `0d6c759` `fix(power)`    | 异步电量探测、3s timeout、30s 缓存、失败日志                                                       | T13         |
+| 本次 `fix(log)` 提交      | 短 ID 改为 SHA-256 前 8 位，修复固定头/尾导致的碰撞                                                | T1 修订     |
 | 本次 `docs` 提交          | README/todo、`/status` 文案、T9 证据修正                                                           | T10/T11/T12 |
 
-验证：`npm test` 260 passed、`tsc --noEmit`、`lint`、`format:check` 通过。
+验证：`npm test` 通过、`tsc --noEmit`、`lint`、`format:check` 通过。
+
+真实 QQ 验证（2026-11-19，11 分钟静默工具）：旧流在 660s 返回 `40034020`，`expired: true`；
+新流 `resumed: true`、`index=0`、无 `stream_msg_id`、重放 17 字符缓冲；工具结果与最终 `OK` 均送达；
+`run ended` 为 `delivered: true`。日志 188 行 / 43.6 KiB，无逐帧 append/flush，电量显示 99%。
 
 待验证：T12 的 11 分钟长静默工具需在真实 QQ 上执行；T1–T9、T13 需用下一次真实日志确认体积与可读性。
 

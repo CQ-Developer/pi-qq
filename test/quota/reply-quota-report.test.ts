@@ -26,7 +26,7 @@ describe("formatBudgetStatus", () => {
     expect(formatBudgetStatus(snapshot, last, t0 + 12_000)).toEqual([
       "pi-qq passive reply budget",
       "Limit: 4/msg (1h)",
-      "Last inbound: openid-1… / msg-…5678, 12s ago",
+      "Last inbound: openid-1… / 5475424b, 12s ago",
       "Passive remaining (text replies only): 3",
       "Stream bubbles: 2 (current msgId)",
       "Estimated remaining: 1 (diagnostic only)",

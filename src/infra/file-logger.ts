@@ -63,6 +63,8 @@ const REDACTED = "<redacted>";
 const SECRET_KEY_RE =
   /^(?:password|passwd|pwd|secret|token|session|sessionId|cookie|authorization|api[_-]?key|client[_-]?secret|app[_-]?secret|access[_-]?token|refresh[_-]?token|private[_-]?key)$/i;
 const SHORT_ID_KEYS = new Set(["messageId", "msgId", "streamMsgId"]);
+// Platform IDs are long; shorter values are already short or synthetic.
+const FULL_ID_MIN_LENGTH = 16;
 
 /** Redact common credential shapes while keeping the surrounding log text. */
 export function redactLogText(text: string): string {
@@ -80,7 +82,9 @@ export function redactLogText(text: string): string {
 
 function redactValue(value: unknown, key?: string): unknown {
   if (key && SECRET_KEY_RE.test(key)) return REDACTED;
-  if (key && SHORT_ID_KEYS.has(key) && typeof value === "string") return shortId(value);
+  if (key && SHORT_ID_KEYS.has(key) && typeof value === "string" && value.length >= FULL_ID_MIN_LENGTH) {
+    return shortId(value);
+  }
   if (typeof value === "string") return redactLogText(value);
   if (Array.isArray(value)) return value.map((item) => redactValue(item));
   if (value instanceof Error) {

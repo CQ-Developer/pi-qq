@@ -1,20 +1,15 @@
+import { createHash } from "node:crypto";
+
 const SHORT_ID_LENGTH = 8;
-const EDGE_LENGTH = 4;
 
 /**
- * Shorten platform identifiers for logs and diagnostics.
+ * Derive a stable, non-reversible short identifier for logs.
  *
- * QQ message IDs share a constant `ROBOT1.0_` prefix, so a plain prefix slice
- * carries no information. The part after the last underscore is the only
- * distinguishing segment.
+ * QQ message IDs share a long constant head and tail, and only the middle
+ * varies. Slicing either edge therefore maps different messages to the same
+ * short ID; hashing keeps them distinguishable and hides the raw identifier.
  */
 export function shortId(id: string | null | undefined): string {
   if (!id) return "?";
-  const separator = id.lastIndexOf("_");
-  if (separator >= 0) {
-    const suffix = id.slice(separator + 1);
-    if (suffix) return suffix.slice(0, SHORT_ID_LENGTH);
-  }
-  if (id.length <= SHORT_ID_LENGTH) return id;
-  return `${id.slice(0, EDGE_LENGTH)}…${id.slice(-EDGE_LENGTH)}`;
+  return createHash("sha256").update(id).digest("hex").slice(0, SHORT_ID_LENGTH);
 }

@@ -124,4 +124,4 @@
 - typing 真实网络超时：1.7.1 已在流活跃时跳过 typing，但 10s 超时尚未在真实网络复现。
 - 日志改动已实施：`tools` 只保留最近 3 个已完成 + 活动工具（不含参数/结果）、逐帧 append/flush/timer 日志删除、`run ended` 合并到最终 DONE 之后、短 ID 统一、`bubble split` 记录原因与大小、event-loop 使用 1ms 分辨率和 ELU。
 - 待确认：下一次真实日志的体积、短 ID 是否便于关联、慢帧/分片摘要是否足够定位协议问题。
-- 短 ID 规则：`messageId` / `msgId` / `streamMsgId` 取 `_` 后 8 位，无 `_` 时首 4 + 末 4；`senderId` / `appId` 保留完整。
+- 短 ID 规则：`messageId` / `msgId` / `streamMsgId` 取 `sha256` 前 8 位十六进制；`senderId` / `appId` 保留完整。QQ 消息 ID 的头尾均固定，贴边切片会碰撞。

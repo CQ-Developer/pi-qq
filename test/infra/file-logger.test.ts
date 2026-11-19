@@ -253,9 +253,9 @@ describe("file output", () => {
       });
       await flushLogs();
       const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
-      expect(record.messageId).toBe("UMkNSaLL");
-      expect(record.msgId).toBe("UMkNSaLL");
-      expect(record.streamMsgId).toBe("0ea2…8190");
+      expect(record.messageId).toBe("77c21ae8");
+      expect(record.msgId).toBe("77c21ae8");
+      expect(record.streamMsgId).toBe("cb0617ca");
       expect(record.senderId).toBe("openid-12345678");
     } finally {
       configureLogger("silent");
