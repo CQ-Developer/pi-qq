@@ -84,18 +84,20 @@ In `replyType: "full"` mode, QQ receives these block types:
 - **Regular messages**: raw text with no header.
 - **Tool icons**: 💻 bash, 📖 read, 📝 write, ✏️ edit, 🔎 grep, 🔍 search, 🗂️ find, 📁 ls, 📋 list, 🌐 web, 📡 fetch, 🗑️ delete, ❌ remove, ✅ todo, 🧪 test; unconfigured tools use 🔧.
 
+Each block is a separate QQ message, so a long run can push dozens of bubbles; use `replyType: "simple"` or `"last"` to reduce the volume.
+
 After a model error, automatic retries within 60 seconds keep pushing to the original QQ chat. `/stop` waits for active tools and streams to finish before replying.
 
 ## Commands
 
 Run these in the pi terminal:
 
-| Command      | Description                                            |
-| ------------ | ------------------------------------------------------ |
-| `/qq-login`  | Log in with a QR code and bind the scanning QQ user    |
-| `/qq-status` | Show login, connection, model, context, and bound user |
-| `/qq-logout` | Log out and clear credentials                          |
-| `/qq-new`    | Reset the current session (used by QQ `/new`)          |
+| Command      | Description                                                     |
+| ------------ | --------------------------------------------------------------- |
+| `/qq-login`  | Log in with a QR code and bind the scanning QQ user             |
+| `/qq-status` | Show login, connection, model, context, battery, and bound user |
+| `/qq-logout` | Log out and clear credentials                                   |
+| `/qq-new`    | Reset the current session (used by QQ `/new`)                   |
 
 QQ-side commands:
 
@@ -209,7 +211,7 @@ The extension entrypoint is `index.ts`. Source modules are grouped by responsibi
 
 - Only C2C (QQ private chat) is supported.
 - Runs triggered by inbound QQ messages are relayed to QQ. Unrelated tasks started directly in pi stay local.
-- QQ limits passive replies per inbound message. Use `/qq-test-budget` to inspect the local budget.
+- QQ limits passive replies per inbound message. `/qq-test-budget` shows the remaining text replies and a conservative estimate; streamed bubbles are counted separately and are not capped locally.
 - Reading a `SKILL.md` is shown as a `## 🧩 Skill` block with the skill name; the file content is not forwarded to QQ.
 
 ## License
