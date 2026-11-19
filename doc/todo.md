@@ -1,7 +1,7 @@
 # TODO
 
 > 只记录未完成项目；已完成项目直接删除，不使用勾选状态。
-> 1.7.1 交付记录：`doc/archive/delivery.1.7.1.md`
+> 1.7.2 交付记录：`doc/archive/delivery.1.7.2.md`
 
 ## 1. 超长 bash 命令在 QQ 的渲染
 
