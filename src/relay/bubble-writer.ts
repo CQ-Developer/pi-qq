@@ -37,6 +37,13 @@ function isExpiredStreamError(err: unknown): boolean {
   return errorCode(err) === 40034020 || /40034020|超过时间限制|time limit/i.test(String((err as Error)?.message ?? ""));
 }
 
+function isEndedStreamError(err: unknown): boolean {
+  return (
+    errorCode(err) === 40034019 ||
+    /40034019|流式引导已经结束|stream guidance.*ended/i.test(String((err as Error)?.message ?? ""))
+  );
+}
+
 export interface RepushTool {
   name: string;
   args?: unknown;
@@ -554,12 +561,14 @@ export class BubbleWriter {
     const code = errorCode(err);
     const resetSeq = isDuplicateMsgSeqError(err);
     const expired = isExpiredStreamError(err);
+    const ended = isEndedStreamError(err);
     this.lastErrorCode = code;
     log.warn("stream", "stream error", {
       msgId: this.logMsgId(),
       elapsedMs: Date.now() - this.deps.startedAt,
       resetSeq,
       expired,
+      ended,
       checkpoint: checkpoint
         ? {
             index: checkpoint.index,
@@ -574,7 +583,7 @@ export class BubbleWriter {
     if (checkpoint && this.resumeAttempts < MAX_RESUME_ATTEMPTS) {
       this.resumeAttempts += 1;
       this.pendingResume =
-        resetSeq || expired
+        resetSeq || expired || ended
           ? {
               index: 0,
               ...(checkpoint.buffer ? { buffer: checkpoint.buffer } : {}),

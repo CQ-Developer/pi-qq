@@ -1,6 +1,6 @@
 # pi-qq 1.7.3 修复计划
 
-> 状态：待实施
+> 状态：已实施（自动化通过）；P1-2 真实 QQ 验证待做
 > 日期：2026-11-27
 > 依据：2026-11-24–27 真实日志（138,137 行 / 32 MiB）
 > 关联：`doc/todo.md`、`doc/archive/delivery.1.7.2.md`
@@ -165,7 +165,7 @@ run 内 2 次有发送日志，空闲期 1 次完全没有，无法排查命令�
 - `npm run lint`
 - `npm run typecheck`
 - `npm run format:check`
-- `npm run pack -- --dry-run`
+- `npm pack --dry-run`
 
 真实 QQ：
 

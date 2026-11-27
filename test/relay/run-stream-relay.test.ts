@@ -19,6 +19,7 @@ function makeRunHarness(
     failNext?: number;
     duplicateNext?: number;
     expiredNext?: number;
+    endedNext?: number;
     alwaysFail?: boolean;
   } = {},
 ) {
@@ -28,6 +29,7 @@ function makeRunHarness(
   let failuresLeft = options.failNext ?? 0;
   let duplicatesLeft = options.duplicateNext ?? 0;
   let expiredLeft = options.expiredNext ?? 0;
+  let endedLeft = options.endedNext ?? 0;
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
       attempts.push({ ...req });
@@ -38,6 +40,10 @@ function makeRunHarness(
       if (expiredLeft > 0) {
         expiredLeft -= 1;
         throw Object.assign(new Error("同一流式消息发送超过时间限制"), { bizCode: 40034020 });
+      }
+      if (endedLeft > 0) {
+        endedLeft -= 1;
+        throw Object.assign(new Error("流式引导已经结束，不能继续发送"), { bizCode: 40034019 });
       }
       if (options.alwaysFail || failuresLeft > 0) {
         if (failuresLeft > 0) failuresLeft -= 1;
@@ -411,6 +417,32 @@ describe("RunFeedback 直推", () => {
     expect(attempts[0]?.msg_seq).not.toBe(attempts[1]?.msg_seq);
     expect(attempts[1]?.msg_seq).toBe(attempts[2]?.msg_seq);
     expect(streamContent(calls)).toBe(`${THINKING_HEADER}dedupe thinking`);
+  });
+
+  it("40034019 结束流使用新 msg_seq 重开并重放缓冲", async () => {
+    const { rf, calls, attempts } = makeRunHarness({ endedNext: 1 });
+    startRun(rf);
+    rf.onAssistantDelta("", "ended thinking");
+    expect(await rf.onAssistantFinal("", false)).toBe(true);
+    await rf.onAgentEnd();
+
+    const frames = attempts.filter((attempt) => attempt.input_state !== DONE_STATE);
+    expect(frames).toHaveLength(2);
+    expect(frames[0]?.index).toBe(0);
+    expect(frames[1]?.index).toBe(0);
+    expect(frames[0]?.msg_seq).not.toBe(frames[1]?.msg_seq);
+    expect(frames[1]?.stream_msg_id).toBeUndefined();
+    expect(streamContent(calls)).toBe(`${THINKING_HEADER}ended thinking`);
+  });
+
+  it("40034019 不触发 40034020 的自动重绑", async () => {
+    const { rf, calls, budget } = makeRunHarness({ endedNext: 3 });
+    startRun(rf);
+    rf.onAssistantDelta("", "ended thinking");
+    budget.observeInbound("openid-u", "msg-2");
+    expect(await rf.onAssistantFinal("", false)).toBe(false);
+    await rf.onAgentEnd();
+    expect(calls.some((call) => call.msg_id === "msg-2")).toBe(false);
   });
 
   it("40034020 过期流使用新 msg_seq 重开并重放缓冲", async () => {

@@ -217,6 +217,54 @@ describe("file output", () => {
     }
   });
 
+  it("summarizes SDK dispatch payloads instead of logging message content", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-sdk-dispatch-"));
+    try {
+      configureLogger("debug", dir);
+      sdkLogger.debug(
+        '[1906059751] Dispatch event: t=C2C_MESSAGE_CREATE payload={"content":"secret","id":"ROBOT1.0_abcdefghijklmnop"}',
+      );
+      await flushLogs();
+      const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
+      const msg = String(record.msg);
+      expect(msg).toContain("Dispatch event: t=C2C_MESSAGE_CREATE");
+      expect(msg).toContain("payload=<");
+      expect(msg).not.toContain("secret");
+      expect(msg).not.toContain("ROBOT1.0");
+    } finally {
+      configureLogger("silent");
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("handles an empty SDK dispatch payload", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-sdk-dispatch-empty-"));
+    try {
+      configureLogger("debug", dir);
+      sdkLogger.debug('[1906059751] Dispatch event: t=RESUMED payload=""');
+      await flushLogs();
+      const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
+      expect(String(record.msg)).toBe("[1906059751] Dispatch event: t=RESUMED payload=<2 chars>");
+    } finally {
+      configureLogger("silent");
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not truncate a non-dispatch payload field", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-sdk-payload-"));
+    try {
+      configureLogger("debug", dir);
+      sdkLogger.debug("custom payload=value");
+      await flushLogs();
+      const record = JSON.parse((await readFile(getLogFilePath(), "utf8")).trim()) as Record<string, unknown>;
+      expect(String(record.msg)).toBe("custom payload=value");
+    } finally {
+      configureLogger("silent");
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("redacts secret fields before writing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-qq-redact-"));
     try {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `40034019` (`流式引导已经结束`) is now treated as a terminated stream: the writer opens a fresh stream with a new `msg_seq`, `index=0`, and the unacknowledged buffer instead of resuming the dead `stream_msg_id`.
+- SDK `Dispatch event` logs now summarize the payload, so inbound message text, full message IDs, and avatar URLs no longer enter the debug log.
+- `outbound` logging is now allowed outside a run, so command replies such as `/status` have send metadata in the log; reply content is still not logged.
+
+### Changed
+
+- Event-loop diagnostics sample every 30 seconds instead of 5 seconds, reducing their log volume by about 83% while keeping the 1 ms histogram.
+
 ## [1.7.2] - 2026-11-19
 
 ### Fixed

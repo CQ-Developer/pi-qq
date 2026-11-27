@@ -51,6 +51,7 @@ const runFeedback = new RunFeedback({
 
 // Node's histogram mean has a floor roughly equal to `resolution` (observed as
 // milliseconds on Node 24), so a large resolution hides real delay. Keep 1 ms.
+const EVENT_LOOP_INTERVAL_MS = 30_000;
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 1 });
 let eventLoopTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -80,7 +81,7 @@ function startEventLoopMonitor(): void {
   let lastElu = performance.eventLoopUtilization();
   eventLoopTimer = setInterval(() => {
     const now = Date.now();
-    const driftMs = now - lastTickAt - 5_000;
+    const driftMs = now - lastTickAt - EVENT_LOOP_INTERVAL_MS;
     lastTickAt = now;
     const elu = performance.eventLoopUtilization(lastElu);
     lastElu = performance.eventLoopUtilization();
@@ -92,7 +93,7 @@ function startEventLoopMonitor(): void {
       utilizationPercent: Math.round(elu.utilization * 1000) / 10,
     });
     eventLoopDelay.reset();
-  }, 5_000);
+  }, EVENT_LOOP_INTERVAL_MS);
   eventLoopTimer.unref?.();
 }
 
@@ -106,8 +107,9 @@ export default function (pi: ExtensionAPI) {
   setLogGate((scope) => {
     if (scope === "login") return true;
     if (!getLoginState()) return false;
-    // The message that starts a run arrives before the run becomes active.
-    if (scope === "inbound") return true;
+    // Inbound triggers arrive before the run becomes active; command replies can
+    // be sent outside a run and are metadata-only.
+    if (scope === "inbound" || scope === "outbound") return true;
     if (scope === "session" || scope === "bot" || scope === "power") return true;
     return runFeedback.isQQRunActive();
   });

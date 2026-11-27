@@ -331,6 +331,42 @@ describe("extension lifecycle", () => {
     );
   });
 
+  it("logs outbound metadata outside a run but keeps stream logs gated", async () => {
+    (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
+      credentials: { appId: "app", appSecret: "secret" },
+      allowedOpenid: "openid-u",
+    };
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-index-outbound-"));
+    configureLogger("debug", dir);
+
+    const { pi } = makePi();
+    extension(pi);
+    log.debug("outbound", "sending text chunk", {
+      mode: "passive",
+      targetId: "openid-u",
+      msgId: "msg-1",
+      length: 5,
+    });
+    log.debug("stream", "stream timing", { phase: "gated" });
+    await flushLogs();
+
+    const records = (await readFile(getLogFilePath(), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scope: "outbound",
+          msgKey: "log.sendingTextChunk",
+          targetId: "openid-u",
+          length: 5,
+        }),
+      ]),
+    );
+    expect(records.some((record) => record.scope === "stream")).toBe(false);
+  });
+
   it("logs qq-triggered runs", async () => {
     (globalThis as Record<string, unknown>)[LOGIN_STATE_KEY] = {
       credentials: { appId: "app", appSecret: "secret" },

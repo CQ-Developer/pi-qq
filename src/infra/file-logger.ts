@@ -201,6 +201,18 @@ export function logValueLength(value: unknown): number {
 }
 
 function summarizeSdkMessage(message: string): string {
+  // SDK dispatch events include the full inbound payload (message text, IDs,
+  // avatar URLs). Keep the event type for correlation and drop the payload.
+  const dispatchIndex = message.indexOf("Dispatch event:");
+  if (dispatchIndex >= 0) {
+    const marker = "payload=";
+    const payloadIndex = message.indexOf(marker, dispatchIndex);
+    if (payloadIndex >= 0) {
+      const prefix = message.slice(0, payloadIndex + marker.length);
+      return `${prefix}<${message.length - payloadIndex - marker.length} chars>`;
+    }
+  }
+
   const marker = "Body: ";
   const index = message.indexOf(marker);
   if (index < 0) return message;
