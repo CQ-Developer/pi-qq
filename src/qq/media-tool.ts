@@ -12,7 +12,7 @@ import { lstat } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { type Static, Type } from "typebox";
+import { type Static, Type, type TSchema } from "typebox";
 import { formatBytes } from "../infra/display-format";
 import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
@@ -25,9 +25,12 @@ export const MEDIA_TOOL_NAME = "qq_send_media";
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"]);
 
+const MEDIA_KINDS = ["auto", "image", "video", "file"] as const;
+export type MediaKind = (typeof MEDIA_KINDS)[number];
+
 export const mediaParams = Type.Object({
   path: Type.String({ description: "Local image/video/file path, absolute or relative to cwd." }),
-  kind: Type.Optional(StringEnum(["auto", "image", "video", "file"] as const)),
+  kind: Type.Optional(Type.Unsafe<MediaKind>(StringEnum(MEDIA_KINDS) as unknown as TSchema)),
   caption: Type.Optional(Type.String({ description: "Optional caption shown with the media." })),
   name: Type.Optional(Type.String({ description: "Display filename for kind=file." })),
 });
