@@ -388,6 +388,26 @@ describe("inbound pending attachments", () => {
     expect(content).toContain("处理这个文件");
   });
 
+  it("notifies and drops the oldest files when the pending cap is exceeded", async () => {
+    let savedCount = 0;
+    const harness = makeInboundHarness(true, {
+      content: "",
+      attachments: [fileA],
+      saveFiles: async () => {
+        savedCount += 1;
+        return { files: [savedAttachment(`f${savedCount}.zip`)], failures: [] };
+      },
+    });
+
+    for (let index = 0; index < 11; index += 1) await harness.run({ attachments: [fileA] });
+    expect(harness.sent.some((text) => text.includes("Too many pending attachments"))).toBe(true);
+
+    await harness.run({ content: "处理附件", attachments: [] });
+    const content = harness.userMessages[0]?.content as string;
+    expect(content).not.toContain(relativeAttachment("f1.zip"));
+    expect(content).toContain(relativeAttachment("f11.zip"));
+  });
+
   it("clears pending attachments on /new", async () => {
     const harness = makeInboundHarness(true, {
       content: "",

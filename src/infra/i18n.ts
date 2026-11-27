@@ -63,6 +63,7 @@ const enUS = {
 
   "inbound.unsupported": "Unsupported message type.",
   "inbound.voiceFailed": "Could not transcribe this voice message; please resend or type it.",
+  "inbound.pendingLimit": "Too many pending attachments; dropped {dropped} older file(s). At most {limit} are kept.",
   "attachments.failedMany": "⚠️ {failed} attachment(s) failed ({success} succeeded):",
   "attachments.failedNone": "⚠️ Attachment failed:",
   "attachments.tooLarge": "{kind} too large ({size} > {limit})",
@@ -155,6 +156,7 @@ const enUS = {
   "mediaTool.unsupportedKind": "Unsupported {kind} extension: {path}",
   "mediaTool.uploadDailyLimit": "QQ daily large-file upload limit reached: {message}",
   "mediaTool.apiFailed": "QQ API error ({code}): {message}",
+  "mediaTool.uploading": "Uploading {percent}%",
   "mediaTool.modePassive": "passive",
   "mediaTool.modeProactive": "proactive",
   "mediaTool.kindImage": "image",
@@ -170,7 +172,6 @@ const enUS = {
   "settings.fileMaxSize": "fileMaxSize must be a positive finite number",
   "settings.logLevel": 'logLevel must be "silent", "error", "warn", "info", or "debug"',
   "settings.language": 'language must be "zh-cn" or "en-us"',
-  "settings.debug": "debug must be a boolean",
 } as const;
 
 export type TranslationKey = keyof typeof enUS;
@@ -232,6 +233,7 @@ const zhCN: Record<TranslationKey, string> = {
 
   "inbound.unsupported": "不支持的消息类型。",
   "inbound.voiceFailed": "无法转写这条语音消息，请重发或改用文字。",
+  "inbound.pendingLimit": "待处理附件过多，已丢弃 {dropped} 个较旧的文件；最多保留 {limit} 个。",
   "attachments.failedMany": "⚠️ {failed} 个附件失败（成功 {success} 个）：",
   "attachments.failedNone": "⚠️ 附件处理失败：",
   "attachments.tooLarge": "{kind}过大（{size} > {limit}）",
@@ -324,6 +326,7 @@ const zhCN: Record<TranslationKey, string> = {
   "mediaTool.unsupportedKind": "{kind} 类型不支持该扩展名：{path}",
   "mediaTool.uploadDailyLimit": "QQ 今日大文件上传额度已用完：{message}",
   "mediaTool.apiFailed": "QQ API 错误（{code}）：{message}",
+  "mediaTool.uploading": "正在上传 {percent}%",
   "mediaTool.modePassive": "被动",
   "mediaTool.modeProactive": "主动",
   "mediaTool.kindImage": "图片",
@@ -339,7 +342,6 @@ const zhCN: Record<TranslationKey, string> = {
   "settings.fileMaxSize": "fileMaxSize 必须是正有限数",
   "settings.logLevel": 'logLevel 必须是 "silent"、"error"、"warn"、"info" 或 "debug"',
   "settings.language": 'language 必须是 "zh-cn" 或 "en-us"',
-  "settings.debug": "debug 必须是布尔值",
 };
 
 const dictionaries: Record<Language, Record<TranslationKey, string>> = {

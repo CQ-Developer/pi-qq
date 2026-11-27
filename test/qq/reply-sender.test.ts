@@ -78,6 +78,14 @@ describe("chunkText", () => {
     expect(hardChunks.length).toBe(4);
   });
 
+  it("does not split a surrogate pair at the chunk boundary", () => {
+    const text = `${"a".repeat(299)}😀${"b".repeat(10)}`;
+    const chunks = chunkText(text, 300);
+    expect(chunks.join("")).toBe(text);
+    expect(chunks.some((chunk) => chunk.includes("😀"))).toBe(true);
+    for (const chunk of chunks) expect(chunk).not.toContain("\uFFFD");
+  });
+
   it("等于上限时不分块", () => {
     expect(chunkText("a".repeat(TEXT_CHUNK_LIMIT)).length).toBe(1);
   });

@@ -137,6 +137,41 @@ describe("BubbleWriter expired stream", () => {
   });
 });
 
+describe("BubbleWriter DONE failure", () => {
+  it("returns false when DONE is rejected", async () => {
+    let doneAttempts = 0;
+    const api = {
+      async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
+        if (req.input_state === 10) {
+          doneAttempts += 1;
+          throw new Error("done failed");
+        }
+        return { id: "sm-1" };
+      },
+    };
+    const bot = {
+      messageApi: api,
+      getCredentials: () => ({}),
+      sendTyping: async () => {},
+    };
+    const budget = new ReplyBudget();
+    budget.observeInbound("openid-u", "msg-1");
+    const writer = new BubbleWriter({
+      bot: () => bot as never,
+      budget,
+      openid: "openid-u",
+      msgId: "msg-1",
+      startedAt: Date.now(),
+      onWarn: () => {},
+    });
+
+    writer.pushText("hello");
+    await writer.flush();
+    await expect(writer.done()).resolves.toBe(false);
+    expect(doneAttempts).toBe(1);
+  });
+});
+
 describe("BubbleWriter ended stream", () => {
   it("40034019 在已有 stream_msg_id 时新开流并重放未确认缓冲", async () => {
     const calls: Array<Record<string, unknown>> = [];

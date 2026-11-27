@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { normalizeLogLevel, type LogLevel } from "./file-logger";
@@ -11,7 +11,6 @@ export interface PiQQSettings {
   fileMaxSize?: number;
   logLevel?: LogLevel;
   language?: Language;
-  debug?: boolean;
 }
 
 export interface Credentials {
@@ -70,10 +69,6 @@ export function parseConfig(raw: unknown): ReadConfigResult {
     if (isLogLevel(raw.logLevel)) config.logLevel = raw.logLevel;
     else errors.push(translate(language, "settings.logLevel"));
   }
-  if (raw.debug !== undefined) {
-    if (typeof raw.debug === "boolean") config.debug = raw.debug;
-    else errors.push(translate(language, "settings.debug"));
-  }
 
   return errors.length > 0
     ? {
@@ -86,17 +81,33 @@ export function parseConfig(raw: unknown): ReadConfigResult {
     : { config };
 }
 
+let cachedConfig: { mtimeMs: number; size: number; result: ReadConfigResult } | undefined;
+
 export function readConfig(): ReadConfigResult {
+  let fileInfo;
+  try {
+    fileInfo = statSync(CONFIG_PATH);
+  } catch {
+    cachedConfig = undefined;
+    return { config: {} };
+  }
+  if (cachedConfig && cachedConfig.mtimeMs === fileInfo.mtimeMs && cachedConfig.size === fileInfo.size) {
+    return cachedConfig.result;
+  }
+
   let raw: string;
   try {
     raw = readFileSync(CONFIG_PATH, "utf8");
   } catch {
+    cachedConfig = undefined;
     return { config: {} };
   }
+
+  let result: ReadConfigResult;
   try {
-    return parseConfig(JSON.parse(raw));
+    result = parseConfig(JSON.parse(raw));
   } catch (e) {
-    return {
+    result = {
       config: {},
       error: translate(getLanguage(), "settings.parseFailed", {
         path: CONFIG_PATH,
@@ -104,12 +115,14 @@ export function readConfig(): ReadConfigResult {
       }),
     };
   }
+  cachedConfig = { mtimeMs: fileInfo.mtimeMs, size: fileInfo.size, result };
+  return result;
 }
 
-export type ResolvedSettings = Required<Omit<PiQQSettings, "debug">>;
+export type ResolvedSettings = Required<PiQQSettings>;
 
 export function getSettings(config: PiQQSettings): ResolvedSettings {
-  const logLevel = normalizeLogLevel(config.logLevel ?? (config.debug ? "debug" : undefined));
+  const logLevel = normalizeLogLevel(config.logLevel);
   return {
     deliverAs: config.deliverAs ?? "steer",
     replyType: config.replyType ?? DEFAULT_REPLY_TYPE,

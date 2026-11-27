@@ -179,13 +179,13 @@ Language of UI notifications and replies. Log files are always written in Englis
 
 ### `logLevel`
 
-Log threshold. Records are written only while a QQ-triggered run is active after login, to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory. `scope: "media"` covers media-tool steps during those runs.
+Log threshold. Records are written to `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`; `PI_QQ_LOG_DIR` overrides the directory. Most scopes are gated to an active QQ-triggered run, while `session`, `bot`, `power`, `inbound`, and `outbound` metadata are also written outside runs after login. Logs older than 7 days or above 50 MiB per directory are pruned on startup. `scope: "media"` covers media-tool steps.
 
 - `silent` (default): no log file at all.
 - `error`: failures only.
 - `warn`: failures and recoverable problems.
 - `info`: run metadata as well — message ids, content lengths, agent start and end.
-- `debug`: everything, including tool arguments and results, attachment metadata, prompts, and raw voice transcripts.
+- `debug`: metadata and diagnostics, including lengths, timings, attachment counts, media type/size, and error codes. Message text, tool arguments/results, prompts, and voice transcripts are not written.
 
 ## Development
 

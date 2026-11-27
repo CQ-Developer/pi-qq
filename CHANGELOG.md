@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A rejected stream `DONE` is no longer reported as `delivered`; the run keeps its recovery target so `/last` can still resend the final content.
+- `/qq-test-md` and `/qq-test-stream` now update the local reply budget.
+- Pending attachments are capped at 10 files with a 10-minute TTL, and the user is notified when older files are dropped.
+- Old per-session upload directories are pruned after 7 days.
+- Logs are pruned on startup to the newest 7 days or 50 MiB per directory.
+- Media debug logs no longer record full local paths; voice transcripts are logged by length instead of content.
+- The media tool schema is covered by a regression test, and `@earendil-works/pi-ai`/`typebox` are declared as peer dependencies.
+- Config reads are cached by file mtime instead of re-read and parsed for every inbound message.
+
+### Changed
+
+- **Breaking:** removed the legacy `debug` config alias; use `logLevel: "debug"`.
+- Removed the stale `log.ended` key and the duplicate `bot starting` record.
+- Text chunking no longer splits surrogate pairs; media upload progress is localized.
+
 ## [2.0.0] - 2026-11-28
 
 ### Fixed

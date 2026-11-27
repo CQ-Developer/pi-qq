@@ -18,10 +18,9 @@ describe("parseConfig", () => {
       deliverAs: "bogus",
       fileMaxSize: "large",
       logLevel: "verbose",
-      debug: true,
     });
 
-    expect(config).toEqual({ debug: true });
+    expect(config).toEqual({});
     expect(error).toContain("deliverAs");
     expect(error).toContain("fileMaxSize");
     expect(error).toContain("logLevel");
@@ -53,20 +52,11 @@ describe("parseConfig", () => {
 describe("logLevel settings", () => {
   it("defaults to silent", () => {
     expect(getSettings({}).logLevel).toBe("silent");
-    expect(getSettings({ debug: false }).logLevel).toBe("silent");
   });
 
   it("accepts an explicit level", () => {
     expect(getSettings({ logLevel: "info" }).logLevel).toBe("info");
     expect(getSettings({ logLevel: "debug" }).logLevel).toBe("debug");
-  });
-
-  it("migrates legacy debug=true", () => {
-    expect(getSettings({ debug: true }).logLevel).toBe("debug");
-  });
-
-  it("prefers logLevel over legacy debug", () => {
-    expect(getSettings({ logLevel: "warn", debug: true }).logLevel).toBe("warn");
   });
 
   it("falls back to silent for invalid levels", () => {
@@ -76,7 +66,10 @@ describe("logLevel settings", () => {
 
 describe("getSettings", () => {
   it("旧配置键被忽略", () => {
+    expect(parseConfig({ debug: true })).toEqual({ config: {} });
+
     const settings = getSettings({
+      debug: true,
       thinkingRelay: false,
       streamFlushMs: 3000,
       streamAssistant: true,

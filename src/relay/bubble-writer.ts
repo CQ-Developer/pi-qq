@@ -54,7 +54,7 @@ export interface RepushTool {
 export type RepushBlock =
   { kind: "thinking"; text: string } | { kind: "tool"; tool: RepushTool } | { kind: "text"; text: string };
 
-export interface BubbleWriterDeps {
+interface BubbleWriterDeps {
   bot: () => QQBot | undefined;
   budget: ReplyBudget;
   openid: string;
@@ -273,12 +273,15 @@ export class BubbleWriter {
     return false;
   }
 
-  async done(): Promise<void> {
-    if (this.streamDead || this.disposed || !this.cur) return;
+  async done(): Promise<boolean> {
+    if (this.disposed || this.streamDead) return false;
+    if (!this.cur) return true;
     try {
       await this.cur.done();
+      return true;
     } catch (err) {
       log.warn("stream", "DONE failed", { msgId: this.logMsgId(), err });
+      return false;
     }
   }
 

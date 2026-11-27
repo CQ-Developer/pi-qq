@@ -28,11 +28,13 @@ describe("i18n", () => {
   it("localizes media tool messages", () => {
     configureI18n("en-us");
     expect(t("mediaTool.kindImage")).toBe("image");
+    expect(t("mediaTool.uploading", { percent: 42 })).toBe("Uploading 42%");
     expect(t("mediaTool.sent", { kind: "image", name: "shot.png", mode: "passive" })).toBe(
       "Sent image shot.png to QQ via passive reply.",
     );
     configureI18n("zh-cn");
     expect(t("mediaTool.kindImage")).toBe("图片");
+    expect(t("mediaTool.uploading", { percent: 42 })).toBe("正在上传 42%");
     expect(t("mediaTool.sent", { kind: "图片", name: "shot.png", mode: "被动" })).toBe(
       "已通过被动回复将图片 shot.png 发送到 QQ。",
     );

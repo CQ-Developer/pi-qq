@@ -14,6 +14,12 @@ export interface RunFeedbackDeps {
   onWarn: (msg: string) => void;
 }
 
+interface RunTarget {
+  openid: string;
+  msgId: string;
+  at: number;
+}
+
 interface RunState {
   startedAt: number;
   openid: string;
@@ -44,6 +50,12 @@ const PENDING_TTL_MS = 15_000;
 const RECOVERY_TTL_MS = 60_000;
 const AUTO_REBIND_TTL_MS = 5 * 60_000;
 
+function pickTarget(pending: RunTarget | null, recovery: RunTarget | null, now: number): RunTarget | undefined {
+  if (pending && now - pending.at <= PENDING_TTL_MS) return pending;
+  if (recovery && now - recovery.at <= RECOVERY_TTL_MS) return recovery;
+  return undefined;
+}
+
 function toRepushTool(tool: TimelineTool): RepushTool {
   return {
     name: tool.name,
@@ -55,8 +67,8 @@ function toRepushTool(tool: TimelineTool): RepushTool {
 
 export class RunFeedback {
   private readonly deps: RunFeedbackDeps;
-  private pending: { openid: string; msgId: string; at: number } | null = null;
-  private recovery: { openid: string; msgId: string; at: number } | null = null;
+  private pending: RunTarget | null = null;
+  private recovery: RunTarget | null = null;
   private run: RunState | null = null;
   private lastCompletedText: string | undefined;
   private autoRebinds = 0;
@@ -156,12 +168,7 @@ export class RunFeedback {
     const now = Date.now();
     const pending = this.pending;
     this.pending = null;
-    const target =
-      pending && now - pending.at <= PENDING_TTL_MS
-        ? pending
-        : this.recovery && now - this.recovery.at <= RECOVERY_TTL_MS
-          ? this.recovery
-          : undefined;
+    const target = pickTarget(pending, this.recovery, now);
     if (!target) {
       log.debug("run", "run started", {
         phase: "no qq target",
@@ -342,15 +349,12 @@ export class RunFeedback {
     await run.writer.whenIdle();
     this.clearTimers();
     if (run.timeline.currentText.trim()) this.lastCompletedText = run.timeline.currentText;
-    if (!run.timeline.error && run.writer.hasPushed) this.recovery = null;
     let delivered = false;
     if (run.writer.hasPushed) {
       const ok = await run.writer.flush();
-      if (ok) {
-        await run.writer.done();
-        delivered = true;
-      }
+      if (ok) delivered = await run.writer.done();
     }
+    if (!run.timeline.error && delivered) this.recovery = null;
     log.debug("run", "run ended", {
       phase: "cleanup",
       msgId: shortId(run.msgId),

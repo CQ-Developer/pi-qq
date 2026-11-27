@@ -9,11 +9,19 @@ import { registerQQDiagnostics } from "./src/qq/qq-diagnostics";
 import { markdownToPlain, sendReply } from "./src/qq/reply-sender";
 import { ReplyBudget } from "./src/quota/reply-quota";
 import { RunFeedback } from "./src/relay/run-stream-relay";
-import { configureLogger, flushLogs, isLogEnabled, log, logValueLength, setLogGate } from "./src/infra/file-logger";
+import {
+  configureLogger,
+  flushLogs,
+  isLogEnabled,
+  log,
+  logValueLength,
+  pruneLogs,
+  setLogGate,
+} from "./src/infra/file-logger";
 import { configureI18n, t } from "./src/infra/i18n";
 import { getPowerStatus } from "./src/infra/power-status";
 import { formatStatusReport } from "./src/qq/status-report";
-import { pruneUploadIndex, sessionUploadDir } from "./src/attachments/file-attachments";
+import { pruneSessionUploads, pruneUploadIndex, sessionUploadDir } from "./src/attachments/file-attachments";
 import { registerMediaTool, type MediaToolController } from "./src/qq/media-tool";
 
 interface LoginState {
@@ -187,12 +195,15 @@ export default function (pi: ExtensionAPI) {
   const startWithCredentials = async (ctx: ExtensionContext, creds: Credentials, allowedOpenid: string) => {
     const settings = activeSettings;
     configureLogger(settings.logLevel, join(ctx.cwd, ".pi", "pi-qq", "logs"));
+    await pruneLogs();
     stopIfRunning();
     startEventLoopMonitor();
     stateDetail = undefined;
     sessionCtx = ctx;
-    const uploadDir = sessionUploadDir(ctx.cwd, ctx.sessionManager.getSessionId());
+    const sessionId = ctx.sessionManager.getSessionId();
+    const uploadDir = sessionUploadDir(ctx.cwd, sessionId);
     const uploadIndex = await pruneUploadIndex(uploadDir);
+    const prunedUploadDirs = await pruneSessionUploads(ctx.cwd, sessionId);
     log.info("session", "starting bot", {
       appId: creds.appId,
       allowedOpenid,
@@ -202,6 +213,7 @@ export default function (pi: ExtensionAPI) {
       replyType: settings.replyType,
       uploadDir,
       indexedFiles: Object.keys(uploadIndex).length,
+      prunedUploadDirs,
     });
     running = startBot({
       credentials: creds,

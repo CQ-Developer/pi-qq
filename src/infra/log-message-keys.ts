@@ -16,7 +16,6 @@ const LOG_MESSAGE_KEYS = {
   "bubble split failed": "log.bubbleSplitFailed",
   "cleared pending attachments for /new": "log.clearedPendingAttachments",
   end: "log.toolEnd",
-  ended: "log.ended",
   "error event": "log.botErrorEvent",
   "failed to write upload index": "log.uploadIndexWriteFailed",
   "inbound message": "log.inboundMessage",

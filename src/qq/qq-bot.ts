@@ -26,11 +26,6 @@ export interface RunningBot {
 }
 
 export function startBot(opts: StartBotOptions): RunningBot {
-  log.info("bot", "starting", {
-    appId: opts.credentials.appId,
-    allowedOpenid: opts.allowedOpenid,
-  });
-
   const bot = new QQBot({
     appId: opts.credentials.appId,
     appSecret: opts.credentials.appSecret,

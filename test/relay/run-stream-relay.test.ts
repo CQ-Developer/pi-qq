@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configureI18n } from "../../src/infra/i18n";
-import { setLogGate } from "../../src/infra/file-logger";
+import { log, setLogGate } from "../../src/infra/file-logger";
 import type { ReplyType } from "../../src/infra/reply-type";
 import { RunFeedback } from "../../src/relay/run-stream-relay";
 import { thinkingHeader } from "../../src/relay/stream-block-format";
@@ -8,7 +8,10 @@ import { ReplyBudget } from "../../src/quota/reply-quota";
 
 beforeEach(() => configureI18n("zh-cn"));
 
-afterEach(() => setLogGate(undefined));
+afterEach(() => {
+  setLogGate(undefined);
+  vi.restoreAllMocks();
+});
 
 const DONE_STATE = 10;
 const THINKING_HEADER = thinkingHeader();
@@ -20,6 +23,7 @@ function makeRunHarness(
     duplicateNext?: number;
     expiredNext?: number;
     endedNext?: number;
+    doneFailNext?: number;
     alwaysFail?: boolean;
   } = {},
 ) {
@@ -30,6 +34,7 @@ function makeRunHarness(
   let duplicatesLeft = options.duplicateNext ?? 0;
   let expiredLeft = options.expiredNext ?? 0;
   let endedLeft = options.endedNext ?? 0;
+  let doneFailuresLeft = options.doneFailNext ?? 0;
   const api = {
     async sendC2CStreamMessage(_creds: unknown, _openid: unknown, req: Record<string, unknown>) {
       attempts.push({ ...req });
@@ -48,6 +53,10 @@ function makeRunHarness(
       if (options.alwaysFail || failuresLeft > 0) {
         if (failuresLeft > 0) failuresLeft -= 1;
         throw new Error("stream broke");
+      }
+      if (doneFailuresLeft > 0 && req.input_state === DONE_STATE) {
+        doneFailuresLeft -= 1;
+        throw new Error("DONE failed");
       }
       calls.push({ ...req });
       return { id: `sm-${calls.length}` };
@@ -433,6 +442,21 @@ describe("RunFeedback 直推", () => {
     expect(frames[0]?.msg_seq).not.toBe(frames[1]?.msg_seq);
     expect(frames[1]?.stream_msg_id).toBeUndefined();
     expect(streamContent(calls)).toBe(`${THINKING_HEADER}ended thinking`);
+  });
+
+  it("DONE 失败时保留 recovery，下一次 run 可继续", async () => {
+    const debugSpy = vi.spyOn(log, "debug");
+    const { rf } = makeRunHarness({ doneFailNext: 1 });
+    startRun(rf);
+    rf.onAssistantDelta("", "thinking before done failure");
+    await rf.onAssistantFinal("", true);
+    await rf.onAgentEnd();
+    expect(rf.isQQRunActive()).toBe(false);
+    const ended = debugSpy.mock.calls.find(([scope, message]) => scope === "run" && message === "run ended");
+    expect(ended?.[2]).toMatchObject({ delivered: false });
+
+    rf.onAgentStart();
+    expect(rf.isQQRunActive()).toBe(true);
   });
 
   it("40034019 不触发 40034020 的自动重绑", async () => {

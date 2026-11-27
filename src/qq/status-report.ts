@@ -30,6 +30,23 @@ const STATE_LABELS: Record<BotState, TranslationKey> = {
   blocked: "status.state.blocked",
 };
 
+const BATTERY_DISPLAY: Record<
+  PowerStatus["state"],
+  { icon: string; withPercent: TranslationKey; withoutPercent: TranslationKey }
+> = {
+  charging: {
+    icon: "🔌",
+    withPercent: "status.batteryCharging",
+    withoutPercent: "status.batteryChargingNoPercent",
+  },
+  discharging: {
+    icon: "🔋",
+    withPercent: "status.batteryDischarging",
+    withoutPercent: "status.batteryDischargingNoPercent",
+  },
+  ac: { icon: "⚡", withPercent: "status.batteryAc", withoutPercent: "status.batteryAcNoPercent" },
+};
+
 function maskAppId(appId: string): string {
   return `${appId.slice(0, 4)}****`;
 }
@@ -58,25 +75,10 @@ function contextLine(usage: StatusReportInput["usage"]): string {
 
 function batteryLine(power: PowerStatus | undefined): string | undefined {
   if (!power) return undefined;
-  const icon = power.state === "charging" ? "🔌" : power.state === "discharging" ? "🔋" : "⚡";
+  const display = BATTERY_DISPLAY[power.state];
   const value =
-    power.percent === undefined
-      ? t(
-          power.state === "charging"
-            ? "status.batteryChargingNoPercent"
-            : power.state === "discharging"
-              ? "status.batteryDischargingNoPercent"
-              : "status.batteryAcNoPercent",
-        )
-      : t(
-          power.state === "charging"
-            ? "status.batteryCharging"
-            : power.state === "discharging"
-              ? "status.batteryDischarging"
-              : "status.batteryAc",
-          { percent: power.percent },
-        );
-  return `${icon} ${label("status.battery", value)}`;
+    power.percent === undefined ? t(display.withoutPercent) : t(display.withPercent, { percent: power.percent });
+  return `${display.icon} ${label("status.battery", value)}`;
 }
 
 export function formatStatusReport(input: StatusReportInput): string[] {

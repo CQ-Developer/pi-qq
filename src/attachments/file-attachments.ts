@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative } from "node:path";
 import { downloadLimited, type InboundAttachmentLike } from "./attachment-download";
 import type { AttachmentFailure } from "./attachment-failure";
@@ -9,6 +9,7 @@ import { t } from "../infra/i18n";
 
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 const UPLOAD_INDEX_FILENAME = ".index.json";
+export const UPLOAD_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 export interface SavedFile {
   path: string;
@@ -106,6 +107,39 @@ async function persistUploadIndex(uploadDir: string, index: UploadIndex): Promis
   } catch (err) {
     log.warn("files", "failed to write upload index", { path, err });
   }
+}
+
+export async function pruneSessionUploads(
+  cwd: string,
+  currentSessionId: string,
+  options: { now?: number; maxAgeMs?: number } = {},
+): Promise<number> {
+  const parent = join(cwd, ".pi", "pi-qq");
+  const current = safePathSegment(currentSessionId);
+  const now = options.now ?? Date.now();
+  const maxAgeMs = options.maxAgeMs ?? UPLOAD_RETENTION_MS;
+  let entries;
+  try {
+    entries = await readdir(parent, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === current) continue;
+    const sessionDir = join(parent, entry.name);
+    let uploadsMtime: number;
+    try {
+      uploadsMtime = (await stat(join(sessionDir, "uploads"))).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (now - uploadsMtime <= maxAgeMs) continue;
+    await rm(sessionDir, { recursive: true, force: true });
+    removed += 1;
+  }
+  return removed;
 }
 
 export async function pruneUploadIndex(uploadDir: string): Promise<UploadIndex> {

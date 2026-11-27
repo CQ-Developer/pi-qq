@@ -26,7 +26,7 @@ const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bm
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv"]);
 
 const MEDIA_KINDS = ["auto", "image", "video", "file"] as const;
-export type MediaKind = (typeof MEDIA_KINDS)[number];
+type MediaKind = (typeof MEDIA_KINDS)[number];
 
 export const mediaParams = Type.Object({
   path: Type.String({ description: "Local image/video/file path, absolute or relative to cwd." }),
@@ -97,7 +97,7 @@ function mediaKindLabel(fileType: MediaFileType): string {
   return t("mediaTool.kindFile");
 }
 
-export function normalizeMediaPath(cwd: string, rawPath: string): string {
+function normalizeMediaPath(cwd: string, rawPath: string): string {
   const trimmed = rawPath.trim();
   const withoutAt = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
   return resolve(cwd, withoutAt);
@@ -192,7 +192,7 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
       log.debug("media", "media tool", {
         phase: "call.start",
         toolCallId,
-        path: params.path,
+        pathLength: params.path.length,
         kind: params.kind ?? "auto",
         captionLength: params.caption?.length ?? 0,
       });
@@ -220,8 +220,9 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
         log.debug("media", "media tool", {
           phase: "validate.fail",
           toolCallId,
-          path: params.path,
-          reason: err instanceof Error ? err.message : String(err),
+          fileName: basename(params.path),
+          pathLength: params.path.length,
+          reason: err instanceof Error ? err.name : typeof err,
         });
         throw err;
       }
@@ -242,7 +243,7 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
           toolCallId,
           fileType: prepared.fileType,
           sizeBytes: prepared.size,
-          path: prepared.path,
+          displayName: prepared.displayName,
         });
         upload = await bot.uploadMedia({
           target: { scope: "c2c", targetId: login.allowedOpenid },
@@ -252,7 +253,9 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
           srvSendMsg: false,
           onProgress: (uploaded, total) => {
             onUpdate?.({
-              content: [{ type: "text", text: `Uploading ${Math.round((uploaded / total) * 100)}%` }],
+              content: [
+                { type: "text", text: t("mediaTool.uploading", { percent: Math.round((uploaded / total) * 100) }) },
+              ],
               details: { ...prepared.details, phase: "upload", uploaded, total },
             });
           },
@@ -337,25 +340,28 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
         },
       });
 
-      try {
-        const message = await sendMedia(targetId, msgId);
-        if (msgId) deps.budget.commitPassive(msgId);
-        const elapsedMs = Date.now() - sendStartedAt;
+      const logSent = (messageId: string, mode: "passive" | "proactive", elapsedMs: number) => {
         log.debug("media", "media tool", {
           phase: "send.done",
           toolCallId,
-          mode: reply.mode,
-          messageId: message.id,
+          mode,
+          messageId,
           elapsedMs,
         });
         log.debug("media", "media tool", {
           phase: "call.result",
           toolCallId,
           ok: true,
-          mode: reply.mode,
-          messageId: message.id,
+          mode,
+          messageId,
         });
-        return buildResult(message.id, reply.mode, Date.now() - startedAt);
+        return buildResult(messageId, mode, Date.now() - startedAt);
+      };
+
+      try {
+        const message = await sendMedia(targetId, msgId);
+        if (msgId) deps.budget.commitPassive(msgId);
+        return logSent(message.id, reply.mode, Date.now() - sendStartedAt);
       } catch (err) {
         if (!msgId) {
           log.warn("media", "media tool", { phase: "call.error", toolCallId, stage: "send", err });
@@ -377,22 +383,7 @@ function createTool(deps: MediaToolDeps): ToolDefinition<typeof mediaParams, Med
         try {
           const message = await sendMedia(login.allowedOpenid);
           deps.onWarn(t("outbound.passiveFailed"));
-          const elapsedMs = Date.now() - sendStartedAt;
-          log.debug("media", "media tool", {
-            phase: "send.done",
-            toolCallId,
-            mode: "proactive",
-            messageId: message.id,
-            elapsedMs,
-          });
-          log.debug("media", "media tool", {
-            phase: "call.result",
-            toolCallId,
-            ok: true,
-            mode: "proactive",
-            messageId: message.id,
-          });
-          return buildResult(message.id, "proactive", Date.now() - startedAt);
+          return logSent(message.id, "proactive", Date.now() - sendStartedAt);
         } catch (retryErr) {
           log.warn("media", "media tool", {
             phase: "call.error",

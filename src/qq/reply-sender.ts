@@ -71,6 +71,10 @@ export function chunkText(text: string, limit = TEXT_CHUNK_LIMIT): string[] {
   while (rest.length > max) {
     let cut = rest.lastIndexOf("\n", max);
     cut = cut <= 0 ? max : cut + 1;
+    if (cut > 0 && cut < rest.length) {
+      const previous = rest.charCodeAt(cut - 1);
+      if (previous >= 0xd800 && previous <= 0xdbff) cut += 1;
+    }
     chunks.push(rest.slice(0, cut));
     rest = rest.slice(cut);
   }
@@ -84,7 +88,7 @@ export interface ReplyChannel {
   onWarn?: (msg: string) => void;
 }
 
-export interface StreamTarget {
+interface StreamTarget {
   openid: string;
   msgId: string;
 }

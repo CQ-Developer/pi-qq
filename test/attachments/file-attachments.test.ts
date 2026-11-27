@@ -1,15 +1,17 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { configureI18n } from "../../src/infra/i18n";
 import {
   formatAttachmentPrompt,
+  pruneSessionUploads,
   pruneUploadIndex,
   sanitizeFilename,
   saveInboundFiles,
   sessionUploadDir,
   sha256Hex,
+  UPLOAD_RETENTION_MS,
   uploadIndexPath,
 } from "../../src/attachments/file-attachments";
 import { getSettings } from "../../src/infra/settings";
@@ -261,6 +263,29 @@ describe("saveInboundFiles", () => {
       expect(result.failures[0]?.reason).toContain("file too large");
     } finally {
       await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes old session upload directories but keeps the current session and logs", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "pi-qq-uploads-retention-"));
+    const parent = join(cwd, ".pi", "pi-qq");
+    const oldUploads = join(parent, "old-session", "uploads");
+    const currentUploads = join(parent, "current-session", "uploads");
+    await mkdir(oldUploads, { recursive: true });
+    await mkdir(currentUploads, { recursive: true });
+    await mkdir(join(parent, "logs"), { recursive: true });
+    await writeFile(join(oldUploads, "old.zip"), "old");
+    await writeFile(join(currentUploads, "current.zip"), "current");
+    const oldMtime = new Date(Date.now() - UPLOAD_RETENTION_MS - 1_000);
+    await utimes(oldUploads, oldMtime, oldMtime);
+
+    try {
+      expect(await pruneSessionUploads(cwd, "current-session")).toBe(1);
+      const entries = (await readdir(parent)).sort();
+      expect(entries).toEqual(["current-session", "logs"]);
+      expect(await readFile(join(currentUploads, "current.zip"), "utf8")).toBe("current");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 

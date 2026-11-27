@@ -179,13 +179,13 @@ UI 提示与回复的语言。日志文件始终使用英文，不受该配置�
 
 ### `logLevel`
 
-日志阈值。只有登录后 QQ 触发的 run 处于活动状态时才会写记录，路径为 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`；可用 `PI_QQ_LOG_DIR` 覆盖目录。`scope: "media"` 记录媒体工具在这些 run 中的步骤。
+日志阈值。记录写入 `<cwd>/.pi/pi-qq/logs/pi-qq-YYYY-MM-DD.log`；可用 `PI_QQ_LOG_DIR` 覆盖目录。大多数 scope 只在 QQ 触发的 run 活跃时写入，登录后 `session`、`bot`、`power`、`inbound`、`outbound` 元数据也会在 run 之外写入。启动时会清理超过 7 天或每个目录超过 50 MiB 的日志。`scope: "media"` 记录媒体工具步骤。
 
 - `silent`（默认）：完全不写日志文件。
 - `error`：只记录失败。
 - `warn`：记录失败与可恢复的问题。
 - `info`：额外记录 run 元信息——消息 id、内容长度、agent 开始与结束。
-- `debug`：记录全部内容，包括工具参数与结果、附件元数据、提示词和语音转写原文。
+- `debug`：记录元信息与诊断信息，包括长度、耗时、附件数量、媒体类型/大小和错误码；不写消息正文、工具参数/结果、提示词和语音转写原文。
 
 ## 开发
 

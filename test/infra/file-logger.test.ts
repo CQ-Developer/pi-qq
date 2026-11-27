@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,7 +12,9 @@ import {
   log,
   logFileName,
   logValueLength,
+  LOG_RETENTION_MS,
   normalizeLogLevel,
+  pruneLogs,
   redactLogText,
   sdkLogger,
   setLogGate,
@@ -112,6 +114,26 @@ describe("file output", () => {
       log.error("test", "hidden");
       await flushLogs();
       expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes old and oversized logs but keeps the newest file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-qq-log-retention-"));
+    const now = Date.parse("2026-11-28T12:00:00Z");
+    const current = join(dir, "pi-qq-2026-11-28.log");
+    const old = join(dir, "pi-qq-2026-01-01.log");
+    const oversized = join(dir, "pi-qq-2026-11-27.log");
+    try {
+      await writeFile(current, "current");
+      await writeFile(old, "old");
+      await writeFile(oversized, "x".repeat(60));
+      await utimes(old, new Date(now - LOG_RETENTION_MS - 1), new Date(now - LOG_RETENTION_MS - 1));
+
+      const result = await pruneLogs(dir, { now, maxBytes: 50 });
+      expect(result.removed).toBe(2);
+      expect((await readdir(dir)).sort()).toEqual(["pi-qq-2026-11-28.log"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

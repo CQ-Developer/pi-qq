@@ -132,12 +132,17 @@ export function createInboundHandler(deps: InboundDeps) {
     }
 
     if (!text && files.length > 0) {
-      pending.add(files);
+      const added = pending.add(files);
       log.info("inbound", "attachments pending for instruction", {
         messageId: msg.messageId,
         count: files.length,
+        accepted: added.accepted,
+        dropped: added.dropped,
         pendingCount: pending.count,
       });
+      if (added.dropped > 0) {
+        await reply(t("inbound.pendingLimit", { limit: pending.limit, dropped: added.dropped }));
+      }
       return;
     }
 

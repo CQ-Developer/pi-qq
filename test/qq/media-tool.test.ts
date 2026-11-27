@@ -10,6 +10,7 @@ import { resetMsgSeqAllocator } from "../../src/relay/msg-seq";
 import { ReplyBudget } from "../../src/quota/reply-quota";
 import {
   MEDIA_TOOL_NAME,
+  mediaParams,
   prepareMedia,
   registerMediaTool,
   resolveMediaFileType,
@@ -120,6 +121,24 @@ async function writeMedia(name: string, content = "data"): Promise<string> {
   await writeFile(path, content);
   return path;
 }
+
+describe("media schema", () => {
+  it("keeps path required and kind an optional enum", () => {
+    const schema = mediaParams as unknown as {
+      type: string;
+      required?: string[];
+      properties: Record<string, Record<string, unknown>>;
+    };
+    expect(schema.type).toBe("object");
+    expect(schema.required).toEqual(["path"]);
+    expect(schema.properties.kind).toMatchObject({
+      type: "string",
+      enum: ["auto", "image", "video", "file"],
+    });
+    expect(schema.properties.caption?.type).toBe("string");
+    expect(schema.properties.name?.type).toBe("string");
+  });
+});
 
 describe("media type helpers", () => {
   it("detects image, video, and file extensions", () => {
@@ -272,6 +291,19 @@ describe("media tool execute", () => {
         "call.result",
       ]),
     );
+  });
+
+  it("does not log the full local media path", async () => {
+    const h = makeHarness();
+    await writeMedia("shot.png", "image-data");
+    const debugSpy = vi.spyOn(log, "debug");
+
+    await h.tool.execute("call-path", { path: "shot.png" }, undefined, undefined, { cwd: tempDir });
+
+    const mediaPayloads = debugSpy.mock.calls
+      .filter(([scope]) => scope === "media")
+      .map(([, , data]) => data as Record<string, unknown>);
+    expect(mediaPayloads.some((data) => "path" in data)).toBe(false);
   });
 
   it("sends proactively when there is no reply target", async () => {

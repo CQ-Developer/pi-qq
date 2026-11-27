@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { log } from "../infra/file-logger";
 import { t } from "../infra/i18n";
 
-export interface InboundContext {
+interface InboundContext {
   readonly cwd: string;
   isIdle(): boolean;
   abort(): void;
@@ -10,7 +10,7 @@ export interface InboundContext {
   sessionManager: { getSessionId(): string };
 }
 
-export type InboundPi = Pick<ExtensionAPI, "sendUserMessage">;
+type InboundPi = Pick<ExtensionAPI, "sendUserMessage">;
 
 export interface InboundCommandDeps {
   pi: InboundPi;
@@ -21,11 +21,11 @@ export interface InboundCommandDeps {
   waitForEnd?: () => Promise<void>;
 }
 
-export interface InboundPushResult {
+interface InboundPushResult {
   ok: boolean;
 }
 
-export interface InboundCommandExtras {
+interface InboundCommandExtras {
   streamReply?: (text: string) => Promise<void>;
   restartPush?: () => InboundPushResult;
 }

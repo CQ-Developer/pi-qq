@@ -44,6 +44,7 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
       const content = args?.trim() || "**Markdown test**\n# Heading\n- Item one\n- Item two\n[Link](https://qq.com)";
       try {
         await sendWithMsgSeq(running.bot, { target, markdown: { content } });
+        if ("msgId" in target && target.msgId) deps.budget.commitPassive(target.msgId);
         ctx.ui.notify(t("diagnostics.mdSent"), "info");
       } catch (err) {
         ctx.ui.notify(t("diagnostics.mdFailed", { message: (err as Error).message }), "error");
@@ -70,6 +71,7 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
       try {
         if (args?.trim() === "resume") {
           const first = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
+          deps.budget.noteStreamBubble(last.msgId);
           stream = first;
           await first.append(t("diagnostics.probeResumeFrame1"));
           await first.flush();
@@ -88,6 +90,7 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
             last.msgId,
             { resume: checkpoint },
           );
+          deps.budget.noteStreamBubble(last.msgId);
           stream = second;
           await second.append(t("diagnostics.probeResumeFrame2"));
           await second.done();
@@ -104,6 +107,7 @@ export function registerQQDiagnostics(pi: ExtensionAPI, deps: QQDiagnosticsDeps)
         }
 
         stream = new AppendStream(running.bot.messageApi, running.bot.getCredentials(), last.openid, last.msgId);
+        deps.budget.noteStreamBubble(last.msgId);
         await stream.append(
           `${thinkingHeader()}${t("diagnostics.probeThinking")}\n\n## 💻 bash\n\n\`\`\`bash\necho probe\n\`\`\`\n\n\`\`\`text\n${t("diagnostics.probeCode")}\n\`\`\`\n`,
         );

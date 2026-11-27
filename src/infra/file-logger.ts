@@ -1,5 +1,5 @@
-import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { appendFile, mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { logMessageKey } from "./log-message-keys";
 import { shortId } from "./short-id";
 
@@ -15,6 +15,8 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
 };
 
 const DEFAULT_LOG_LEVEL: LogLevel = "silent";
+export const LOG_RETENTION_MS = 7 * 24 * 60 * 60_000;
+const MAX_LOG_BYTES = 50 * 1024 * 1024;
 
 let activeLevel: LogLevel = DEFAULT_LOG_LEVEL;
 let activeDir: string | undefined;
@@ -125,6 +127,55 @@ export function logFileName(now = new Date()): string {
 
 export function getLogFilePath(now = new Date()): string {
   return join(resolveLogDir(), logFileName(now));
+}
+
+export async function pruneLogs(
+  dir = resolveLogDir(),
+  options: { now?: number; maxAgeMs?: number; maxBytes?: number } = {},
+): Promise<{ removed: number; keptBytes: number }> {
+  const now = options.now ?? Date.now();
+  const maxAgeMs = options.maxAgeMs ?? LOG_RETENTION_MS;
+  const maxBytes = options.maxBytes ?? MAX_LOG_BYTES;
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return { removed: 0, keptBytes: 0 };
+  }
+
+  const files: Array<{ path: string; size: number; mtimeMs: number }> = [];
+  for (const name of names) {
+    if (!/^pi-qq-.*\.log$/.test(name)) continue;
+    const path = join(dir, name);
+    try {
+      const info = await stat(path);
+      if (info.isFile()) files.push({ path, size: info.size, mtimeMs: info.mtimeMs });
+    } catch {}
+  }
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const currentName = logFileName(new Date(now));
+  const hasCurrent = files.some((file) => basename(file.path) === currentName);
+
+  let keptBytes = 0;
+  let removed = 0;
+  for (const [index, file] of files.entries()) {
+    // Always keep the active file; if it is missing, keep the newest file.
+    if (basename(file.path) === currentName || (!hasCurrent && index === 0)) {
+      keptBytes += file.size;
+      continue;
+    }
+    const tooOld = now - file.mtimeMs > maxAgeMs;
+    const overLimit = keptBytes + file.size > maxBytes;
+    if (tooOld || overLimit) {
+      try {
+        await unlink(file.path);
+        removed += 1;
+      } catch {}
+      continue;
+    }
+    keptBytes += file.size;
+  }
+  return { removed, keptBytes };
 }
 
 function normalizeData(data: unknown): LogFields | undefined {
