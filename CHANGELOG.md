@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-11-28
 
 ### Fixed
 
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** removed the legacy `debug` config alias; use `logLevel: "debug"`.
+- Removed the legacy `debug` config alias; `logLevel` is the supported setting.
 - Removed the stale `log.ended` key and the duplicate `bot starting` record.
 - Text chunking no longer splits surrogate pairs; media upload progress is localized.
 
