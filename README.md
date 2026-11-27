@@ -6,7 +6,7 @@ Connect [pi](https://github.com/earendil-works/pi) to a QQ private chat. Send te
 
 ## Requirements
 
-- Node.js 22.19 or newer, matching pi.
+- Node.js 26 or newer.
 - A QQ bot application with C2C private messaging enabled.
 - A working pi installation.
 
