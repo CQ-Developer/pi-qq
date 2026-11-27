@@ -5,11 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-11-28
+
+### Fixed
+
+- The `qq_send_media` parameter type now adapts to the pi-schema `StringEnum` used by newer pi versions; the emitted JSON Schema is unchanged.
 
 ### Changed
 
 - **Breaking:** requires Node.js 26 or newer. The minimum was Node.js 22.19.0. CI and release workflows now use Node.js 26.
+- Updated dependencies, including `@earendil-works/pi-coding-agent@1.7.0`, `@tencent-connect/qqbot-nodejs@1.0.6`, `typescript@6.0.3`, and `@types/node@26.6.11`. TypeScript 7 is not adopted because `typescript-eslint@8.74.0` supports `<6.1.0`.
 
 ## [1.7.3] - 2026-11-28
 
